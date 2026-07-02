@@ -34,6 +34,7 @@ const DEMO = {
     { slug: 'end-of-tenancy', name: 'End of tenancy' },
     { slug: 'oven', name: 'Oven clean' },
     { slug: 'carpet', name: 'Carpet clean' },
+    { slug: 'windows', name: 'Window clean' },
   ],
 
   cleaners: [
