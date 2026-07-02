@@ -211,7 +211,7 @@ const PANELS = {
         <h2>How Match Maid works</h2>
         <div class="vflow" id="vflow">
           <div class="vstep"><span class="vnum">01</span><div class="vbody"><h3>Complete your profile</h3><p>Add your name, photo and a short bio so clients know who they're inviting in.</p></div></div>
-          <div class="vstep"><span class="vnum">02</span><div class="vbody"><h3>Set your availability <em>(most important)</em></h3><p>Update your weekly calendar with the mornings, middays and afternoons you can work — this is what matches you to clients.</p></div></div>
+          <div class="vstep"><span class="vnum">02</span><div class="vbody"><h3>Set your availability</h3><p>Update your weekly calendar with the mornings, middays and afternoons you can work — this is what matches you to clients.</p></div></div>
           <div class="vstep"><span class="vnum">03</span><div class="vbody"><h3>Set your price</h3><p>Add your hourly rate range. You set it, and it's shown openly — no race to the bottom.</p></div></div>
           <div class="vstep"><span class="vnum">04</span><div class="vbody"><h3>Add your locations</h3><p>Search a town and toggle the suburbs you cover — or wider areas like Christchurch.</p></div></div>
           <div class="vstep"><span class="vnum">05</span><div class="vbody"><h3>Get exclusive enquiries</h3><p>Clients who want your services at your times reach out to you alone. Reply and arrange directly — you keep 100%.</p></div></div>
