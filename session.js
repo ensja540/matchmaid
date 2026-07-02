@@ -36,3 +36,31 @@ const Session = {
 };
 
 window.Session = Session;
+
+// On the public pages (browse / pitch pages), reflect the logged-in state:
+// swap the "Log in / Create account" controls for a portal link + log out,
+// so you stay recognisably logged in as you move around the site.
+function reflectAuthNav() {
+  const user = Session.get();
+  if (!user) return;
+  const bar = document.querySelector('.pitch-top-right');
+  if (!bar) return;
+  bar.querySelectorAll('a[href*="login.html"], #signupHook').forEach((el) => el.remove());
+  const out = document.createElement('a');
+  out.className = 'ulink';
+  out.href = '#';
+  out.textContent = 'Log out';
+  out.addEventListener('click', (e) => {
+    e.preventDefault();
+    Session.clear();
+    location.href = '/';
+  });
+  const portal = document.createElement('a');
+  portal.className = 'btn sm';
+  portal.href = Session.homeFor(user.role);
+  portal.textContent = user.role === 'cleaner' ? 'My dashboard' : 'My account';
+  bar.appendChild(out);
+  bar.appendChild(portal);
+}
+if (document.readyState !== 'loading') reflectAuthNav();
+else document.addEventListener('DOMContentLoaded', reflectAuthNav);

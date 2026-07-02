@@ -53,13 +53,25 @@ app.post('/api/register', async (req, res) => {
     res.status(201).json({ user: publicUser(user) });
   } catch (err) {
     if (err.code === '23505')
-      return res.status(409).json({ error: 'That email is already registered.' });
+      return res.status(409).json({
+        error: 'That email already has a Match Maid account — just log in, and you can use both the maid and hirer sides.',
+      });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });
   }
 });
 
 // --- Auth: login ------------------------------------------------------------
+// One account (one email + password) can use BOTH sides. We authenticate on
+// email + password, then make sure the profile for whichever side they're
+// logging into exists — so the same login reaches the maid portal and the
+// hirer portal, while the two portals themselves stay separate.
+async function ensureProfile(userId, dbRole) {
+  const table = dbRole === 'cleaner' ? 'cleaner_profiles' : 'client_profiles';
+  const { rows } = await query(`select 1 from ${table} where user_id = $1`, [userId]);
+  if (!rows.length) await query(`insert into ${table} (user_id) values ($1)`, [userId]);
+}
+
 app.post('/api/login', async (req, res) => {
   try {
     const { role, email, password } = req.body ?? {};
@@ -75,10 +87,10 @@ app.post('/api/login', async (req, res) => {
     const user = rows[0];
     const ok = user && user.password_hash && (await bcrypt.compare(password, user.password_hash));
     if (!ok) return res.status(401).json({ error: 'Wrong email or password.' });
-    if (user.role !== dbRole)
-      return res.status(403).json({ error: `That account is a ${user.role}, not a ${role}.` });
 
-    res.json({ user: publicUser(user) });
+    // Provision the side they're logging into; the same account can be both.
+    await ensureProfile(user.id, dbRole);
+    res.json({ user: publicUser({ ...user, role: dbRole }) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });

@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Match Maid — Browse cleaners</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Match Maid" />
+    <meta property="og:title" content="Match Maid — browse local cleaners" />
+    <meta property="og:description" content="Search independent local cleaners with rates up front. Free for households, no account needed to browse." />
+    <meta property="og:url" content="https://matchmaid.co.nz/browse.html" />
+    <meta property="og:image" content="https://matchmaid.co.nz/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://matchmaid.co.nz/og-image.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="app-body role-customer">
@@ -26,12 +36,34 @@
           you only sign up when you want to message someone.
         </p>
         <form class="browse-form" id="browseForm">
-          <label class="field"><span>Suburb</span><select name="suburb" id="suburb"></select></label>
-          <label class="field"><span>Service</span><select name="service" id="service"></select></label>
-          <label class="field"><span>Ideal rate: <span class="rangeval" id="rateOut">$35/hr</span></span>
+          <div class="bf-grid">
+            <label class="field"><span>Location (suburb)</span><select id="suburb"></select></label>
+            <label class="field"><span>Type of clean</span><select id="service"></select></label>
+            <label class="field"><span>Hours needed</span><select id="hours"></select></label>
+          </div>
+
+          <div class="bf-block">
+            <span class="bf-label">Additional cleaning</span>
+            <div class="chip-select" id="extras">
+              <button type="button" class="chip select" data-svc="oven">Oven</button>
+              <button type="button" class="chip select" data-svc="windows">Windows</button>
+              <button type="button" class="chip select" data-svc="carpet">Carpet</button>
+              <button type="button" class="chip select" data-svc="end-of-tenancy">End of lease</button>
+              <button type="button" class="chip select" data-svc="deep">Deep clean</button>
+            </div>
+          </div>
+
+          <div class="bf-block">
+            <span class="bf-label">Ideal rate: <span class="rangeval" id="rateOut">$35/hr</span></span>
             <input type="range" id="rate" min="20" max="80" value="35" />
-          </label>
-          <button class="btn solid" type="submit">Search</button>
+          </div>
+
+          <div class="bf-block">
+            <span class="bf-label">When are you free? (optional — better matches)</span>
+            <div class="cal" id="cal"></div>
+          </div>
+
+          <div class="bf-actions"><button class="btn solid" type="submit">Search cleaners</button></div>
         </form>
       </section>
 

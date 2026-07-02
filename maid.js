@@ -56,6 +56,18 @@ const PANELS = {
       </div>
 
       <div class="panel-card">
+        <h2>How Match Maid works</h2>
+        <div class="howto"><ol class="steps">
+          <li><span class="num">01</span><div><h3>Complete your profile</h3><p>Add your services, hourly rate, the suburbs you cover and a photo.</p></div></li>
+          <li><span class="num">02</span><div><h3>Set your availability</h3><p>Mark the mornings, middays and afternoons you're free each week.</p></div></li>
+          <li><span class="num">03</span><div><h3>Get matched</h3><p>Local customers who want your services at your times send you an exclusive enquiry.</p></div></li>
+          <li><span class="num">04</span><div><h3>Accept &amp; arrange</h3><p>Reply, agree the details and clean. You keep 100% — we take no commission.</p></div></li>
+          <li><span class="num">05</span><div><h3>Free until 5 matches</h3><p>Your first five successful matches are free; after that it's a flat $40/month (or $60 to be promoted).</p></div></li>
+          <li><span class="num">06</span><div><h3>Grow with reviews</h3><p>Great reviews build trust and turn one-off jobs into weekly regulars.</p></div></li>
+        </ol></div>
+      </div>
+
+      <div class="panel-card">
         <div class="panel-card-head">
           <h2>Latest enquiries</h2>
           <button class="btn outline sm" data-goto="enquiries" type="button">View all</button>

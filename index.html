@@ -6,7 +6,31 @@
     <meta name="description" content="Match Maid is the local marketplace connecting independent cleaners with the households that need them." />
     <title>Match Maid — the local cleaning marketplace</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Match Maid" />
+    <meta property="og:title" content="Match Maid — the local cleaning marketplace" />
+    <meta property="og:description" content="Match Maid connects you with an independent local house cleaner. Rates up front, no bidding wars, no commission." />
+    <meta property="og:url" content="https://matchmaid.co.nz/" />
+    <meta property="og:image" content="https://matchmaid.co.nz/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Match Maid — the local cleaning marketplace" />
+    <meta name="twitter:description" content="Independent local cleaners, rates up front. Free for households." />
+    <meta name="twitter:image" content="https://matchmaid.co.nz/og-image.png" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="session.js"></script>
+    <script>
+      // The role gateway is a first-visit thing. If we already know who you are,
+      // or which side you chose last time, skip straight in.
+      (function () {
+        var sess = window.Session && Session.get();
+        if (sess) { location.replace(Session.homeFor(sess.role)); return; }
+        var side = localStorage.getItem('mm_side');
+        if (side === 'maid') location.replace('/for-maids.html');
+        else if (side === 'customer') location.replace('/browse.html');
+      })();
+    </script>
   </head>
   <body class="splash-body">
     <div class="notice-bar">
@@ -33,8 +57,8 @@
           <span class="choice-s">List your services →</span>
         </a>
         <a class="choice customer" href="/browse.html">
-          <span class="choice-k">02 — Need a clean</span>
-          <span class="choice-t">Hiring</span>
+          <span class="choice-k">02 — Hiring</span>
+          <span class="choice-t">In need of a clean</span>
           <span class="choice-s">Browse cleaners →</span>
         </a>
       </div>
@@ -51,6 +75,11 @@
 
     <script>
       document.getElementById('sf-year').textContent = new Date().getFullYear();
+      // Remember the side they pick so the gateway doesn't reappear next visit.
+      var m = document.querySelector('.choice.maid');
+      var c = document.querySelector('.choice.customer');
+      if (m) m.addEventListener('click', function () { localStorage.setItem('mm_side', 'maid'); });
+      if (c) c.addEventListener('click', function () { localStorage.setItem('mm_side', 'customer'); });
     </script>
   </body>
 </html>
