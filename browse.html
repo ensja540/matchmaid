@@ -64,8 +64,11 @@
           </div>
 
           <div class="bf-block">
-            <span class="bf-label">Ideal rate: <span class="rangeval" id="rateOut">$35/hr</span></span>
-            <input type="range" id="rate" min="20" max="80" value="35" />
+            <span class="bf-label">Your budget ($/hr) — we find a fair rate in range</span>
+            <div class="budget-row">
+              <label>Min <input type="number" id="budgetMin" value="25" min="15" max="150" /></label>
+              <label>Max <input type="number" id="budgetMax" value="45" min="15" max="150" /></label>
+            </div>
           </div>
 
           <div class="bf-block">

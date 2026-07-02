@@ -141,9 +141,10 @@ const PANELS = {
         <label class="field"><span>Business name</span><input name="business" value="${profile.businessName}" /></label>
         <label class="field"><span>Bio</span><textarea name="bio" rows="3">${profile.bio}</textarea></label>
         <div class="field-row">
-          <label class="field"><span>Hourly rate ($)</span><input name="rate" type="number" value="${profile.rate}" /></label>
-          <label class="field"><span>Years experience</span><input name="years" type="number" value="${profile.yearsExperience}" /></label>
+          <label class="field"><span>Rate — low ($/hr)</span><input name="rateMin" type="number" value="${profile.rateMin}" /></label>
+          <label class="field"><span>Rate — high ($/hr)</span><input name="rateMax" type="number" value="${profile.rateMax}" /></label>
         </div>
+        <label class="field"><span>Years experience</span><input name="years" type="number" value="${profile.yearsExperience}" /></label>
         <div class="field"><span>Where you work</span>
           <input type="text" id="townSearch" class="loc-search" placeholder="Search a town or suburb (e.g. Christchurch, Rolleston)…" autocomplete="off" />
           <div class="loc-groups" id="locGroups">${locGroupsHTML('')}</div>

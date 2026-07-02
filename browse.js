@@ -9,8 +9,8 @@ DEMO.services.forEach((s) => (SVC_NAME[s.slug] = s.name));
 const suburbSel = document.getElementById('suburb');
 const serviceSel = document.getElementById('service');
 const hoursSel = document.getElementById('hours');
-const rate = document.getElementById('rate');
-const rateOut = document.getElementById('rateOut');
+const budgetMinEl = document.getElementById('budgetMin');
+const budgetMaxEl = document.getElementById('budgetMax');
 const extrasBox = document.getElementById('extras');
 const verifBox = document.getElementById('verif');
 const cal = document.getElementById('cal');
@@ -27,7 +27,6 @@ hoursSel.innerHTML = [
   { h: 1, l: '1 hour' }, { h: 2, l: '2 hours' }, { h: 3, l: '3 hours' }, { h: 4, l: 'Half day (4h)' },
 ].map((o) => `<option value="${o.h}" ${o.h === 2 ? 'selected' : ''}>${o.l}</option>`).join('');
 
-rate.addEventListener('input', () => (rateOut.textContent = `$${rate.value}/hr`));
 extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 
@@ -51,7 +50,8 @@ function currentPrefs() {
     services: [...new Set([serviceSel.value, ...extras])],
     verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
     hours: Number(hoursSel.value),
-    desiredRate: Number(rate.value),
+    budgetMin: Number(budgetMinEl.value) || 0,
+    budgetMax: Number(budgetMaxEl.value) || 999,
     slots,
   };
 }
@@ -64,7 +64,15 @@ function scoreCleaner(c, p) {
   const serviceScore = req.length ? offered.length / req.length : 0.6;
   const matched = p.slots.filter((s) => c.availability.some((a) => a.day === s.day && a.slot === s.slot));
   const availScore = p.slots.length ? matched.length / p.slots.length : 0.6;
-  const priceScore = c.rate <= p.desiredRate ? 1 : Math.max(0, 1 - (c.rate - p.desiredRate) / p.desiredRate);
+  // Fair value: where the cleaner's rate range and the customer's budget overlap.
+  const cMin = c.rateMin ?? c.rate;
+  const cMax = c.rateMax ?? c.rate;
+  const lo = Math.max(cMin, p.budgetMin);
+  const hi = Math.min(cMax, p.budgetMax);
+  let fair, priceScore;
+  if (lo <= hi) { fair = Math.round((lo + hi) / 2); priceScore = 1; }          // overlap → fair midpoint
+  else if (cMin > p.budgetMax) { fair = cMin; priceScore = Math.max(0, 1 - (cMin - p.budgetMax) / p.budgetMax); } // pricier than budget
+  else { fair = cMax; priceScore = 1; }                                        // cheaper than budget floor — great value
   const ratingScore = c.rating / 5;
   const score = Math.round(100 * (0.35 * serviceScore + 0.3 * availScore + 0.2 * priceScore + 0.15 * ratingScore));
   return {
@@ -72,7 +80,10 @@ function scoreCleaner(c, p) {
     offered,
     missing: req.filter((s) => !c.services.includes(s)),
     matched,
-    estCost: Math.round(c.rate * p.hours),
+    rateMin: cMin,
+    rateMax: cMax,
+    fair,
+    estCost: Math.round(fair * p.hours),
     score,
     tier: score >= 75 ? 'great' : score >= 50 ? 'good' : 'low',
   };
@@ -120,7 +131,7 @@ function resultCard(r, p) {
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
       <div><h3>${r.name} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
-        <p class="result-meta">★ ${r.rating.toFixed(1)} (${r.reviews}) · $${r.rate}/hr · ~$${r.estCost} for ${p.hours}h · ${r.areas.join(', ')}</p></div>
+        <p class="result-meta">★ ${r.rating.toFixed(1)} (${r.reviews}) · $${r.rateMin}–$${r.rateMax}/hr · <strong>fair ~$${r.fair}/hr</strong> · ~$${r.estCost} for ${p.hours}h · ${r.areas.join(', ')}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}

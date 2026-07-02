@@ -35,7 +35,7 @@ const DEMO = {
   cleaners: [
     {
       id: 'c1', name: "Aroha's Home Care", areas: ['Riccarton', 'Fendalton', 'Papanui'],
-      services: ['regular', 'deep', 'end-of-tenancy'], rate: 38, rating: 4.9, reviews: 27,
+      services: ['regular', 'deep', 'end-of-tenancy'], rate: 38, rateMin: 34, rateMax: 42, rating: 4.9, reviews: 27,
       badges: { id: true, police: true, insurance: true }, featured: true,
       availability: [
         { day: 0, slot: 'am' }, { day: 0, slot: 'pm' }, { day: 2, slot: 'am' },
@@ -44,7 +44,7 @@ const DEMO = {
     },
     {
       id: 'c2', name: 'Sam the Cleaner', areas: ['Riccarton', 'Halswell'],
-      services: ['regular', 'one-off', 'oven'], rate: 35, rating: 4.6, reviews: 12,
+      services: ['regular', 'one-off', 'oven'], rate: 35, rateMin: 30, rateMax: 40, rating: 4.6, reviews: 12,
       badges: { id: true, police: false, insurance: true }, featured: false,
       availability: [
         { day: 0, slot: 'am' }, { day: 1, slot: 'am' }, { day: 3, slot: 'pm' },
@@ -53,7 +53,7 @@ const DEMO = {
     },
     {
       id: 'c3', name: 'Sparkle by Mei', areas: ['Rolleston', 'Lincoln'],
-      services: ['regular', 'deep', 'carpet'], rate: 40, rating: 4.8, reviews: 8,
+      services: ['regular', 'deep', 'carpet'], rate: 40, rateMin: 36, rateMax: 46, rating: 4.8, reviews: 8,
       badges: { id: true, police: true, insurance: false }, featured: false,
       availability: [
         { day: 2, slot: 'pm' }, { day: 4, slot: 'am' }, { day: 5, slot: 'am' },
@@ -62,7 +62,7 @@ const DEMO = {
     },
     {
       id: 'c4', name: 'Fresh Nest', areas: ['Papanui', 'Fendalton', 'Riccarton'],
-      services: ['regular', 'deep'], rate: 33, rating: 4.7, reviews: 19,
+      services: ['regular', 'deep'], rate: 33, rateMin: 28, rateMax: 38, rating: 4.7, reviews: 19,
       badges: { id: true, police: true, insurance: true }, featured: false,
       availability: [
         { day: 0, slot: 'lunch' }, { day: 1, slot: 'pm' }, { day: 3, slot: 'am' },
@@ -71,7 +71,7 @@ const DEMO = {
     },
     {
       id: 'c5', name: 'Tidy Tui', areas: ['Halswell', 'Lincoln'],
-      services: ['regular', 'one-off', 'carpet'], rate: 30, rating: 4.4, reviews: 6,
+      services: ['regular', 'one-off', 'carpet'], rate: 30, rateMin: 26, rateMax: 34, rating: 4.4, reviews: 6,
       badges: { id: true, police: false, insurance: false }, featured: false,
       availability: [
         { day: 2, slot: 'am' }, { day: 4, slot: 'pm' }, { day: 6, slot: 'am' },
@@ -88,6 +88,8 @@ const DEMO = {
     areas: ['Riccarton', 'Fendalton', 'Papanui'],
     services: ['regular', 'deep', 'end-of-tenancy'],
     rate: 38,
+    rateMin: 34,
+    rateMax: 42,
     yearsExperience: 8,
     rating: 4.9,
     reviews: 27,
