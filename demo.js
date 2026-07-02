@@ -13,6 +13,16 @@ const DEMO = {
     'Halswell', 'Rolleston', 'Lincoln', 'Rangiora', 'Kaiapoi',
   ],
 
+  // Towns and the suburbs within them (for the location picker).
+  towns: {
+    Christchurch: [
+      'Riccarton', 'Papanui', 'Fendalton', 'Merivale', 'Ilam', 'Addington',
+      'St Albans', 'Sydenham', 'Linwood', 'Sumner', 'Halswell', 'Cashmere', 'Hornby',
+    ],
+    Selwyn: ['Rolleston', 'Lincoln', 'Prebbleton', 'West Melton'],
+    Waimakariri: ['Rangiora', 'Kaiapoi', 'Woodend', 'Pegasus'],
+  },
+
   services: [
     { slug: 'regular', name: 'Regular house clean' },
     { slug: 'one-off', name: 'One-off clean' },

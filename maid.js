@@ -45,6 +45,7 @@ let current = 'overview';
 // Availability is real: load the logged-in maid's saved slots from the API,
 // and save changes back to the database. Falls back to demo when not logged in.
 let avail = profile.availability.map((s) => ({ ...s }));
+const areas = new Set(profile.areas); // suburbs the maid works in
 if (sessionUser?.id) {
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
@@ -131,9 +132,6 @@ const PANELS = {
   },
 
   profile() {
-    const areaChips = DEMO.suburbs
-      .map((s) => chip(s, profile.areas.includes(s), 'area'))
-      .join('');
     const svcChips = DEMO.services
       .map((s) => chip(s.name, profile.services.includes(s.slug), 'svc'))
       .join('');
@@ -146,7 +144,10 @@ const PANELS = {
           <label class="field"><span>Hourly rate ($)</span><input name="rate" type="number" value="${profile.rate}" /></label>
           <label class="field"><span>Years experience</span><input name="years" type="number" value="${profile.yearsExperience}" /></label>
         </div>
-        <div class="field"><span>Suburbs you cover</span><div class="chip-select">${areaChips}</div></div>
+        <div class="field"><span>Where you work</span>
+          <input type="text" id="townSearch" class="loc-search" placeholder="Search a town or suburb (e.g. Christchurch, Rolleston)…" autocomplete="off" />
+          <div class="loc-groups" id="locGroups">${locGroupsHTML('')}</div>
+        </div>
         <div class="field"><span>Services you offer</span><div class="chip-select">${svcChips}</div></div>
         <div class="field"><span>Verification</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below — we review and approve it.</p>
@@ -241,6 +242,14 @@ const WIRE = {
     panel.querySelectorAll('.chip-select .chip').forEach((c) =>
       c.addEventListener('click', () => c.classList.toggle('on'))
     );
+    const search = panel.querySelector('#townSearch');
+    if (search) {
+      search.addEventListener('input', () => {
+        panel.querySelector('#locGroups').innerHTML = locGroupsHTML(search.value);
+        wireLoc();
+      });
+    }
+    wireLoc();
     panel.querySelectorAll('[data-verify]').forEach((b) =>
       b.addEventListener('click', () => { verif[b.dataset.verify] = 'pending'; saveVerif(); render(); })
     );
@@ -309,6 +318,52 @@ function verifRow(item) {
     <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span></div>
     <div class="verif-item-right">${pill}${action}</div>
   </div>`;
+}
+// Location picker: towns with their suburbs, filtered by a search box.
+function locGroupsHTML(q) {
+  q = (q || '').trim().toLowerCase();
+  const groups = Object.entries(DEMO.towns)
+    .map(([town, subs]) => {
+      const townMatch = town.toLowerCase().includes(q);
+      const shown = !q ? subs : townMatch ? subs : subs.filter((s) => s.toLowerCase().includes(q));
+      if (!shown.length) return '';
+      const chips = shown
+        .map((s) => `<button type="button" class="chip select ${areas.has(s) ? 'on' : ''}" data-area="${s}">${s}</button>`)
+        .join('');
+      const allOn = subs.every((s) => areas.has(s));
+      return `<div class="loc-group">
+        <div class="loc-town"><strong>${town}</strong><button type="button" class="loc-all" data-town="${town}">${allOn ? 'Clear all' : 'Select all'}</button></div>
+        <div class="loc-chips">${chips}</div>
+      </div>`;
+    })
+    .filter(Boolean)
+    .join('');
+  return groups || '<p class="muted">No towns or suburbs match that search.</p>';
+}
+function wireLoc() {
+  const groups = panel.querySelector('#locGroups');
+  if (!groups) return;
+  const refresh = () => {
+    const q = panel.querySelector('#townSearch')?.value || '';
+    groups.innerHTML = locGroupsHTML(q);
+    wireLoc();
+  };
+  groups.querySelectorAll('[data-area]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const s = b.dataset.area;
+      if (areas.has(s)) areas.delete(s);
+      else areas.add(s);
+      refresh();
+    })
+  );
+  groups.querySelectorAll('[data-town]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const subs = DEMO.towns[b.dataset.town] || [];
+      const allOn = subs.every((s) => areas.has(s));
+      subs.forEach((s) => (allOn ? areas.delete(s) : areas.add(s)));
+      refresh();
+    })
+  );
 }
 function setMsg(id, text, cls) {
   const el = panel.querySelector('#' + id);
