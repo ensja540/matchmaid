@@ -4,6 +4,27 @@ const { DAYS, SLOTS } = DEMO;
 const profile = DEMO.maidProfile;
 const enquiries = DEMO.enquiriesForMaid.map((e) => ({ ...e }));
 
+// Verification process state (demo: persisted in localStorage).
+const VERIF_KEY = 'mm_maid_verif';
+const VERIF_ITEMS = [
+  { key: 'id', label: 'ID verified', desc: 'Upload a photo of your driver licence or passport.' },
+  { key: 'police', label: 'Police check', desc: 'Upload your NZ Police vetting result.' },
+  { key: 'insurance', label: 'Insured', desc: 'Upload your public-liability insurance certificate.' },
+];
+function loadVerif() {
+  try {
+    const s = JSON.parse(localStorage.getItem(VERIF_KEY));
+    if (s) return s;
+  } catch {}
+  return {
+    id: DEMO.maidProfile.badges.id ? 'verified' : 'none',
+    police: DEMO.maidProfile.badges.police ? 'verified' : 'none',
+    insurance: DEMO.maidProfile.badges.insurance ? 'verified' : 'none',
+  };
+}
+let verif = loadVerif();
+const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
+
 const sessionUser = Session.get();
 const displayName = sessionUser?.fullName || profile.fullName;
 document.getElementById('who').textContent = `Hi, ${displayName.split(' ')[0]} (maid)`;
@@ -118,9 +139,8 @@ const PANELS = {
         <div class="field"><span>Suburbs you cover</span><div class="chip-select">${areaChips}</div></div>
         <div class="field"><span>Services you offer</span><div class="chip-select">${svcChips}</div></div>
         <div class="field"><span>Verification</span>
-          <p class="verif">
-            ${badge('ID', profile.badges.id)} ${badge('Police', profile.badges.police)} ${badge('Insured', profile.badges.insurance)}
-          </p>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below — we review and approve it.</p>
+          <div class="verif-list">${VERIF_ITEMS.map(verifRow).join('')}</div>
         </div>
         <div class="save-row">
           <button class="btn solid" type="submit">Save profile</button>
@@ -195,6 +215,15 @@ const WIRE = {
     panel.querySelectorAll('.chip-select .chip').forEach((c) =>
       c.addEventListener('click', () => c.classList.toggle('on'))
     );
+    panel.querySelectorAll('[data-verify]').forEach((b) =>
+      b.addEventListener('click', () => { verif[b.dataset.verify] = 'pending'; saveVerif(); render(); })
+    );
+    panel.querySelectorAll('[data-approve]').forEach((b) =>
+      b.addEventListener('click', () => { verif[b.dataset.approve] = 'verified'; saveVerif(); render(); })
+    );
+    panel.querySelectorAll('[data-remove]').forEach((b) =>
+      b.addEventListener('click', () => { verif[b.dataset.remove] = 'none'; saveVerif(); render(); })
+    );
     panel.querySelector('#profileForm').addEventListener('submit', (e) => {
       e.preventDefault();
       setMsg('profMsg', 'Saved (demo). Your profile is up to date.', 'ok');
@@ -239,6 +268,21 @@ function chip(label, on, kind) {
 }
 function badge(label, on) {
   return `<span class="chip ${on ? 'on' : 'off'}">${on ? '✓ ' : '✗ '}${label}</span>`;
+}
+function verifRow(item) {
+  const st = verif[item.key];
+  const pill =
+    st === 'verified' ? '<span class="status status-accepted">Verified ✓</span>'
+    : st === 'pending' ? '<span class="status status-responded">Under review</span>'
+    : '<span class="status status-new">Not added</span>';
+  const action =
+    st === 'none' ? `<button class="btn outline sm" data-verify="${item.key}" type="button">Add</button>`
+    : st === 'pending' ? `<button class="btn solid sm" data-approve="${item.key}" type="button">Simulate approval</button>`
+    : `<button class="btn outline sm" data-remove="${item.key}" type="button">Remove</button>`;
+  return `<div class="verif-item">
+    <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span></div>
+    <div class="verif-item-right">${pill}${action}</div>
+  </div>`;
 }
 function setMsg(id, text, cls) {
   const el = panel.querySelector('#' + id);

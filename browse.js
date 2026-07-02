@@ -12,6 +12,7 @@ const hoursSel = document.getElementById('hours');
 const rate = document.getElementById('rate');
 const rateOut = document.getElementById('rateOut');
 const extrasBox = document.getElementById('extras');
+const verifBox = document.getElementById('verif');
 const cal = document.getElementById('cal');
 const results = document.getElementById('results');
 const meta = document.getElementById('meta');
@@ -28,6 +29,7 @@ hoursSel.innerHTML = [
 
 rate.addEventListener('input', () => (rateOut.textContent = `$${rate.value}/hr`));
 extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
+verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 
 // Availability calendar
 cal.innerHTML = calendarHTML(slots);
@@ -47,6 +49,7 @@ function currentPrefs() {
     service: serviceSel.value,
     extras,
     services: [...new Set([serviceSel.value, ...extras])],
+    verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
     hours: Number(hoursSel.value),
     desiredRate: Number(rate.value),
     slots,
@@ -55,6 +58,7 @@ function currentPrefs() {
 
 function scoreCleaner(c, p) {
   if (!c.areas.includes(p.suburb)) return null; // location is a real constraint
+  if (p.verif.some((b) => !c.badges[b])) return null; // must hold the selected verifications
   const req = p.services;
   const offered = req.filter((s) => c.services.includes(s));
   const serviceScore = req.length ? offered.length / req.length : 0.6;

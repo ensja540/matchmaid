@@ -665,6 +665,10 @@ a { color: inherit; text-decoration: none; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 .check-inline { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
 .check-inline input { width: auto; }
+.verif-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.verif-item { display: flex; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid var(--line); border-radius: var(--radius); padding: 0.8rem 1rem; }
+.verif-item-right { display: flex; align-items: center; gap: 0.7rem; flex: none; }
+@media (max-width: 560px) { .verif-item { flex-direction: column; align-items: flex-start; } }
 .convo { position: relative; text-align: left; background: transparent; border: none; border-bottom: 1px solid var(--line); padding: 0.9rem 1rem; cursor: pointer; display: flex; flex-direction: column; gap: 0.15rem; }
 .convo:last-child { border-bottom: none; }
 .convo strong { font-family: var(--serif); font-size: 1.15rem; font-weight: 500; }
