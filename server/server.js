@@ -190,32 +190,130 @@ app.put('/api/availability', async (req, res) => {
   }
 });
 
+// --- Cleaner profile (load + save for real) --------------------------------
+app.get('/api/profile', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query(
+      `select cp.id, cp.business_name, cp.bio, cp.years_experience, cp.listing_status,
+              cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
+              cp.id_verified, cp.police_verified, cp.insurance_verified,
+              u.full_name, u.email
+         from cleaner_profiles cp join users u on u.id = cp.user_id
+        where cp.user_id = $1`,
+      [userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+    const cp = rows[0];
+    const svc = await query(
+      `select st.slug from cleaner_services cs join service_types st on st.id = cs.service_type_id where cs.cleaner_id = $1`,
+      [cp.id]
+    );
+    const areas = await query(
+      `select s.name from cleaner_service_areas csa join suburbs s on s.id = csa.suburb_id where csa.cleaner_id = $1`,
+      [cp.id]
+    );
+    res.json({
+      businessName: cp.business_name,
+      bio: cp.bio,
+      years: cp.years_experience,
+      listingStatus: cp.listing_status,
+      rateMin: cp.hourly_rate_min != null ? Number(cp.hourly_rate_min) : null,
+      rateMax: cp.hourly_rate_max != null ? Number(cp.hourly_rate_max) : null,
+      badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
+      services: svc.rows.map((r) => r.slug),
+      areas: areas.rows.map((r) => r.name),
+      fullName: cp.full_name,
+      email: cp.email,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load profile.' });
+  }
+});
+
+app.put('/api/profile', async (req, res) => {
+  try {
+    const { userId, businessName, bio, years, rateMin, rateMax, services, areas, badges, listingStatus } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const cleanerId = await cleanerIdForUser(userId);
+    if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    const min = rateMin != null && rateMin !== '' ? Number(rateMin) : null;
+    const max = rateMax != null && rateMax !== '' ? Number(rateMax) : null;
+    const mid = min != null && max != null ? (min + max) / 2 : min ?? max ?? null;
+
+    await query(
+      `update cleaner_profiles set
+         business_name = $2, bio = $3, years_experience = $4,
+         hourly_rate_min = $5, hourly_rate_max = $6, hourly_rate = $7,
+         id_verified = $8, police_verified = $9, insurance_verified = $10,
+         listing_status = coalesce($11, listing_status), updated_at = now()
+       where id = $1`,
+      [
+        cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
+        min, max, mid, !!badges?.id, !!badges?.police, !!badges?.insurance, listingStatus ?? null,
+      ]
+    );
+
+    if (Array.isArray(services)) {
+      await query('delete from cleaner_services where cleaner_id = $1', [cleanerId]);
+      for (const slug of services) {
+        await query(
+          `insert into cleaner_services (cleaner_id, service_type_id)
+           select $1, id from service_types where slug = $2 on conflict do nothing`,
+          [cleanerId, slug]
+        );
+      }
+    }
+    if (Array.isArray(areas)) {
+      await query('delete from cleaner_service_areas where cleaner_id = $1', [cleanerId]);
+      for (const name of areas) {
+        await query(
+          `insert into cleaner_service_areas (cleaner_id, suburb_id)
+           select $1, id from suburbs where name = $2 limit 1 on conflict do nothing`,
+          [cleanerId, name]
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not save profile.' });
+  }
+});
+
 // --- Relevance match ------------------------------------------------------
-// Rank cleaners in a suburb/service by how well they fit the customer's
-// preferences. Nothing is hard-filtered out (except suburb+service, which are
-// the basic must-haves): we score by availability overlap, price closeness and
-// rating, then sort best-first so relevance "falls away" gradually.
+// Rank active cleaners in a suburb by how well they fit the customer's
+// preferences: service coverage, availability overlap, a fair price within the
+// budget/rate ranges, and rating. Suburb is the only hard filter (plus any
+// requested verification badges). Best-first, relevance falls away gradually.
 app.post('/api/match', async (req, res) => {
   try {
-    const { suburb, service, desiredRate, durationHours, slots } = req.body ?? {};
-    if (!suburb || !service)
-      return res.status(400).json({ error: 'Suburb and service are required.' });
+    const { suburb, services, budgetMin, budgetMax, verif, durationHours, slots } = req.body ?? {};
+    if (!suburb) return res.status(400).json({ error: 'A suburb is required.' });
 
+    const reqServices = Array.isArray(services) ? services.filter(Boolean) : [];
+    const reqVerif = Array.isArray(verif) ? verif.filter(Boolean) : [];
     const sel = (Array.isArray(slots) ? slots : []).filter(
       (s) => SLOT_START[s?.slot] != null && s.day >= 0 && s.day <= 6
     );
     const days = sel.map((s) => s.day);
     const starts = sel.map((s) => SLOT_START[s.slot]);
+    const bMin = Number(budgetMin) || 0;
+    const bMax = Number(budgetMax) || 9999;
+    const duration = Number(durationHours) || 1;
 
     const sql = `
       select
         cp.id,
         coalesce(cp.business_name, u.full_name) as name,
-        cp.hourly_rate,
-        cp.avg_rating,
-        cp.review_count,
+        cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
+        cp.avg_rating, cp.review_count,
         cp.id_verified, cp.police_verified, cp.insurance_verified,
         (cp.featured_until is not null and cp.featured_until > now()) as is_featured,
+        coalesce(array_agg(distinct st.slug) filter (where st.slug is not null), array[]::text[]) as services,
         coalesce(
           array_agg(distinct (ar.day_of_week::text || '|' || to_char(ar.start_time,'HH24:MI')))
             filter (where ar.id is not null),
@@ -224,67 +322,64 @@ app.post('/api/match', async (req, res) => {
       from cleaner_profiles cp
       join users u                   on u.id = cp.user_id
       join cleaner_service_areas csa on csa.cleaner_id = cp.id
-      join suburbs s                 on s.id = csa.suburb_id
-      join cleaner_services cs       on cs.cleaner_id = cp.id
-      join service_types st          on st.id = cs.service_type_id
+      join suburbs s                 on s.id = csa.suburb_id and s.name = $1
+      left join cleaner_services cs  on cs.cleaner_id = cp.id
+      left join service_types st     on st.id = cs.service_type_id
       left join availability_rules ar
         on ar.cleaner_id = cp.id
        and (ar.day_of_week, ar.start_time) in (
-           select d, t from unnest($3::int[], $4::time[]) as x(d, t)
+           select d, t from unnest($2::int[], $3::time[]) as x(d, t)
        )
       where cp.listing_status = 'active'
-        and s.name  = $1
-        and st.slug = $2
       group by cp.id, u.id`;
 
-    const { rows } = await query(sql, [suburb, service, days, starts]);
-
-    const desired = Number(desiredRate) || null;
-    const duration = Number(durationHours) || 1;
-    const reqCount = sel.length || 1;
+    const { rows } = await query(sql, [suburb, days, starts]);
 
     const results = rows
       .map((r) => {
+        const badges = { id: r.id_verified, police: r.police_verified, insurance: r.insurance_verified };
+        if (reqVerif.some((b) => !badges[b])) return null; // must hold requested verifications
+
+        const offered = (r.services || []).filter(Boolean);
+        const offeredReq = reqServices.filter((s) => offered.includes(s));
+        const serviceScore = reqServices.length ? offeredReq.length / reqServices.length : 0.6;
+
         const matched = (r.matched || [])
-          .map((m) => {
-            const [d, st] = m.split('|');
-            return { day: Number(d), slot: START_TO_SLOT[st] };
-          })
+          .map((m) => { const [d, st] = m.split('|'); return { day: Number(d), slot: START_TO_SLOT[st] }; })
           .filter((x) => x.slot);
-        const rate = r.hourly_rate != null ? Number(r.hourly_rate) : null;
+        const availScore = sel.length ? matched.length / sel.length : 0.6;
 
-        const availScore = sel.length ? matched.length / reqCount : 0.6;
-        let priceScore;
-        if (rate == null || desired == null) priceScore = 0.5;
-        else if (rate <= desired) priceScore = 1;
-        else priceScore = Math.max(0, 1 - (rate - desired) / desired);
+        const cMin = r.hourly_rate_min != null ? Number(r.hourly_rate_min) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
+        const cMax = r.hourly_rate_max != null ? Number(r.hourly_rate_max) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
+        let fair = null, priceScore = 0.5;
+        if (cMin != null && cMax != null) {
+          const lo = Math.max(cMin, bMin), hi = Math.min(cMax, bMax);
+          if (lo <= hi) { fair = Math.round((lo + hi) / 2); priceScore = 1; }
+          else if (cMin > bMax) { fair = cMin; priceScore = Math.max(0, 1 - (cMin - bMax) / bMax); }
+          else { fair = cMax; priceScore = 1; }
+        }
         const ratingScore = (Number(r.avg_rating) || 0) / 5;
-
-        const score = Math.round(100 * (0.5 * availScore + 0.3 * priceScore + 0.2 * ratingScore));
+        const score = Math.round(100 * (0.35 * serviceScore + 0.3 * availScore + 0.2 * priceScore + 0.15 * ratingScore));
         return {
           id: r.id,
           name: r.name,
-          hourlyRate: rate,
-          estCost: rate != null ? Math.round(rate * duration) : null,
+          rateMin: cMin, rateMax: cMax, fair,
+          estCost: fair != null ? Math.round(fair * duration) : null,
           rating: Number(r.avg_rating) || 0,
           reviews: r.review_count,
-          badges: { id: r.id_verified, police: r.police_verified, insurance: r.insurance_verified },
-          featured: r.is_featured,
+          badges, featured: r.is_featured,
+          services: offered,
+          offered: offeredReq,
+          missing: reqServices.filter((s) => !offered.includes(s)),
           matched,
-          matchedCount: matched.length,
-          requestedCount: sel.length,
           score,
           tier: score >= 75 ? 'great' : score >= 50 ? 'good' : 'low',
         };
       })
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          Number(b.featured) - Number(a.featured) ||
-          b.rating - a.rating
-      );
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score || Number(b.featured) - Number(a.featured) || b.rating - a.rating);
 
-    res.json({ requestedSlots: sel, results });
+    res.json({ results });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Match failed.' });

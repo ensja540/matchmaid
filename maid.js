@@ -46,6 +46,43 @@ let current = 'overview';
 // and save changes back to the database. Falls back to demo when not logged in.
 let avail = profile.availability.map((s) => ({ ...s }));
 const areas = new Set(profile.areas); // suburbs the maid works in
+const svcSet = new Set(profile.services); // service slugs offered
+let mp = {
+  businessName: profile.businessName,
+  bio: profile.bio,
+  rateMin: profile.rateMin,
+  rateMax: profile.rateMax,
+  years: profile.yearsExperience,
+  listingStatus: profile.listingStatus,
+};
+// Load the real saved profile for the logged-in maid.
+if (sessionUser?.id) {
+  fetch(`/api/profile?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data) return;
+      mp = {
+        businessName: data.businessName ?? mp.businessName,
+        bio: data.bio ?? '',
+        rateMin: data.rateMin ?? mp.rateMin,
+        rateMax: data.rateMax ?? mp.rateMax,
+        years: data.years ?? '',
+        listingStatus: data.listingStatus ?? mp.listingStatus,
+      };
+      areas.clear();
+      (data.areas || []).forEach((a) => areas.add(a));
+      svcSet.clear();
+      (data.services || []).forEach((s) => svcSet.add(s));
+      if (data.badges) {
+        ['id', 'police', 'insurance'].forEach((k) => {
+          if (data.badges[k]) verif[k] = 'verified';
+          else if (verif[k] === 'verified') verif[k] = 'none';
+        });
+      }
+      render();
+    })
+    .catch(() => {});
+}
 if (sessionUser?.id) {
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
@@ -70,17 +107,15 @@ function render() {
 const PANELS = {
   overview() {
     const newCount = enquiries.filter((e) => e.status === 'new').length;
-    const remaining = Math.max(0, profile.matchesTarget - profile.matchesUsed);
-    const pct = Math.round((profile.matchesUsed / profile.matchesTarget) * 100);
     return `
       <h1>Welcome back, ${displayName.split(' ')[0]}.</h1>
       <div class="trial-banner">
         <div class="trial-top">
           <strong>Free trial</strong>
-          <span>${profile.matchesUsed} of ${profile.matchesTarget} successful matches used</span>
+          <span>Free for your first 3 months</span>
         </div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-        <p class="muted">You're free until your 3rd match. ${remaining} to go, then it's a flat
+        <div class="progress-bar"><div class="progress-fill" style="width:33%"></div></div>
+        <p class="muted">Full access with no fees for your first 3 months. After that it's a flat
           $40/month (or $60/month to be promoted to the top of results).</p>
       </div>
 
@@ -93,14 +128,14 @@ const PANELS = {
 
       <div class="panel-card">
         <h2>How Match Maid works</h2>
-        <div class="howto"><ol class="steps">
-          <li><span class="num">01</span><div><h3>Complete your profile</h3><p>Add your name, photo and a short bio so clients know who they're inviting in.</p></div></li>
-          <li><span class="num">02</span><div><h3>Set your availability <em>(most important)</em></h3><p>Update your weekly calendar with the mornings, middays and afternoons you can work — this is what matches you to clients.</p></div></li>
-          <li><span class="num">03</span><div><h3>Set your price</h3><p>Add your hourly rate. You set it, and it's shown openly — no race to the bottom.</p></div></li>
-          <li><span class="num">04</span><div><h3>Add your locations</h3><p>Choose the suburbs you cover, or wider areas like Christchurch.</p></div></li>
-          <li><span class="num">05</span><div><h3>Get exclusive enquiries</h3><p>Clients who want your services at your times reach out to you alone. Reply and arrange directly — you keep 100%.</p></div></li>
-          <li><span class="num">06</span><div><h3>Free until your 3rd match</h3><p>Your first three successful matches are free; after that it's a flat $40/month (or $60 to be promoted).</p></div></li>
-        </ol></div>
+        <div class="vflow" id="vflow">
+          <div class="vstep"><span class="vnum">01</span><div class="vbody"><h3>Complete your profile</h3><p>Add your name, photo and a short bio so clients know who they're inviting in.</p></div></div>
+          <div class="vstep"><span class="vnum">02</span><div class="vbody"><h3>Set your availability <em>(most important)</em></h3><p>Update your weekly calendar with the mornings, middays and afternoons you can work — this is what matches you to clients.</p></div></div>
+          <div class="vstep"><span class="vnum">03</span><div class="vbody"><h3>Set your price</h3><p>Add your hourly rate range. You set it, and it's shown openly — no race to the bottom.</p></div></div>
+          <div class="vstep"><span class="vnum">04</span><div class="vbody"><h3>Add your locations</h3><p>Search a town and toggle the suburbs you cover — or wider areas like Christchurch.</p></div></div>
+          <div class="vstep"><span class="vnum">05</span><div class="vbody"><h3>Get exclusive enquiries</h3><p>Clients who want your services at your times reach out to you alone. Reply and arrange directly — you keep 100%.</p></div></div>
+          <div class="vstep"><span class="vnum">06</span><div class="vbody"><h3>Free for your first 3 months</h3><p>Your first three months are free; after that it's a flat $40/month (or $60 to be promoted).</p></div></div>
+        </div>
       </div>
 
       <div class="panel-card">
@@ -133,18 +168,18 @@ const PANELS = {
 
   profile() {
     const svcChips = DEMO.services
-      .map((s) => chip(s.name, profile.services.includes(s.slug), 'svc'))
+      .map((s) => `<button type="button" class="chip select ${svcSet.has(s.slug) ? 'on' : ''}" data-svc="${s.slug}">${s.name}</button>`)
       .join('');
     return `
       <h1>Your profile</h1>
       <form class="profile-form" id="profileForm">
-        <label class="field"><span>Business name</span><input name="business" value="${profile.businessName}" /></label>
-        <label class="field"><span>Bio</span><textarea name="bio" rows="3">${profile.bio}</textarea></label>
+        <label class="field"><span>Business name</span><input name="business" value="${mp.businessName ?? ''}" /></label>
+        <label class="field"><span>Bio</span><textarea name="bio" rows="3">${mp.bio ?? ''}</textarea></label>
         <div class="field-row">
-          <label class="field"><span>Rate — low ($/hr)</span><input name="rateMin" type="number" value="${profile.rateMin}" /></label>
-          <label class="field"><span>Rate — high ($/hr)</span><input name="rateMax" type="number" value="${profile.rateMax}" /></label>
+          <label class="field"><span>Rate — low ($/hr)</span><input name="rateMin" type="number" value="${mp.rateMin ?? ''}" /></label>
+          <label class="field"><span>Rate — high ($/hr)</span><input name="rateMax" type="number" value="${mp.rateMax ?? ''}" /></label>
         </div>
-        <label class="field"><span>Years experience</span><input name="years" type="number" value="${profile.yearsExperience}" /></label>
+        <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
         <div class="field"><span>Where you work</span>
           <input type="text" id="townSearch" class="loc-search" placeholder="Search a town or suburb (e.g. Christchurch, Rolleston)…" autocomplete="off" />
           <div class="loc-groups" id="locGroups">${locGroupsHTML('')}</div>
@@ -162,12 +197,11 @@ const PANELS = {
   },
 
   subscription() {
-    const remaining = Math.max(0, profile.matchesTarget - profile.matchesUsed);
     return `
       <h1>Subscription</h1>
       <div class="trial-banner">
         <strong>You're on the free trial</strong>
-        <p class="muted">Listed free until your 3rd successful match. ${remaining} match${remaining === 1 ? '' : 'es'} to go.</p>
+        <p class="muted">Listed free for your first 3 months — full access, no fees yet.</p>
       </div>
       <div class="plan-cards">
         <div class="plan">
@@ -203,6 +237,19 @@ const WIRE = {
       tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'enquiries'));
       render();
     });
+    // Reveal the flow-chart steps as they scroll into view.
+    const vf = panel.querySelector('#vflow');
+    if (vf && typeof IntersectionObserver !== 'undefined') {
+      const io = new IntersectionObserver(
+        (entries) => entries.forEach((en) => {
+          if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+        }),
+        { threshold: 0.35 }
+      );
+      vf.querySelectorAll('.vstep').forEach((s) => io.observe(s));
+    } else if (vf) {
+      vf.querySelectorAll('.vstep').forEach((s) => s.classList.add('in'));
+    }
   },
   availability() {
     wireCalendar(panel.querySelector('#cal'), avail, () => {
@@ -240,8 +287,13 @@ const WIRE = {
     );
   },
   profile() {
-    panel.querySelectorAll('.chip-select .chip').forEach((c) =>
-      c.addEventListener('click', () => c.classList.toggle('on'))
+    panel.querySelectorAll('[data-svc]').forEach((c) =>
+      c.addEventListener('click', () => {
+        const slug = c.dataset.svc;
+        if (svcSet.has(slug)) svcSet.delete(slug);
+        else svcSet.add(slug);
+        c.classList.toggle('on', svcSet.has(slug));
+      })
     );
     const search = panel.querySelector('#townSearch');
     if (search) {
@@ -260,9 +312,46 @@ const WIRE = {
     panel.querySelectorAll('[data-remove]').forEach((b) =>
       b.addEventListener('click', () => { verif[b.dataset.remove] = 'none'; saveVerif(); render(); })
     );
-    panel.querySelector('#profileForm').addEventListener('submit', (e) => {
+    panel.querySelector('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      setMsg('profMsg', 'Saved (demo). Your profile is up to date.', 'ok');
+      const f = e.target;
+      mp.businessName = f.business.value;
+      mp.bio = f.bio.value;
+      mp.rateMin = f.rateMin.value;
+      mp.rateMax = f.rateMax.value;
+      mp.years = f.years.value;
+      if (!sessionUser?.id) {
+        setMsg('profMsg', 'Saved (demo — log in as a maid to save for real).', 'ok');
+        return;
+      }
+      setMsg('profMsg', 'Saving…', 'pending');
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: sessionUser.id,
+            businessName: mp.businessName,
+            bio: mp.bio,
+            years: mp.years,
+            rateMin: mp.rateMin,
+            rateMax: mp.rateMax,
+            services: [...svcSet],
+            areas: [...areas],
+            badges: {
+              id: verif.id === 'verified',
+              police: verif.police === 'verified',
+              insurance: verif.insurance === 'verified',
+            },
+            listingStatus: 'active',
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'save failed');
+        setMsg('profMsg', "Saved to your profile — you're now live in search.", 'ok');
+      } catch {
+        setMsg('profMsg', 'Could not save — please try again.', 'err');
+      }
     });
   },
   subscription() {

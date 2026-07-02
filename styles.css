@@ -106,6 +106,9 @@ a { color: inherit; text-decoration: none; }
 .cross-link { color: var(--accent); font-weight: 600; }
 .cross-link::after { background: var(--accent); transform: scaleX(1); }
 .cross-link:hover { color: var(--accent); }
+/* Portal cross-side pill */
+.switch-side { display: inline-flex; align-items: center; padding: 0.42rem 0.9rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.82rem; font-weight: 600; color: var(--accent); background: var(--surface); transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
+.switch-side:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -310,6 +313,20 @@ a { color: inherit; text-decoration: none; }
   .flow-step { margin-right: 0; }
   .flow-step:not(:last-child)::after { content: '↓'; right: auto; left: 50%; top: auto; bottom: -1.5rem; transform: translateX(-50%); }
 }
+
+/* Vertical scroll-reveal flow (portal how-it-works) */
+.vflow { position: relative; margin-top: 1.4rem; }
+.vstep { position: relative; display: flex; gap: 1.1rem; padding-bottom: 1.9rem; opacity: 0; transform: translateY(16px); transition: opacity 0.55s ease, transform 0.55s ease; }
+.vstep:last-child { padding-bottom: 0; }
+.vstep.in { opacity: 1; transform: none; }
+.vstep:not(:last-child)::before { content: ''; position: absolute; left: 19px; top: 44px; bottom: -2px; width: 2px; background: var(--line); transition: background 0.4s ease; }
+.vstep:not(:last-child)::after { content: '▾'; position: absolute; left: 14px; bottom: -0.2rem; color: var(--line); font-size: 1rem; transition: color 0.4s ease; }
+.vstep.in:not(:last-child)::before { background: var(--accent); }
+.vstep.in:not(:last-child)::after { color: var(--accent); }
+.vnum { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--surface); color: var(--accent); font-weight: 700; display: grid; place-items: center; z-index: 1; transition: background 0.4s ease, color 0.4s ease, transform 0.4s ease; }
+.vstep.in .vnum { background: var(--accent); color: #fff; transform: scale(1.06); }
+.vbody h3 { margin: 0.4rem 0 0.3rem; font-size: 1.15rem; }
+.vbody p { margin: 0; color: var(--muted); }
 .browse-meta { color: var(--muted); margin: 1.6rem 0 0.4rem; }
 
 .hook-card {

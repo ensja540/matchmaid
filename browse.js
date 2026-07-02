@@ -1,4 +1,4 @@
-// Public, ungated cleaner browse with a full preference search bar.
+// Public, ungated cleaner browse — now backed by the real /api/match endpoint.
 // Signup only appears at the "Contact" peak (or the always-present hook).
 const { DAYS, SLOTS } = DEMO;
 
@@ -20,17 +20,27 @@ const meta = document.getElementById('meta');
 const slots = []; // chosen availability {day, slot}
 document.getElementById('sf-year').textContent = new Date().getFullYear();
 
-// Populate filters
-suburbSel.innerHTML = DEMO.suburbs.map((s) => `<option ${s === 'Riccarton' ? 'selected' : ''}>${s}</option>`).join('');
+// Type of clean + hours from the shared catalogue (matches the DB slugs).
 serviceSel.innerHTML = DEMO.services.map((s) => `<option value="${s.slug}">${s.name}</option>`).join('');
 hoursSel.innerHTML = [
   { h: 1, l: '1 hour' }, { h: 2, l: '2 hours' }, { h: 3, l: '3 hours' }, { h: 4, l: 'Half day (4h)' },
 ].map((o) => `<option value="${o.h}" ${o.h === 2 ? 'selected' : ''}>${o.l}</option>`).join('');
 
+// Suburbs come from the real database.
+fetch('/api/suburbs')
+  .then((r) => (r.ok ? r.json() : Promise.reject()))
+  .then((list) => {
+    suburbSel.innerHTML = list.map((s) => `<option ${s.name === 'Riccarton' ? 'selected' : ''}>${s.name}</option>`).join('');
+    runSearch();
+  })
+  .catch(() => {
+    suburbSel.innerHTML = DEMO.suburbs.map((s) => `<option ${s === 'Riccarton' ? 'selected' : ''}>${s}</option>`).join('');
+    runSearch();
+  });
+
 extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 
-// Availability calendar
 cal.innerHTML = calendarHTML(slots);
 wireCalendar(cal, slots);
 
@@ -39,14 +49,10 @@ document.getElementById('browseForm').addEventListener('submit', (e) => {
   runSearch();
 });
 
-runSearch(); // show results immediately — no gate, no empty state
-
 function currentPrefs() {
   const extras = [...extrasBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.svc);
   return {
     suburb: suburbSel.value,
-    service: serviceSel.value,
-    extras,
     services: [...new Set([serviceSel.value, ...extras])],
     verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
     hours: Number(hoursSel.value),
@@ -56,46 +62,33 @@ function currentPrefs() {
   };
 }
 
-function scoreCleaner(c, p) {
-  if (!c.areas.includes(p.suburb)) return null; // location is a real constraint
-  if (p.verif.some((b) => !c.badges[b])) return null; // must hold the selected verifications
-  const req = p.services;
-  const offered = req.filter((s) => c.services.includes(s));
-  const serviceScore = req.length ? offered.length / req.length : 0.6;
-  const matched = p.slots.filter((s) => c.availability.some((a) => a.day === s.day && a.slot === s.slot));
-  const availScore = p.slots.length ? matched.length / p.slots.length : 0.6;
-  // Fair value: where the cleaner's rate range and the customer's budget overlap.
-  const cMin = c.rateMin ?? c.rate;
-  const cMax = c.rateMax ?? c.rate;
-  const lo = Math.max(cMin, p.budgetMin);
-  const hi = Math.min(cMax, p.budgetMax);
-  let fair, priceScore;
-  if (lo <= hi) { fair = Math.round((lo + hi) / 2); priceScore = 1; }          // overlap → fair midpoint
-  else if (cMin > p.budgetMax) { fair = cMin; priceScore = Math.max(0, 1 - (cMin - p.budgetMax) / p.budgetMax); } // pricier than budget
-  else { fair = cMax; priceScore = 1; }                                        // cheaper than budget floor — great value
-  const ratingScore = c.rating / 5;
-  const score = Math.round(100 * (0.35 * serviceScore + 0.3 * availScore + 0.2 * priceScore + 0.15 * ratingScore));
-  return {
-    ...c,
-    offered,
-    missing: req.filter((s) => !c.services.includes(s)),
-    matched,
-    rateMin: cMin,
-    rateMax: cMax,
-    fair,
-    estCost: Math.round(fair * p.hours),
-    score,
-    tier: score >= 75 ? 'great' : score >= 50 ? 'good' : 'low',
-  };
-}
-
-function runSearch() {
+async function runSearch() {
   const p = currentPrefs();
-  const scored = DEMO.cleaners
-    .map((c) => scoreCleaner(c, p))
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score || Number(b.featured) - Number(a.featured) || b.rating - a.rating);
+  meta.textContent = 'Searching…';
+  let data;
+  try {
+    const res = await fetch('/api/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        suburb: p.suburb,
+        services: p.services,
+        budgetMin: p.budgetMin,
+        budgetMax: p.budgetMax,
+        verif: p.verif,
+        durationHours: p.hours,
+        slots: p.slots,
+      }),
+    });
+    data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'search failed');
+  } catch {
+    meta.textContent = 'Search is unavailable right now — please try again.';
+    results.innerHTML = '';
+    return;
+  }
 
+  const scored = data.results || [];
   if (!scored.length) {
     meta.textContent = `No cleaners cover ${p.suburb} yet — more are joining soon.`;
     results.innerHTML = '<img class="empty-art" src="assets/brand/empty_state.svg" alt="No results yet" />';
@@ -110,7 +103,6 @@ function runSearch() {
   results.querySelectorAll('[data-contact]').forEach((b) =>
     b.addEventListener('click', () => {
       const name = b.dataset.contact;
-      // Already logged in? Skip signup and open that cleaner's chat.
       if (window.Session && Session.get()) {
         localStorage.setItem('mm_pending_chat', name);
         location.href = '/customer';
@@ -125,20 +117,26 @@ function runSearch() {
 function resultCard(r, p) {
   const tierLabel = r.tier === 'great' ? 'Strong match' : r.tier === 'good' ? 'Good match' : 'Also available';
   const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured'].filter(Boolean);
-  const offeredChips = r.offered.map((s) => `<span class="chip on">${SVC_NAME[s]}</span>`).join('');
-  const missingChips = r.missing.map((s) => `<span class="chip off">no ${SVC_NAME[s]}</span>`).join('');
-  const slotChips = r.matched.map((m) => `<span class="chip on">${DAYS[m.day]} ${SLOTS.find((s) => s.key === m.slot).label}</span>`).join('');
+  const offeredChips = (r.offered || []).map((s) => `<span class="chip on">${SVC_NAME[s] || s}</span>`).join('');
+  const missingChips = (r.missing || []).map((s) => `<span class="chip off">no ${SVC_NAME[s] || s}</span>`).join('');
+  const slotChips = (r.matched || [])
+    .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
+    .join('');
+  const rateStr = r.rateMin != null && r.rateMax != null ? `$${r.rateMin}–$${r.rateMax}/hr` : 'rate on enquiry';
+  const fairStr = r.fair != null ? ` · <strong>fair ~$${r.fair}/hr</strong>` : '';
+  const costStr = r.estCost != null ? ` · ~$${r.estCost} for ${p.hours}h` : '';
+  const first = r.name.split(/['\s]/)[0];
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
       <div><h3>${r.name} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
-        <p class="result-meta">★ ${r.rating.toFixed(1)} (${r.reviews}) · $${r.rateMin}–$${r.rateMax}/hr · <strong>fair ~$${r.fair}/hr</strong> · ~$${r.estCost} for ${p.hours}h · ${r.areas.join(', ')}</p></div>
+        <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}${costStr} · ${p.suburb}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
-    <div class="chips">${offeredChips}${missingChips}</div>
-    ${r.matched.length ? `<div class="chips">${slotChips}</div>` : ''}
+    ${offeredChips || missingChips ? `<div class="chips">${offeredChips}${missingChips}</div>` : ''}
+    ${(r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
     <div class="result-actions">
-      <button class="btn solid sm" type="button" data-contact="${r.name}">Contact ${r.name.split(/['\s]/)[0]}</button>
+      <button class="btn solid sm" type="button" data-contact="${r.name}">Contact ${first}</button>
     </div>
   </article>`;
 }
@@ -219,7 +217,6 @@ capForm.addEventListener('submit', async (e) => {
     email: capForm.email.value,
     password: capForm.password.value,
   };
-  // If they were contacting a specific cleaner, open that chat after signup.
   if (pendingCleaner) localStorage.setItem('mm_pending_chat', pendingCleaner);
   try {
     const res = await fetch('/api/register', {
