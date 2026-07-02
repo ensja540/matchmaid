@@ -175,6 +175,8 @@ a { color: inherit; text-decoration: none; }
 .splash h1 { margin: 0.1rem 0 1.6rem; }
 .splash-lede { max-width: 48ch; margin: 0 0 2.6rem; }
 
+.splash-banner { display: block; width: 100%; max-width: 940px; margin: 0 auto 2.6rem; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(18, 59, 74, 0.12); }
+
 /* Two-column splash hero: choices left, editorial intro + art right */
 .splash-hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 3.2rem; align-items: center; }
 .splash-right {
