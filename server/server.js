@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v20 — og_banner masthead on landing page (2026-07-03).
+// deploy: v21 — clickable enquiries, convo naming, consumer tagline (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -551,7 +551,9 @@ app.get('/api/conversations', async (req, res) => {
     const { rows } = await query(
       `select c.id, c.cleaner_id, c.client_id, c.last_message_at,
               cpf.user_id as cleaner_user_id, clpf.user_id as client_user_id,
-              coalesce(cpf.business_name, cu.full_name) as cleaner_name,
+              case when nullif(cpf.business_name, '') is not null
+                   then split_part(cu.full_name, ' ', 1) || ' from ' || cpf.business_name
+                   else cu.full_name end as cleaner_name,
               clu.full_name as client_name,
               (select body from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_body,
               (select to_char(sent_at, 'Dy HH24:MI') from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_at
@@ -628,7 +630,8 @@ app.get('/api/enquiries', async (req, res) => {
               st.name as service, s.name as suburb,
               clu.full_name as client_name,
               coalesce(cpf.business_name, cu.full_name) as cleaner_name,
-              cpf.user_id as cleaner_user_id
+              cpf.user_id as cleaner_user_id,
+              conv.id as conversation_id
          from enquiries e
          join cleaner_profiles cpf on cpf.id = e.cleaner_id
          join users cu on cu.id = cpf.user_id
@@ -636,6 +639,7 @@ app.get('/api/enquiries', async (req, res) => {
          join users clu on clu.id = clpf.user_id
          left join service_types st on st.id = e.service_type_id
          left join suburbs s on s.id = e.suburb_id
+         left join conversations conv on conv.enquiry_id = e.id
         where cpf.user_id = $1 or clpf.user_id = $1
         order by e.created_at desc`,
       [userId]
@@ -650,6 +654,7 @@ app.get('/api/enquiries', async (req, res) => {
       role: r.cleaner_user_id === userId ? 'cleaner' : 'client',
       customer: r.client_name,
       cleaner: r.cleaner_name,
+      conversationId: r.conversation_id,
     })));
   } catch (err) {
     console.error(err);

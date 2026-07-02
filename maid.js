@@ -129,6 +129,16 @@ async function openConvo(id) {
   if (msgCache[id] === undefined) await loadMsgs(id);
   render();
 }
+// Jump from an enquiry straight into its chat thread.
+async function openEnquiryConvo(convId) {
+  current = 'messages';
+  tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'messages'));
+  if (convId) {
+    activeConvo = convId;
+    if (msgCache[convId] === undefined) await loadMsgs(convId);
+  }
+  render();
+}
 async function initMessages() {
   await refreshConvos();
   if (!activeConvo && convos[0]) activeConvo = convos[0].id;
@@ -352,6 +362,9 @@ const WIRE = {
         render();
       })
     );
+    panel.querySelectorAll('[data-open-convo]').forEach((b) =>
+      b.addEventListener('click', () => openEnquiryConvo(b.dataset.openConvo))
+    );
     // Reveal the flow-chart steps as they scroll into view.
     const vf = panel.querySelector('#vflow');
     if (vf && typeof IntersectionObserver !== 'undefined') {
@@ -411,6 +424,9 @@ const WIRE = {
     );
     panel.querySelectorAll('[data-client]').forEach((b) =>
       b.addEventListener('click', () => openClientModal(b.dataset.client))
+    );
+    panel.querySelectorAll('[data-open-convo]').forEach((b) =>
+      b.addEventListener('click', () => openEnquiryConvo(b.dataset.openConvo))
     );
   },
   messages() {
@@ -537,7 +553,7 @@ function gettingStartedHTML() {
 }
 
 function enquiryRow(e) {
-  return `<div class="enquiry-row">
+  return `<div class="enquiry-row clickable" data-open-convo="${e.conversationId || ''}" role="button" tabindex="0">
     <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.when}</span></div>
     <span class="status status-${e.status}">${e.status}</span>
   </div>`;
@@ -556,6 +572,7 @@ function enquiryCard(e) {
     </div>
     <p class="enquiry-msg">“${e.message}”</p>
     <div class="enquiry-actions">
+      <button class="btn solid sm" type="button" data-open-convo="${e.conversationId || ''}">Message</button>
       <button class="btn outline sm" type="button" data-client="${e.id}">View profile</button>
       ${actions}
     </div>
