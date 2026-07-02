@@ -15,7 +15,16 @@ const publicDir = join(here, '..'); // project root holds index.html etc.
 const app = express();
 app.use(express.json());
 // `extensions: ['html']` lets /customer serve customer.html — clean URLs.
-app.use(express.static(publicDir, { extensions: ['html'] }));
+// `no-cache` = always revalidate, so browsers/Cloudflare never serve a stale
+// page or script (this is what caused "only works on hard refresh").
+app.use(
+  express.static(publicDir, {
+    extensions: ['html'],
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'no-cache');
+    },
+  })
+);
 
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
