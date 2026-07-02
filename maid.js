@@ -198,6 +198,7 @@ const PANELS = {
     const newCount = enquiries.filter((e) => e.status === 'new').length;
     return `
       <h1>Welcome ${displayName.split(' ')[0]}!</h1>
+      ${gettingStartedHTML()}
       <div class="trial-banner">
         <div class="trial-top">
           <strong>Free trial</strong>
@@ -344,6 +345,13 @@ const WIRE = {
       tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'enquiries'));
       render();
     });
+    panel.querySelectorAll('[data-start]').forEach((b) =>
+      b.addEventListener('click', () => {
+        current = b.dataset.start;
+        tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === current));
+        render();
+      })
+    );
     // Reveal the flow-chart steps as they scroll into view.
     const vf = panel.querySelector('#vflow');
     if (vf && typeof IntersectionObserver !== 'undefined') {
@@ -502,6 +510,32 @@ const WIRE = {
 };
 
 // ---------- Helpers ----------
+// Guided onboarding: do-this-first checklist, ticks off from real data.
+function gettingStartedHTML() {
+  const steps = [
+    { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your hourly rate.', tab: 'profile', done: mp.rate != null && mp.rate !== '' },
+    { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work — this is what matches you to clients.', tab: 'availability', done: avail.length > 0 },
+    { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: mp.rate != null && mp.rate !== '' },
+    { n: 4, label: 'Get verified', desc: 'Upload ID, a police check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  if (doneCount === steps.length) return '';
+  return `<div class="panel-card getting-started">
+    <div class="gs-head"><h2>Get started</h2><span class="gs-count">${doneCount} of ${steps.length} done</span></div>
+    <div class="gs-steps">
+      ${steps
+        .map(
+          (s) => `<div class="gs-step ${s.done ? 'done' : ''}">
+            <span class="gs-num">${s.done ? '✓' : s.n}</span>
+            <div class="gs-body"><strong>${s.label}</strong><span class="muted">${s.desc}</span></div>
+            ${s.done ? '<span class="status status-accepted">Done</span>' : `<button class="btn solid sm" data-start="${s.tab}" type="button">${s.n === 1 ? 'Start' : 'Go'}</button>`}
+          </div>`
+        )
+        .join('')}
+    </div>
+  </div>`;
+}
+
 function enquiryRow(e) {
   return `<div class="enquiry-row">
     <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.when}</span></div>
