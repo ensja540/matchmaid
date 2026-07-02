@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v14 — clickable cleaner profiles, single rate, sort by price (2026-07-02).
+// deploy: v15 — Auckland + city/whole-city location, Morning/Afternoon/Evening (2026-07-02).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -31,9 +31,9 @@ const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
 
 // Shared slot model (must match the front end).
 // Days: 0=Mon … 6=Sun. Three slots per day.
-const SLOT_START = { am: '08:00', lunch: '12:00', pm: '14:00' };
-const SLOT_END = { am: '12:00', lunch: '14:00', pm: '18:00' };
-const START_TO_SLOT = { '08:00': 'am', '12:00': 'lunch', '14:00': 'pm' };
+const SLOT_START = { morning: '08:00', afternoon: '12:00', evening: '17:00' };
+const SLOT_END = { morning: '12:00', afternoon: '17:00', evening: '21:00' };
+const START_TO_SLOT = { '08:00': 'morning', '12:00': 'afternoon', '17:00': 'evening' };
 
 // --- Auth: register ---------------------------------------------------------
 app.post('/api/register', async (req, res) => {
@@ -673,8 +673,10 @@ app.post('/api/enquiry-status', async (req, res) => {
 // requested verification badges). Best-first, relevance falls away gradually.
 app.post('/api/match', async (req, res) => {
   try {
-    const { suburb, services, budgetMin, budgetMax, verif, durationHours, slots } = req.body ?? {};
-    if (!suburb) return res.status(400).json({ error: 'A suburb is required.' });
+    const { suburb, suburbs, services, budgetMin, budgetMax, verif, durationHours, slots } = req.body ?? {};
+    // Accept a single suburb or a list (a whole-city search sends all its suburbs).
+    const subList = Array.isArray(suburbs) && suburbs.length ? suburbs : suburb ? [suburb] : [];
+    if (!subList.length) return res.status(400).json({ error: 'A suburb is required.' });
 
     const reqServices = Array.isArray(services) ? services.filter(Boolean) : [];
     const reqVerif = Array.isArray(verif) ? verif.filter(Boolean) : [];
@@ -704,7 +706,7 @@ app.post('/api/match', async (req, res) => {
       from cleaner_profiles cp
       join users u                   on u.id = cp.user_id
       join cleaner_service_areas csa on csa.cleaner_id = cp.id
-      join suburbs s                 on s.id = csa.suburb_id and s.name = $1
+      join suburbs s                 on s.id = csa.suburb_id and s.name = any($1)
       left join cleaner_services cs  on cs.cleaner_id = cp.id
       left join service_types st     on st.id = cs.service_type_id
       left join availability_rules ar
@@ -715,7 +717,7 @@ app.post('/api/match', async (req, res) => {
       where cp.listing_status = 'active'
       group by cp.id, u.id`;
 
-    const { rows } = await query(sql, [suburb, days, starts]);
+    const { rows } = await query(sql, [subList, days, starts]);
 
     const results = rows
       .map((r) => {

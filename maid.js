@@ -45,7 +45,9 @@ let current = 'overview';
 // Availability is real: load the logged-in maid's saved slots from the API,
 // and save changes back to the database. Falls back to demo when not logged in.
 let avail = profile.availability.map((s) => ({ ...s }));
-const areas = new Set(profile.areas); // suburbs the maid works in
+const areas = new Set(profile.areas); // specific suburbs (when narrowing)
+let mpCity = 'Christchurch'; // default city
+let mpSpecific = false; // false = whole-city ("Christchurch-wide")
 const svcSet = new Set(profile.services); // service slugs offered
 let mp = {
   businessName: profile.businessName,
@@ -73,6 +75,14 @@ if (sessionUser?.id) {
       };
       areas.clear();
       (data.areas || []).forEach((a) => areas.add(a));
+      // Infer the city and whether they've narrowed to specific suburbs.
+      let best = 'Christchurch', bestN = -1;
+      for (const c of Object.keys(DEMO.towns)) {
+        const n = DEMO.towns[c].filter((s) => areas.has(s)).length;
+        if (n > bestN) { bestN = n; best = c; }
+      }
+      mpCity = best;
+      mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
       svcSet.clear();
       (data.services || []).forEach((s) => svcSet.add(s));
       if (data.badges) {
@@ -187,7 +197,7 @@ const PANELS = {
   overview() {
     const newCount = enquiries.filter((e) => e.status === 'new').length;
     return `
-      <h1>Welcome back, ${displayName.split(' ')[0]}.</h1>
+      <h1>Welcome ${displayName.split(' ')[0]}!</h1>
       <div class="trial-banner">
         <div class="trial-top">
           <strong>Free trial</strong>
@@ -278,12 +288,9 @@ const PANELS = {
       <form class="profile-form" id="profileForm">
         <label class="field"><span>Business name</span><input name="business" value="${mp.businessName ?? ''}" /></label>
         <label class="field"><span>Bio</span><textarea name="bio" rows="3">${mp.bio ?? ''}</textarea></label>
-        <label class="field"><span>Your hourly rate ($/hr)</span><input name="rate" type="number" value="${mp.rate ?? ''}" /></label>
+        <label class="field"><span>Your desired hourly rate ($/hr)</span><input name="rate" type="number" value="${mp.rate ?? ''}" /></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
-        <div class="field"><span>Where you work</span>
-          <input type="text" id="townSearch" class="loc-search" placeholder="Search a town or suburb (e.g. Christchurch, Rolleston)…" autocomplete="off" />
-          <div class="loc-groups" id="locGroups">${locGroupsHTML('')}</div>
-        </div>
+        ${locSectionHTML()}
         <div class="field"><span>Services you offer</span><div class="chip-select">${svcChips}</div></div>
         <div class="field"><span>Verification</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below — we review and approve it.</p>
@@ -429,14 +436,7 @@ const WIRE = {
         c.classList.toggle('on', svcSet.has(slug));
       })
     );
-    const search = panel.querySelector('#townSearch');
-    if (search) {
-      search.addEventListener('input', () => {
-        panel.querySelector('#locGroups').innerHTML = locGroupsHTML(search.value);
-        wireLoc();
-      });
-    }
-    wireLoc();
+    wireLocSection();
     panel.querySelectorAll('[data-verify]').forEach((b) =>
       b.addEventListener('click', () => { verif[b.dataset.verify] = 'pending'; saveVerif(); render(); })
     );
@@ -469,7 +469,7 @@ const WIRE = {
             years: mp.years,
             rate: mp.rate,
             services: [...svcSet],
-            areas: [...areas],
+            areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
             badges: {
               id: verif.id === 'verified',
               police: verif.police === 'verified',
@@ -626,51 +626,39 @@ function verifRow(item) {
     <div class="verif-item-right">${pill}${action}</div>
   </div>`;
 }
-// Location picker: towns with their suburbs, filtered by a search box.
-function locGroupsHTML(q) {
-  q = (q || '').trim().toLowerCase();
-  const groups = Object.entries(DEMO.towns)
-    .map(([town, subs]) => {
-      const townMatch = town.toLowerCase().includes(q);
-      const shown = !q ? subs : townMatch ? subs : subs.filter((s) => s.toLowerCase().includes(q));
-      if (!shown.length) return '';
-      const chips = shown
-        .map((s) => `<button type="button" class="chip select ${areas.has(s) ? 'on' : ''}" data-area="${s}">${s}</button>`)
-        .join('');
-      const allOn = subs.every((s) => areas.has(s));
-      return `<div class="loc-group">
-        <div class="loc-town"><strong>${town}</strong><button type="button" class="loc-all" data-town="${town}">${allOn ? 'Clear all' : 'Select all'}</button></div>
-        <div class="loc-chips">${chips}</div>
-      </div>`;
-    })
-    .filter(Boolean)
+// Location: pick a city (default Christchurch, whole-city) and optionally tick
+// "specific suburbs" to narrow to chosen suburbs within that city.
+function locSectionHTML() {
+  const cityOpts = Object.keys(DEMO.towns)
+    .map((c) => `<option value="${c}" ${c === mpCity ? 'selected' : ''}>${c}</option>`)
     .join('');
-  return groups || '<p class="muted">No towns or suburbs match that search.</p>';
+  const chips = (DEMO.towns[mpCity] || [])
+    .map((s) => `<button type="button" class="chip select ${areas.has(s) ? 'on' : ''}" data-area="${s}">${s}</button>`)
+    .join('');
+  return `<div class="field" id="locField"><span>Where you work</span>
+    <select id="citySel" class="loc-city">${cityOpts}</select>
+    <label class="check-inline" style="margin-top:0.7rem"><input type="checkbox" id="specificToggle" ${mpSpecific ? 'checked' : ''} /> I only want to work specific suburbs</label>
+    <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${mpCity}-wide</strong> — clients anywhere in ${mpCity} can find you.</p>
+    <div class="loc-chips" id="locChips" ${mpSpecific ? '' : 'hidden'}>${chips}</div>
+  </div>`;
 }
-function wireLoc() {
-  const groups = panel.querySelector('#locGroups');
-  if (!groups) return;
-  const refresh = () => {
-    const q = panel.querySelector('#townSearch')?.value || '';
-    groups.innerHTML = locGroupsHTML(q);
-    wireLoc();
-  };
-  groups.querySelectorAll('[data-area]').forEach((b) =>
+function wireLocSection() {
+  panel.querySelector('#citySel')?.addEventListener('change', (e) => { mpCity = e.target.value; rerenderLoc(); });
+  panel.querySelector('#specificToggle')?.addEventListener('change', (e) => { mpSpecific = e.target.checked; rerenderLoc(); });
+  panel.querySelectorAll('#locChips [data-area]').forEach((b) =>
     b.addEventListener('click', () => {
       const s = b.dataset.area;
       if (areas.has(s)) areas.delete(s);
       else areas.add(s);
-      refresh();
+      b.classList.toggle('on', areas.has(s));
     })
   );
-  groups.querySelectorAll('[data-town]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const subs = DEMO.towns[b.dataset.town] || [];
-      const allOn = subs.every((s) => areas.has(s));
-      subs.forEach((s) => (allOn ? areas.delete(s) : areas.add(s)));
-      refresh();
-    })
-  );
+}
+function rerenderLoc() {
+  const f = panel.querySelector('#locField');
+  if (!f) return;
+  f.outerHTML = locSectionHTML();
+  wireLocSection();
 }
 function setMsg(id, text, cls) {
   const el = panel.querySelector('#' + id);

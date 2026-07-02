@@ -33,17 +33,23 @@ hoursSel.innerHTML = [
   { h: 1, l: '1 hour' }, { h: 2, l: '2 hours' }, { h: 3, l: '3 hours' }, { h: 4, l: 'Half day (4h)' },
 ].map((o) => `<option value="${o.h}" ${o.h === 2 ? 'selected' : ''}>${o.l}</option>`).join('');
 
-// Suburbs come from the real database.
-fetch('/api/suburbs')
-  .then((r) => (r.ok ? r.json() : Promise.reject()))
-  .then((list) => {
-    suburbSel.innerHTML = list.map((s) => `<option ${s.name === 'Riccarton' ? 'selected' : ''}>${s.name}</option>`).join('');
-    runSearch();
-  })
-  .catch(() => {
-    suburbSel.innerHTML = DEMO.suburbs.map((s) => `<option ${s === 'Riccarton' ? 'selected' : ''}>${s}</option>`).join('');
-    runSearch();
-  });
+// Location selector: cities with a "(all)" option and their suburbs; default
+// Christchurch (all).
+function locationOptions(sel) {
+  return Object.entries(DEMO.towns)
+    .map(([town, subs]) =>
+      `<optgroup label="${town}"><option value="town:${town}" ${sel === 'town:' + town ? 'selected' : ''}>${town} (all)</option>${subs
+        .map((s) => `<option value="${s}" ${sel === s ? 'selected' : ''}>${s}</option>`)
+        .join('')}</optgroup>`
+    )
+    .join('');
+}
+function parseLoc(val) {
+  if (val && val.startsWith('town:')) { const t = val.slice(5); return { label: `${t} (all)`, suburbs: DEMO.towns[t] || [] }; }
+  return { label: val, suburbs: val ? [val] : [] };
+}
+suburbSel.innerHTML = locationOptions('town:Christchurch');
+runSearch();
 
 extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
@@ -58,8 +64,10 @@ document.getElementById('browseForm').addEventListener('submit', (e) => {
 
 function currentPrefs() {
   const extras = [...extrasBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.svc);
+  const parsed = parseLoc(suburbSel.value);
   return {
-    suburb: suburbSel.value,
+    locLabel: parsed.label,
+    suburbs: parsed.suburbs,
     services: [...new Set([serviceSel.value, ...extras])],
     verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
     hours: Number(hoursSel.value),
@@ -78,7 +86,7 @@ async function runSearch() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        suburb: p.suburb,
+        suburbs: p.suburbs,
         services: p.services,
         budgetMin: p.budgetMin,
         budgetMax: p.budgetMax,
@@ -106,14 +114,14 @@ function paintResults() {
   const p = lastPrefs;
   const scored = (lastResults || []).slice();
   if (!scored.length) {
-    meta.textContent = `No cleaners cover ${p.suburb} yet — more are joining soon.`;
+    meta.textContent = `No cleaners cover ${p.locLabel} yet — more are joining soon.`;
     results.innerHTML = '<img class="empty-art" src="assets/brand/empty_state.svg" alt="No results yet" />';
     return;
   }
   if (sortBy === 'price-asc') scored.sort((a, b) => rateKey(a) - rateKey(b));
   else if (sortBy === 'price-desc') scored.sort((a, b) => rateKey(b) - rateKey(a));
   const lead = sortBy === 'price-asc' ? 'lowest price first' : sortBy === 'price-desc' ? 'highest price first' : 'best match first';
-  meta.textContent = `${scored.length} relevant cleaner${scored.length > 1 ? 's' : ''} in ${p.suburb}, ${lead}.`;
+  meta.textContent = `${scored.length} relevant cleaner${scored.length > 1 ? 's' : ''} in ${p.locLabel}, ${lead}.`;
 
   const cards = scored.map((r) => resultCard(r, p));
   if (cards.length > 2) cards.splice(2, 0, hookCard());
@@ -152,7 +160,7 @@ function resultCard(r, p) {
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
       <div><h3><button class="linklike" type="button" data-cleaner="${r.id}">${r.name}</button> ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
-        <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}${costStr} · ${p.suburb}</p></div>
+        <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}${costStr} · ${p.locLabel}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
@@ -215,7 +223,7 @@ function cleanerCardHTML(c) {
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
   const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
-  const SLOTLBL = { am: 'AM', lunch: 'Midday', pm: 'PM' };
+  const SLOTLBL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
   const avail = c.availability.length
     ? c.availability.slice().sort((a, b) => a.day - b.day).map((a) => `<span class="chip on">${DAYS[a.day]} ${SLOTLBL[a.slot] || a.slot}</span>`).join('')
     : '<span class="muted">Ask about times</span>';

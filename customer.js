@@ -21,7 +21,20 @@ const tabs = document.getElementById('tabs');
 let current = 'overview';
 
 // ---- Working state (all loaded from the API) ----
-const find = { suburb: 'Riccarton', service: 'regular', desiredRate: 35, slots: [], ran: false, results: [], sort: 'relevance' };
+const find = { loc: 'town:Christchurch', locLabel: 'Christchurch (all)', service: 'regular', desiredRate: 35, slots: [], ran: false, results: [], sort: 'relevance' };
+function locationOptions(sel) {
+  return Object.entries(DEMO.towns)
+    .map(([town, subs]) =>
+      `<optgroup label="${town}"><option value="town:${town}" ${sel === 'town:' + town ? 'selected' : ''}>${town} (all)</option>${subs
+        .map((s) => `<option value="${s}" ${sel === s ? 'selected' : ''}>${s}</option>`)
+        .join('')}</optgroup>`
+    )
+    .join('');
+}
+function parseLoc(val) {
+  if (val && val.startsWith('town:')) { const t = val.slice(5); return { label: `${t} (all)`, suburbs: DEMO.towns[t] || [] }; }
+  return { label: val, suburbs: val ? [val] : [] };
+}
 let suburbList = DEMO.suburbs.slice();
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
@@ -223,8 +236,8 @@ const PANELS = {
         closest first. You set your price, they set theirs.</p>
       <form class="find-form" id="findForm">
         <div class="field-row">
-          <label class="field"><span>Suburb</span>
-            <select name="suburb">${suburbList.map((s) => opt(s, s, find.suburb)).join('')}</select>
+          <label class="field"><span>Location</span>
+            <select name="loc">${locationOptions(find.loc)}</select>
           </label>
           <label class="field"><span>Service</span>
             <select name="service">${DEMO.services.map((s) => opt(s.slug, s.name, find.service)).join('')}</select>
@@ -360,14 +373,16 @@ const WIRE = {
     });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      find.suburb = form.suburb.value;
+      find.loc = form.loc.value;
       find.service = form.service.value;
       find.ran = true;
+      const parsed = parseLoc(find.loc);
+      find.locLabel = parsed.label;
       const box = panel.querySelector('#findResults');
       box.innerHTML = '<p class="muted">Searching…</p>';
       try {
         const data = await postJSON('/api/match', {
-          suburb: find.suburb,
+          suburbs: parsed.suburbs,
           services: [find.service],
           budgetMin: Math.max(0, find.desiredRate - 10),
           budgetMax: find.desiredRate + 10,
@@ -475,7 +490,7 @@ const rateKey = (r) => r.fair ?? r.rateMin ?? r.rateMax ?? 9999;
 function renderResults(scored) {
   scored = (scored || []).slice();
   if (!scored.length)
-    return `<p class="muted">No cleaners cover ${find.suburb} for that service yet. More are coming soon.</p>`;
+    return `<p class="muted">No cleaners cover ${find.locLabel} for that service yet. More are coming soon.</p>`;
 
   if (find.sort === 'price-asc') scored.sort((a, b) => rateKey(a) - rateKey(b));
   else if (find.sort === 'price-desc') scored.sort((a, b) => rateKey(b) - rateKey(a));
@@ -484,7 +499,7 @@ function renderResults(scored) {
   const lead =
     find.sort === 'price-asc' ? 'lowest price first' : find.sort === 'price-desc' ? 'highest price first' : 'best match first';
   return (
-    `<p class="results-summary">Showing ${scored.length} relevant cleaner${scored.length > 1 ? 's' : ''} in ${find.suburb}, ${lead}.</p>` +
+    `<p class="results-summary">Showing ${scored.length} relevant cleaner${scored.length > 1 ? 's' : ''} in ${find.locLabel}, ${lead}.</p>` +
     scored.map(resultCard).join('')
   );
 }
@@ -578,7 +593,7 @@ function cleanerCardHTML(c) {
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
   const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
-  const SLOTLBL = { am: 'AM', lunch: 'Midday', pm: 'PM' };
+  const SLOTLBL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
   const avail = c.availability.length
     ? c.availability.slice().sort((a, b) => a.day - b.day).map((a) => `<span class="chip on">${DAYS[a.day]} ${SLOTLBL[a.slot] || a.slot}</span>`).join('')
     : '<span class="muted">Ask about times</span>';

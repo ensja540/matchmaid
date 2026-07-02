@@ -3,9 +3,9 @@
 const DEMO = {
   DAYS: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
   SLOTS: [
-    { key: 'am', label: 'Morning', time: '8am – 12pm' },
-    { key: 'lunch', label: 'Midday', time: '12pm – 2pm' },
-    { key: 'pm', label: 'Afternoon', time: '2pm – 6pm' },
+    { key: 'morning', label: 'Morning', time: '8am – 12pm' },
+    { key: 'afternoon', label: 'Afternoon', time: '12pm – 5pm' },
+    { key: 'evening', label: 'Evening', time: '5pm – 9pm' },
   ],
 
   suburbs: [
@@ -18,6 +18,10 @@ const DEMO = {
     Christchurch: [
       'Riccarton', 'Papanui', 'Fendalton', 'Merivale', 'Ilam', 'Addington',
       'St Albans', 'Sydenham', 'Linwood', 'Sumner', 'Halswell', 'Cashmere', 'Hornby',
+    ],
+    Auckland: [
+      'Ponsonby', 'Grey Lynn', 'Mount Eden', 'Newmarket', 'Parnell', 'Remuera',
+      'Epsom', 'Mount Albert', 'Takapuna', 'Devonport', 'Manukau', 'Henderson',
     ],
     Selwyn: ['Rolleston', 'Lincoln', 'Prebbleton', 'West Melton'],
     Waimakariri: ['Rangiora', 'Kaiapoi', 'Woodend', 'Pegasus'],
