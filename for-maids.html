@@ -94,19 +94,13 @@
       </section>
 
       <!-- HOW IT WORKS -->
-      <section class="section howto container">
-        <div class="grid12">
-          <div style="grid-column: span 5">
-            <p class="eyebrow">How it works</p>
-            <h2>Three steps<br />to booked.</h2>
-          </div>
-          <div style="grid-column: span 7">
-            <ol class="steps">
-              <li><span class="num">01</span><div><h3>List your profile</h3><p>Your suburbs, services, rate and photo — set up in minutes.</p></div></li>
-              <li><span class="num">02</span><div><h3>Get matched locally</h3><p>Nearby customers find you and send an enquiry that's yours alone.</p></div></li>
-              <li><span class="num">03</span><div><h3>Arrange &amp; get paid direct</h3><p>Message, agree, clean. Payment stays between you and your client.</p></div></li>
-            </ol>
-          </div>
+      <section class="section container">
+        <p class="eyebrow">How it works</p>
+        <h2 style="margin-bottom:0.3rem">Three steps to booked.</h2>
+        <div class="flow" data-flow>
+          <div class="flow-step"><span class="flow-num">1</span><h3>List your profile</h3><p>Your suburbs, services, rate range and photo — set up in minutes.</p></div>
+          <div class="flow-step"><span class="flow-num">2</span><h3>Get matched locally</h3><p>Nearby customers find you and send an enquiry that's yours alone.</p></div>
+          <div class="flow-step"><span class="flow-num">3</span><h3>Arrange &amp; get paid direct</h3><p>Message, agree, clean. Payment stays between you and your client.</p></div>
         </div>
       </section>
 
@@ -132,6 +126,7 @@
     </footer>
 
     <script src="session.js"></script>
+    <script src="flow.js"></script>
     <script>
       document.getElementById('sf-year').textContent = new Date().getFullYear();
     </script>
