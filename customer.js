@@ -185,13 +185,13 @@ const PANELS = {
 
       <div class="panel-card">
         <h2>How Match Maid works</h2>
-        <div class="howto"><ol class="steps">
-          <li><span class="num">01</span><div><h3>Search your area</h3><p>Choose your suburb and the type of clean to see local maids, best match first.</p></div></li>
-          <li><span class="num">02</span><div><h3>Compare openly</h3><p>Check each maid's rate range, rating, reviews and verified badges. Nothing hidden.</p></div></li>
-          <li><span class="num">03</span><div><h3>Contact your pick</h3><p>Message the single cleaner you like — no bidding wars, no shared leads.</p></div></li>
-          <li><span class="num">04</span><div><h3>Arrange it directly</h3><p>Agree the day, time and price between you. Payment stays between you and your cleaner.</p></div></li>
-          <li><span class="num">05</span><div><h3>Review after the clean</h3><p>Rate cleanliness, value and punctuality to help the next household choose well.</p></div></li>
-        </ol></div>
+        <div class="vflow" id="vflow">
+          <div class="vstep"><span class="vnum">01</span><div class="vbody"><h3>Search your area</h3><p>Choose your suburb and the type of clean to see local maids, best match first.</p></div></div>
+          <div class="vstep"><span class="vnum">02</span><div class="vbody"><h3>Compare openly</h3><p>Check each maid's rate range, rating, reviews and verified badges. Nothing hidden.</p></div></div>
+          <div class="vstep"><span class="vnum">03</span><div class="vbody"><h3>Contact your pick</h3><p>Message the single cleaner you like — no bidding wars, no shared leads.</p></div></div>
+          <div class="vstep"><span class="vnum">04</span><div class="vbody"><h3>Arrange it directly</h3><p>Agree the day, time and price between you. Payment stays between you and your cleaner.</p></div></div>
+          <div class="vstep"><span class="vnum">05</span><div class="vbody"><h3>Review after the clean</h3><p>Rate cleanliness, value and punctuality to help the next household choose well.</p></div></div>
+        </div>
       </div>
 
       <div class="panel-card">
@@ -319,6 +319,19 @@ const WIRE = {
     panel.querySelectorAll('[data-open]').forEach((b) =>
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
+    // Reveal the flow-chart steps as they scroll into view.
+    const vf = panel.querySelector('#vflow');
+    if (vf && typeof IntersectionObserver !== 'undefined') {
+      const io = new IntersectionObserver(
+        (entries) => entries.forEach((en) => {
+          if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+        }),
+        { threshold: 0.35 }
+      );
+      vf.querySelectorAll('.vstep').forEach((s) => io.observe(s));
+    } else if (vf) {
+      vf.querySelectorAll('.vstep').forEach((s) => s.classList.add('in'));
+    }
   },
   find() {
     const form = panel.querySelector('#findForm');
