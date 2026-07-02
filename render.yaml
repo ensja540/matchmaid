@@ -5,9 +5,11 @@ services:
     name: matchmaid
     runtime: node
     plan: free
-    rootDir: server
-    buildCommand: npm install
-    startCommand: node server.js
+    # No rootDir: keep Render watching the WHOLE repo so root-level static
+    # changes (pages, styles, portal JS) trigger a deploy. We cd into server/
+    # for the Node build instead.
+    buildCommand: cd server && npm install
+    startCommand: cd server && node server.js
     envVars:
       - key: NODE_VERSION
         value: "20"
