@@ -83,6 +83,42 @@ function reRenderIf(...panels) {
   if (panels.includes(current)) render();
 }
 
+// ---- Real-time polling (only while the Messages tab is open) ----
+let pollTimer = null;
+const msgSig = (m) => (m ? m.length + '|' + (m[m.length - 1]?.body || '') : '0');
+const convoSig = () => convos.map((c) => c.id + ':' + (c.lastBody || '')).join('~');
+function startPolling() {
+  if (pollTimer || !uid || !HAS_FETCH) return;
+  pollTimer = setInterval(pollTick, 4000);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+async function pollTick() {
+  if (current !== 'messages' || !uid) return;
+  if (activeConvo) {
+    const before = msgSig(msgCache[activeConvo]);
+    await loadMsgs(activeConvo);
+    if (current === 'messages' && msgSig(msgCache[activeConvo]) !== before) renderBubbles();
+  }
+  const beforeList = convoSig();
+  await refreshConvos();
+  if (current === 'messages' && convoSig() !== beforeList) renderConvoList();
+}
+function renderBubbles() {
+  const el = panel.querySelector('#bubbles');
+  if (!el) return;
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  el.innerHTML = bubblesHTML(msgCache[activeConvo] ?? null);
+  if (nearBottom) el.scrollTop = el.scrollHeight;
+}
+function renderConvoList() {
+  const el = panel.querySelector('.convo-list');
+  if (!el) return;
+  el.innerHTML = convoListHTML();
+  bindConvoButtons();
+}
+
 async function initMessages() {
   await refreshConvos();
   const pending = localStorage.getItem('mm_pending_contact');
@@ -126,6 +162,13 @@ function goTo(tab) {
 function render() {
   panel.innerHTML = PANELS[current]();
   WIRE[current]?.();
+  if (current === 'messages') {
+    startPolling();
+    const b = panel.querySelector('#bubbles');
+    if (b) b.scrollTop = b.scrollHeight;
+  } else {
+    stopPolling();
+  }
 }
 
 const PANELS = {
@@ -217,20 +260,7 @@ const PANELS = {
             }</select>
             <button class="btn outline sm" type="submit" ${pickable.length ? '' : 'disabled'}>New</button>
           </form>
-          <div class="convo-list">
-            ${
-              convos.length
-                ? convos
-                    .map(
-                      (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
-                        <strong>${escapeHtml(c.with)}</strong>
-                        <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
-                      </button>`
-                    )
-                    .join('')
-                : '<p class="muted" style="padding:1rem">No chats yet.</p>'
-            }
-          </div>
+          <div class="convo-list">${convoListHTML()}</div>
         </div>
         <div class="thread">
           ${
@@ -326,9 +356,7 @@ const WIRE = {
     });
   },
   messages() {
-    panel.querySelectorAll('[data-convo]').forEach((b) =>
-      b.addEventListener('click', () => openConvo(b.dataset.convo))
-    );
+    bindConvoButtons();
     const nc = panel.querySelector('#newChat');
     nc?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -487,21 +515,37 @@ function escapeHtml(s) {
 }
 const attr = escapeHtml;
 const text = escapeHtml;
+function bubblesHTML(msgs) {
+  return msgs == null
+    ? '<p class="muted" style="margin:auto">Loading…</p>'
+    : msgs.length
+    ? msgs.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
+    : '<p class="muted" style="margin:auto">Say hi 👋</p>';
+}
 function threadHTML(c, msgs) {
   return `<div class="thread-head"><strong>${escapeHtml(c.with)}</strong></div>
-    <div class="bubbles" id="bubbles">
-      ${
-        msgs == null
-          ? '<p class="muted" style="margin:auto">Loading…</p>'
-          : msgs.length
-          ? msgs.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
-          : '<p class="muted" style="margin:auto">Say hi 👋</p>'
-      }
-    </div>
+    <div class="bubbles" id="bubbles">${bubblesHTML(msgs)}</div>
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
       <button class="btn solid" type="submit">Send</button>
     </form>`;
+}
+function convoListHTML() {
+  return convos.length
+    ? convos
+        .map(
+          (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
+            <strong>${escapeHtml(c.with)}</strong>
+            <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
+          </button>`
+        )
+        .join('')
+    : '<p class="muted" style="padding:1rem">No chats yet.</p>';
+}
+function bindConvoButtons() {
+  panel.querySelectorAll('[data-convo]').forEach((b) =>
+    b.addEventListener('click', () => openConvo(b.dataset.convo))
+  );
 }
 function calendarHTML(selected) {
   const isSel = (day, slot) => selected.some((s) => s.day === day && s.slot === slot);

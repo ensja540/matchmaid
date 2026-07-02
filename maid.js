@@ -99,6 +99,71 @@ if (sessionUser?.id) {
     .catch(() => {});
 }
 
+// ---- Messaging (real-time; same endpoints as the customer side) ----
+let convos = [];
+let msgCache = {};
+let activeConvo = null;
+const mHasFetch = typeof fetch !== 'undefined';
+const mGet = (u) => (mHasFetch ? fetch(u).then((r) => (r.ok ? r.json() : Promise.reject(r))) : Promise.reject());
+function refreshConvos() {
+  if (!sessionUser?.id) return Promise.resolve();
+  return mGet(`/api/conversations?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((list) => { convos = list; })
+    .catch(() => {});
+}
+function loadMsgs(id) {
+  return mGet(`/api/messages?conversationId=${encodeURIComponent(id)}&userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((data) => { msgCache[id] = data.messages || []; })
+    .catch(() => { msgCache[id] = []; });
+}
+async function openConvo(id) {
+  activeConvo = id;
+  if (msgCache[id] === undefined) await loadMsgs(id);
+  render();
+}
+async function initMessages() {
+  await refreshConvos();
+  if (!activeConvo && convos[0]) activeConvo = convos[0].id;
+  if (activeConvo) await loadMsgs(activeConvo);
+  if (current === 'messages') render();
+}
+if (sessionUser?.id) initMessages();
+
+let pollTimer = null;
+const msgSig = (m) => (m ? m.length + '|' + (m[m.length - 1]?.body || '') : '0');
+const convoSig = () => convos.map((c) => c.id + ':' + (c.lastBody || '')).join('~');
+function startPolling() {
+  if (pollTimer || !sessionUser?.id || !mHasFetch) return;
+  pollTimer = setInterval(pollTick, 4000);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+async function pollTick() {
+  if (current !== 'messages' || !sessionUser?.id) return;
+  if (activeConvo) {
+    const before = msgSig(msgCache[activeConvo]);
+    await loadMsgs(activeConvo);
+    if (current === 'messages' && msgSig(msgCache[activeConvo]) !== before) renderBubbles();
+  }
+  const bl = convoSig();
+  await refreshConvos();
+  if (current === 'messages' && convoSig() !== bl) renderConvoList();
+}
+function renderBubbles() {
+  const el = panel.querySelector('#bubbles');
+  if (!el) return;
+  const nb = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  el.innerHTML = bubblesHTML(msgCache[activeConvo] ?? null);
+  if (nb) el.scrollTop = el.scrollHeight;
+}
+function renderConvoList() {
+  const el = panel.querySelector('.convo-list');
+  if (!el) return;
+  el.innerHTML = convoListHTML();
+  bindConvoButtons();
+}
+
 tabs.addEventListener('click', (e) => {
   const btn = e.target.closest('.portal-tab');
   if (!btn) return;
@@ -110,6 +175,13 @@ tabs.addEventListener('click', (e) => {
 function render() {
   panel.innerHTML = PANELS[current]();
   WIRE[current]?.();
+  if (current === 'messages') {
+    startPolling();
+    const b = panel.querySelector('#bubbles');
+    if (b) b.scrollTop = b.scrollHeight;
+  } else {
+    stopPolling();
+  }
 }
 
 // ---------- Overview ----------
@@ -177,6 +249,26 @@ const PANELS = {
       <div id="enqList">${enquiries.length
         ? enquiries.map(enquiryCard).join('')
         : '<p class="muted">No enquiries yet. When a client messages you from search, it lands here — exclusively yours.</p>'}</div>`;
+  },
+
+  messages() {
+    const convo = convos.find((c) => c.id === activeConvo) || convos[0] || null;
+    if (convo) activeConvo = convo.id;
+    return `
+      <h1>Messages</h1>
+      <p class="wizard-lede">Chat directly with the clients who've reached out. Every conversation is exclusive to you.</p>
+      <div class="msg-layout">
+        <div class="convo-col">
+          <div class="convo-list">${convoListHTML()}</div>
+        </div>
+        <div class="thread">
+          ${
+            convo
+              ? threadHTML(convo, msgCache[convo.id] ?? null)
+              : '<div class="bubbles"><p class="muted" style="margin:auto">When a client messages you, the conversation appears here.</p></div>'
+          }
+        </div>
+      </div>`;
   },
 
   profile() {
@@ -308,6 +400,28 @@ const WIRE = {
       })
     );
   },
+  messages() {
+    bindConvoButtons();
+    const composer = panel.querySelector('#composer');
+    composer?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const t = composer.body.value.trim();
+      if (!t || !activeConvo || !sessionUser?.id) return;
+      composer.body.value = '';
+      try {
+        await fetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: activeConvo, senderUserId: sessionUser.id, body: t }),
+        });
+        await loadMsgs(activeConvo);
+        await refreshConvos();
+      } catch {}
+      render();
+      const b = panel.querySelector('#bubbles');
+      if (b) b.scrollTop = b.scrollHeight;
+    });
+  },
   profile() {
     panel.querySelectorAll('[data-svc]').forEach((c) =>
       c.addEventListener('click', () => {
@@ -408,6 +522,43 @@ function enquiryCard(e) {
     <p class="enquiry-msg">“${e.message}”</p>
     <div class="enquiry-actions">${actions}</div>
   </article>`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function bubblesHTML(msgs) {
+  return msgs == null
+    ? '<p class="muted" style="margin:auto">Loading…</p>'
+    : msgs.length
+    ? msgs.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
+    : '<p class="muted" style="margin:auto">Say hello 👋</p>';
+}
+function threadHTML(c, msgs) {
+  return `<div class="thread-head"><strong>${escapeHtml(c.with)}</strong></div>
+    <div class="bubbles" id="bubbles">${bubblesHTML(msgs)}</div>
+    <form class="composer" id="composer">
+      <input name="body" placeholder="Write a message…" autocomplete="off" />
+      <button class="btn solid" type="submit">Send</button>
+    </form>`;
+}
+function convoListHTML() {
+  return convos.length
+    ? convos
+        .map(
+          (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
+            <strong>${escapeHtml(c.with)}</strong>
+            <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
+          </button>`
+        )
+        .join('')
+    : '<p class="muted" style="padding:1rem">No conversations yet.</p>';
+}
+function bindConvoButtons() {
+  panel.querySelectorAll('[data-convo]').forEach((b) =>
+    b.addEventListener('click', () => openConvo(b.dataset.convo))
+  );
 }
 
 function chip(label, on, kind) {

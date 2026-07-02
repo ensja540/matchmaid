@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v8 — full real data: messaging, enquiries, profiles (2026-07-02).
+// deploy: v9 — real-time chat (polling) + maid Messages tab (2026-07-02).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
