@@ -102,6 +102,10 @@ a { color: inherit; text-decoration: none; }
 }
 .ulink:hover { color: var(--copper); }
 .ulink:hover::after { transform: scaleX(1); }
+/* Cross-link: send people to the other side of the marketplace so no one dead-ends. */
+.cross-link { color: var(--accent); font-weight: 600; }
+.cross-link::after { background: var(--accent); transform: scaleX(1); }
+.cross-link:hover { color: var(--accent); }
 
 /* ---------- Buttons ---------- */
 .btn {
