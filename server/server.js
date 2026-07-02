@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v12 — vet enquirer: client profile from an enquiry (2026-07-02).
+// deploy: v13 — header link → "Maid portal" / "Customer portal" (2026-07-02).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
