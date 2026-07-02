@@ -82,8 +82,8 @@ const DEMO = {
     rating: 4.9,
     reviews: 27,
     listingStatus: 'active',
-    matchesUsed: 3,          // trial: free until 5 successful matches
-    matchesTarget: 5,
+    matchesUsed: 2,          // trial: free until the 3rd successful match
+    matchesTarget: 3,
     tier: 'trial',
     badges: { id: true, police: true, insurance: true },
     availability: [

@@ -48,7 +48,7 @@ const PANELS = {
           <span>${profile.matchesUsed} of ${profile.matchesTarget} successful matches used</span>
         </div>
         <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-        <p class="muted">You're free until your 5th match. ${remaining} to go, then it's a flat
+        <p class="muted">You're free until your 3rd match. ${remaining} to go, then it's a flat
           $40/month (or $60/month to be promoted to the top of results).</p>
       </div>
 
@@ -62,12 +62,12 @@ const PANELS = {
       <div class="panel-card">
         <h2>How Match Maid works</h2>
         <div class="howto"><ol class="steps">
-          <li><span class="num">01</span><div><h3>Complete your profile</h3><p>Add your services, hourly rate, the suburbs you cover and a photo.</p></div></li>
-          <li><span class="num">02</span><div><h3>Set your availability</h3><p>Mark the mornings, middays and afternoons you're free each week.</p></div></li>
-          <li><span class="num">03</span><div><h3>Get matched</h3><p>Local customers who want your services at your times send you an exclusive enquiry.</p></div></li>
-          <li><span class="num">04</span><div><h3>Accept &amp; arrange</h3><p>Reply, agree the details and clean. You keep 100% — we take no commission.</p></div></li>
-          <li><span class="num">05</span><div><h3>Free until 5 matches</h3><p>Your first five successful matches are free; after that it's a flat $40/month (or $60 to be promoted).</p></div></li>
-          <li><span class="num">06</span><div><h3>Grow with reviews</h3><p>Great reviews build trust and turn one-off jobs into weekly regulars.</p></div></li>
+          <li><span class="num">01</span><div><h3>Complete your profile</h3><p>Add your name, photo and a short bio so clients know who they're inviting in.</p></div></li>
+          <li><span class="num">02</span><div><h3>Set your availability <em>(most important)</em></h3><p>Update your weekly calendar with the mornings, middays and afternoons you can work — this is what matches you to clients.</p></div></li>
+          <li><span class="num">03</span><div><h3>Set your price</h3><p>Add your hourly rate. You set it, and it's shown openly — no race to the bottom.</p></div></li>
+          <li><span class="num">04</span><div><h3>Add your locations</h3><p>Choose the suburbs you cover, or wider areas like Christchurch.</p></div></li>
+          <li><span class="num">05</span><div><h3>Get exclusive enquiries</h3><p>Clients who want your services at your times reach out to you alone. Reply and arrange directly — you keep 100%.</p></div></li>
+          <li><span class="num">06</span><div><h3>Free until your 3rd match</h3><p>Your first three successful matches are free; after that it's a flat $40/month (or $60 to be promoted).</p></div></li>
         </ol></div>
       </div>
 
@@ -135,7 +135,7 @@ const PANELS = {
       <h1>Subscription</h1>
       <div class="trial-banner">
         <strong>You're on the free trial</strong>
-        <p class="muted">Listed free until your 5th successful match. ${remaining} match${remaining === 1 ? '' : 'es'} to go.</p>
+        <p class="muted">Listed free until your 3rd successful match. ${remaining} match${remaining === 1 ? '' : 'es'} to go.</p>
       </div>
       <div class="plan-cards">
         <div class="plan">

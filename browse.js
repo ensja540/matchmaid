@@ -83,7 +83,7 @@ function runSearch() {
 
   if (!scored.length) {
     meta.textContent = `No cleaners cover ${p.suburb} yet — more are joining soon.`;
-    results.innerHTML = '';
+    results.innerHTML = '<img class="empty-art" src="assets/brand/empty_state.svg" alt="No results yet" />';
     return;
   }
   meta.textContent = `${scored.length} cleaner${scored.length > 1 ? 's' : ''} in ${p.suburb}, best match first.`;

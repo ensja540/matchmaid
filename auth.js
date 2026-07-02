@@ -17,7 +17,7 @@ const blurb = document.getElementById('roleBlurb');
 
 const LABEL = { maid: 'Maid account', customer: 'Customer account' };
 const BLURBS = {
-  maid: 'List your services and get exclusive local enquiries. Free until your 5th match.',
+  maid: 'List your services and get exclusive local enquiries. Free until your 3rd match.',
   customer: 'Search local cleaners and see rates up front. Always free.',
 };
 
