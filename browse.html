@@ -85,7 +85,16 @@
       </section>
 
       <section class="container">
-        <p class="browse-meta" id="meta"></p>
+        <div class="browse-head">
+          <p class="browse-meta" id="meta"></p>
+          <label class="sort-label" id="sortWrap" hidden>Sort
+            <select id="sortBy">
+              <option value="relevance">Best match</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="price-desc">Price: high to low</option>
+            </select>
+          </label>
+        </div>
         <div id="results" class="results"></div>
       </section>
     </main>
@@ -105,6 +114,13 @@
         </form>
         <p class="reassure">Free for households, always. No card required.</p>
         <p class="switch">Already have an account? <a class="ulink" href="/login?role=customer">Log in</a></p>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="cleanerModal" hidden>
+      <div class="modal">
+        <button class="modal-close" id="cleanerModalClose" aria-label="Close">×</button>
+        <div id="cleanerModalBody"></div>
       </div>
     </div>
 

@@ -50,8 +50,7 @@ const svcSet = new Set(profile.services); // service slugs offered
 let mp = {
   businessName: profile.businessName,
   bio: profile.bio,
-  rateMin: profile.rateMin,
-  rateMax: profile.rateMax,
+  rate: profile.rate,
   years: profile.yearsExperience,
   listingStatus: profile.listingStatus,
   avgRating: profile.rating,
@@ -66,8 +65,7 @@ if (sessionUser?.id) {
       mp = {
         businessName: data.businessName ?? mp.businessName,
         bio: data.bio ?? '',
-        rateMin: data.rateMin ?? mp.rateMin,
-        rateMax: data.rateMax ?? mp.rateMax,
+        rate: data.rateMin ?? data.rateMax ?? mp.rate,
         years: data.years ?? '',
         listingStatus: data.listingStatus ?? mp.listingStatus,
         avgRating: data.avgRating ?? 0,
@@ -212,7 +210,7 @@ const PANELS = {
         <div class="vflow" id="vflow">
           <div class="vstep"><span class="vnum">01</span><div class="vbody"><h3>Complete your profile</h3><p>Add your name, photo and a short bio so clients know who they're inviting in.</p></div></div>
           <div class="vstep"><span class="vnum">02</span><div class="vbody"><h3>Set your availability</h3><p>Update your weekly calendar with the mornings, middays and afternoons you can work — this is what matches you to clients.</p></div></div>
-          <div class="vstep"><span class="vnum">03</span><div class="vbody"><h3>Set your price</h3><p>Add your hourly rate range. You set it, and it's shown openly — no race to the bottom.</p></div></div>
+          <div class="vstep"><span class="vnum">03</span><div class="vbody"><h3>Set your price</h3><p>Add your hourly rate. You set it, and it's shown openly — no race to the bottom.</p></div></div>
           <div class="vstep"><span class="vnum">04</span><div class="vbody"><h3>Add your locations</h3><p>Search a town and toggle the suburbs you cover — or wider areas like Christchurch.</p></div></div>
           <div class="vstep"><span class="vnum">05</span><div class="vbody"><h3>Get exclusive enquiries</h3><p>Clients who want your services at your times reach out to you alone. Reply and arrange directly — you keep 100%.</p></div></div>
           <div class="vstep"><span class="vnum">06</span><div class="vbody"><h3>Free for your first 3 months</h3><p>Your first three months are free; after that it's a flat $40/month (or $60 to be promoted).</p></div></div>
@@ -280,10 +278,7 @@ const PANELS = {
       <form class="profile-form" id="profileForm">
         <label class="field"><span>Business name</span><input name="business" value="${mp.businessName ?? ''}" /></label>
         <label class="field"><span>Bio</span><textarea name="bio" rows="3">${mp.bio ?? ''}</textarea></label>
-        <div class="field-row">
-          <label class="field"><span>Rate — low ($/hr)</span><input name="rateMin" type="number" value="${mp.rateMin ?? ''}" /></label>
-          <label class="field"><span>Rate — high ($/hr)</span><input name="rateMax" type="number" value="${mp.rateMax ?? ''}" /></label>
-        </div>
+        <label class="field"><span>Your hourly rate ($/hr)</span><input name="rate" type="number" value="${mp.rate ?? ''}" /></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
         <div class="field"><span>Where you work</span>
           <input type="text" id="townSearch" class="loc-search" placeholder="Search a town or suburb (e.g. Christchurch, Rolleston)…" autocomplete="off" />
@@ -456,8 +451,7 @@ const WIRE = {
       const f = e.target;
       mp.businessName = f.business.value;
       mp.bio = f.bio.value;
-      mp.rateMin = f.rateMin.value;
-      mp.rateMax = f.rateMax.value;
+      mp.rate = f.rate.value;
       mp.years = f.years.value;
       if (!sessionUser?.id) {
         setMsg('profMsg', 'Saved (demo — log in as a maid to save for real).', 'ok');
@@ -473,8 +467,7 @@ const WIRE = {
             businessName: mp.businessName,
             bio: mp.bio,
             years: mp.years,
-            rateMin: mp.rateMin,
-            rateMax: mp.rateMax,
+            rate: mp.rate,
             services: [...svcSet],
             areas: [...areas],
             badges: {

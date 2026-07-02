@@ -21,7 +21,7 @@ const tabs = document.getElementById('tabs');
 let current = 'overview';
 
 // ---- Working state (all loaded from the API) ----
-const find = { suburb: 'Riccarton', service: 'regular', desiredRate: 35, slots: [], ran: false, results: [] };
+const find = { suburb: 'Riccarton', service: 'regular', desiredRate: 35, slots: [], ran: false, results: [], sort: 'relevance' };
 let suburbList = DEMO.suburbs.slice();
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
@@ -239,6 +239,15 @@ const PANELS = {
         </div>
         <button class="btn solid" type="submit">Show my matches</button>
       </form>
+      <div class="results-tools" ${find.ran ? '' : 'hidden'}>
+        <label class="sort-label">Sort
+          <select id="sortBy">
+            <option value="relevance" ${find.sort === 'relevance' ? 'selected' : ''}>Best match</option>
+            <option value="price-asc" ${find.sort === 'price-asc' ? 'selected' : ''}>Price: low to high</option>
+            <option value="price-desc" ${find.sort === 'price-desc' ? 'selected' : ''}>Price: high to low</option>
+          </select>
+        </label>
+      </div>
       <div id="findResults" class="results">${find.ran ? renderResults(find.results) : ''}</div>`;
   },
 
@@ -342,6 +351,13 @@ const WIRE = {
       rateOut.textContent = `$${find.desiredRate}/hr`;
     });
     wireCalendar(panel.querySelector('#cal'), find.slots);
+    if (find.ran) wireResults(panel.querySelector('#findResults'));
+    panel.querySelector('#sortBy')?.addEventListener('change', (e) => {
+      find.sort = e.target.value;
+      const box = panel.querySelector('#findResults');
+      box.innerHTML = renderResults(find.results);
+      wireResults(box);
+    });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       find.suburb = form.suburb.value;
@@ -364,8 +380,9 @@ const WIRE = {
         box.innerHTML = '<p class="muted">Search is unavailable right now — please try again.</p>';
         return;
       }
+      panel.querySelector('.results-tools')?.removeAttribute('hidden');
       box.innerHTML = renderResults(find.results);
-      wireContact(box);
+      wireResults(box);
     });
   },
   messages() {
@@ -454,17 +471,27 @@ async function openConvo(id, jump) {
 }
 
 // ---------- Results (from the real /api/match) ----------
+const rateKey = (r) => r.fair ?? r.rateMin ?? r.rateMax ?? 9999;
 function renderResults(scored) {
-  scored = scored || [];
+  scored = (scored || []).slice();
   if (!scored.length)
     return `<p class="muted">No cleaners cover ${find.suburb} for that service yet. More are coming soon.</p>`;
 
-  const great = scored.filter((r) => r.tier === 'great').length;
+  if (find.sort === 'price-asc') scored.sort((a, b) => rateKey(a) - rateKey(b));
+  else if (find.sort === 'price-desc') scored.sort((a, b) => rateKey(b) - rateKey(a));
+  // 'relevance' keeps the server's best-match-first order (price already factors in).
+
+  const lead =
+    find.sort === 'price-asc' ? 'lowest price first' : find.sort === 'price-desc' ? 'highest price first' : 'best match first';
   return (
-    `<p class="results-summary">Showing ${scored.length} cleaner${scored.length > 1 ? 's' : ''} in ${find.suburb}, best match first${
-      great ? `, ${great} strong match${great > 1 ? 'es' : ''} at the top` : ''
-    }.</p>` + scored.map(resultCard).join('')
+    `<p class="results-summary">Showing ${scored.length} relevant cleaner${scored.length > 1 ? 's' : ''} in ${find.suburb}, ${lead}.</p>` +
+    scored.map(resultCard).join('')
   );
+}
+function wireResults(box) {
+  if (!box) return;
+  wireContact(box);
+  bindCleanerLinks(box);
 }
 
 function resultCard(r) {
@@ -473,13 +500,13 @@ function resultCard(r) {
   const slotChips = (r.matched || [])
     .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');
-  const rateStr = r.rateMin != null && r.rateMax != null ? `$${r.rateMin}–$${r.rateMax}/hr` : 'rate on enquiry';
-  const fairStr = r.fair != null ? ` · fair ~$${r.fair}/hr` : '';
+  const rateStr = rateLabel(r.rateMin, r.rateMax);
+  const fairStr = r.fair != null && r.rateMin !== r.rateMax ? ` · fair ~$${r.fair}/hr` : '';
   const reqSlots = find.slots.length;
   const first = escapeHtml(r.name.split(/['\s]/)[0]);
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
-      <div><h3>${escapeHtml(r.name)} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
+      <div><h3><button class="linklike" type="button" data-cleaner="${attr(r.id)}">${escapeHtml(r.name)}</button> ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
         <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
@@ -507,6 +534,68 @@ function wireContact(box) {
       goTo('messages');
     })
   );
+}
+
+// ---- Cleaner profile modal (click a cleaner's name) ----
+const cleanerModal = document.getElementById('cleanerModal');
+const cleanerModalBody = document.getElementById('cleanerModalBody');
+document.getElementById('cleanerModalClose')?.addEventListener('click', () => { cleanerModal.hidden = true; });
+cleanerModal?.addEventListener('click', (e) => { if (e.target === cleanerModal) cleanerModal.hidden = true; });
+
+function bindCleanerLinks(box) {
+  box.querySelectorAll('[data-cleaner]').forEach((b) =>
+    b.addEventListener('click', () => openCleanerModal(b.dataset.cleaner))
+  );
+}
+async function openCleanerModal(id) {
+  if (!cleanerModal) return;
+  cleanerModalBody.innerHTML = '<p class="muted">Loading…</p>';
+  cleanerModal.hidden = false;
+  try {
+    const c = await getJSON(`/api/cleaner-profile?id=${encodeURIComponent(id)}`);
+    cleanerModalBody.innerHTML = cleanerCardHTML(c);
+    const btn = cleanerModalBody.querySelector('[data-cpcontact]');
+    btn?.addEventListener('click', async () => {
+      cleanerModal.hidden = true;
+      if (!uid) { location.href = '/login?role=customer'; return; }
+      try {
+        activeConvo = await apiContact(btn.dataset.cpcontact);
+        await refreshConvos();
+        await loadMsgs(activeConvo);
+      } catch {}
+      goTo('messages');
+    });
+  } catch {
+    cleanerModalBody.innerHTML = '<p class="muted">Could not load this profile.</p>';
+  }
+}
+function rateLabel(min, max) {
+  if (min == null || max == null) return 'rate on enquiry';
+  return min === max ? `$${min}/hr` : `$${min}–$${max}/hr`;
+}
+function cleanerCardHTML(c) {
+  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured'].filter(Boolean);
+  const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
+  const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
+  const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
+  const SLOTLBL = { am: 'AM', lunch: 'Midday', pm: 'PM' };
+  const avail = c.availability.length
+    ? c.availability.slice().sort((a, b) => a.day - b.day).map((a) => `<span class="chip on">${DAYS[a.day]} ${SLOTLBL[a.slot] || a.slot}</span>`).join('')
+    : '<span class="muted">Ask about times</span>';
+  return `
+    <div class="cv-head">
+      <div class="avatar lg">${c.photo ? `<img src="${escapeHtml(c.photo)}" alt="" />` : `<span>${initial}</span>`}</div>
+      <div>
+        <h2>${escapeHtml(c.name)}</h2>
+        <p class="muted" style="margin:0">★ ${Number(c.rating).toFixed(1)} (${c.reviews}) · ${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
+      </div>
+    </div>
+    ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
+    ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
+    <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
+    <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
+    <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
+    <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${attr(c.id)}">Message ${first}</button></div>`;
 }
 
 function contactedRow(c) {

@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v13 — header link → "Maid portal" / "Customer portal" (2026-07-02).
+// deploy: v14 — clickable cleaner profiles, single rate, sort by price (2026-07-02).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -238,14 +238,17 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rateMin, rateMax, services, areas, badges, listingStatus } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, areas, badges, listingStatus } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
 
-    const min = rateMin != null && rateMin !== '' ? Number(rateMin) : null;
-    const max = rateMax != null && rateMax !== '' ? Number(rateMax) : null;
-    const mid = min != null && max != null ? (min + max) / 2 : min ?? max ?? null;
+    // Maids now set a single hourly rate; we mirror it into min/max/mid so the
+    // match + display keep working (and legacy min/max are still accepted).
+    const single = rate != null && rate !== '' ? Number(rate) : null;
+    const min = single != null ? single : rateMin != null && rateMin !== '' ? Number(rateMin) : null;
+    const max = single != null ? single : rateMax != null && rateMax !== '' ? Number(rateMax) : null;
+    const mid = single != null ? single : min != null && max != null ? (min + max) / 2 : min ?? max ?? null;
 
     await query(
       `update cleaner_profiles set
@@ -393,6 +396,54 @@ app.get('/api/directory', async (_req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load directory.' });
+  }
+});
+
+// Public cleaner profile (opened by clicking a cleaner's name in results).
+app.get('/api/cleaner-profile', async (req, res) => {
+  try {
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: 'id is required.' });
+    const { rows } = await query(
+      `select cp.id, coalesce(cp.business_name, u.full_name) as name, cp.bio, cp.years_experience,
+              cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count,
+              cp.id_verified, cp.police_verified, cp.insurance_verified, cp.profile_photo_url
+         from cleaner_profiles cp join users u on u.id = cp.user_id
+        where cp.id = $1`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'No such cleaner.' });
+    const cp = rows[0];
+    const svc = await query(
+      `select st.name from cleaner_services cs join service_types st on st.id = cs.service_type_id where cs.cleaner_id = $1`,
+      [id]
+    );
+    const areas = await query(
+      `select s.name from cleaner_service_areas csa join suburbs s on s.id = csa.suburb_id where csa.cleaner_id = $1`,
+      [id]
+    );
+    const av = await query(
+      `select day_of_week, to_char(start_time,'HH24:MI') as start from availability_rules where cleaner_id = $1`,
+      [id]
+    );
+    res.json({
+      id: cp.id,
+      name: cp.name,
+      bio: cp.bio || '',
+      years: cp.years_experience,
+      rateMin: cp.hourly_rate_min != null ? Number(cp.hourly_rate_min) : null,
+      rateMax: cp.hourly_rate_max != null ? Number(cp.hourly_rate_max) : null,
+      rating: Number(cp.avg_rating) || 0,
+      reviews: cp.review_count,
+      badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
+      photo: cp.profile_photo_url || '',
+      services: svc.rows.map((r) => r.name),
+      areas: areas.rows.map((r) => r.name),
+      availability: av.rows.map((r) => ({ day: r.day_of_week, slot: START_TO_SLOT[r.start] })).filter((x) => x.slot),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load profile.' });
   }
 });
 

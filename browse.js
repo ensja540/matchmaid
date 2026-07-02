@@ -18,7 +18,14 @@ const results = document.getElementById('results');
 const meta = document.getElementById('meta');
 
 const slots = []; // chosen availability {day, slot}
+let lastResults = [];
+let lastPrefs = null;
+let sortBy = 'relevance';
 document.getElementById('sf-year').textContent = new Date().getFullYear();
+document.getElementById('sortBy')?.addEventListener('change', (e) => {
+  sortBy = e.target.value;
+  paintResults();
+});
 
 // Type of clean + hours from the shared catalogue (matches the DB slugs).
 serviceSel.innerHTML = DEMO.services.map((s) => `<option value="${s.slug}">${s.name}</option>`).join('');
@@ -88,13 +95,25 @@ async function runSearch() {
     return;
   }
 
-  const scored = data.results || [];
+  lastResults = data.results || [];
+  lastPrefs = p;
+  document.getElementById('sortWrap').hidden = !lastResults.length;
+  paintResults();
+}
+
+const rateKey = (r) => r.fair ?? r.rateMin ?? r.rateMax ?? 9999;
+function paintResults() {
+  const p = lastPrefs;
+  const scored = (lastResults || []).slice();
   if (!scored.length) {
     meta.textContent = `No cleaners cover ${p.suburb} yet — more are joining soon.`;
     results.innerHTML = '<img class="empty-art" src="assets/brand/empty_state.svg" alt="No results yet" />';
     return;
   }
-  meta.textContent = `${scored.length} cleaner${scored.length > 1 ? 's' : ''} in ${p.suburb}, best match first.`;
+  if (sortBy === 'price-asc') scored.sort((a, b) => rateKey(a) - rateKey(b));
+  else if (sortBy === 'price-desc') scored.sort((a, b) => rateKey(b) - rateKey(a));
+  const lead = sortBy === 'price-asc' ? 'lowest price first' : sortBy === 'price-desc' ? 'highest price first' : 'best match first';
+  meta.textContent = `${scored.length} relevant cleaner${scored.length > 1 ? 's' : ''} in ${p.suburb}, ${lead}.`;
 
   const cards = scored.map((r) => resultCard(r, p));
   if (cards.length > 2) cards.splice(2, 0, hookCard());
@@ -113,6 +132,9 @@ async function runSearch() {
     })
   );
   results.querySelectorAll('[data-hook]').forEach((b) => b.addEventListener('click', () => openModal(null)));
+  results.querySelectorAll('[data-cleaner]').forEach((b) =>
+    b.addEventListener('click', () => openCleanerModal(b.dataset.cleaner))
+  );
 }
 
 function resultCard(r, p) {
@@ -123,13 +145,13 @@ function resultCard(r, p) {
   const slotChips = (r.matched || [])
     .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');
-  const rateStr = r.rateMin != null && r.rateMax != null ? `$${r.rateMin}–$${r.rateMax}/hr` : 'rate on enquiry';
-  const fairStr = r.fair != null ? ` · <strong>fair ~$${r.fair}/hr</strong>` : '';
+  const rateStr = rateLabel(r.rateMin, r.rateMax);
+  const fairStr = r.fair != null && r.rateMin !== r.rateMax ? ` · <strong>fair ~$${r.fair}/hr</strong>` : '';
   const costStr = r.estCost != null ? ` · ~$${r.estCost} for ${p.hours}h` : '';
   const first = r.name.split(/['\s]/)[0];
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
-      <div><h3>${r.name} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
+      <div><h3><button class="linklike" type="button" data-cleaner="${r.id}">${r.name}</button> ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
         <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}${costStr} · ${p.suburb}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
@@ -147,6 +169,70 @@ function hookCard() {
     <div><h3>Found someone you like?</h3><p>Create a free account to message your maid. Takes seconds, no card needed.</p></div>
     <button class="btn solid" type="button" data-hook>Create free account</button>
   </div>`;
+}
+
+// ---- Cleaner profile modal (click a cleaner's name) ----
+const cleanerModal = document.getElementById('cleanerModal');
+const cleanerModalBody = document.getElementById('cleanerModalBody');
+document.getElementById('cleanerModalClose')?.addEventListener('click', () => { cleanerModal.hidden = true; });
+cleanerModal?.addEventListener('click', (e) => { if (e.target === cleanerModal) cleanerModal.hidden = true; });
+
+async function openCleanerModal(id) {
+  if (!cleanerModal) return;
+  cleanerModalBody.innerHTML = '<p class="muted">Loading…</p>';
+  cleanerModal.hidden = false;
+  try {
+    const res = await fetch(`/api/cleaner-profile?id=${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error();
+    const c = await res.json();
+    cleanerModalBody.innerHTML = cleanerCardHTML(c);
+    const btn = cleanerModalBody.querySelector('[data-cpcontact]');
+    btn?.addEventListener('click', () => {
+      cleanerModal.hidden = true;
+      const name = btn.dataset.cpname;
+      const cid = btn.dataset.cpcontact;
+      if (window.Session && Session.get()) {
+        localStorage.setItem('mm_pending_contact', JSON.stringify({ id: cid, name }));
+        location.href = '/customer';
+        return;
+      }
+      openModal(name, cid);
+    });
+  } catch {
+    cleanerModalBody.innerHTML = '<p class="muted">Could not load this profile.</p>';
+  }
+}
+function rateLabel(min, max) {
+  if (min == null || max == null) return 'rate on enquiry';
+  return min === max ? `$${min}/hr` : `$${min}–$${max}/hr`;
+}
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function cleanerCardHTML(c) {
+  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured'].filter(Boolean);
+  const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
+  const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
+  const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
+  const SLOTLBL = { am: 'AM', lunch: 'Midday', pm: 'PM' };
+  const avail = c.availability.length
+    ? c.availability.slice().sort((a, b) => a.day - b.day).map((a) => `<span class="chip on">${DAYS[a.day]} ${SLOTLBL[a.slot] || a.slot}</span>`).join('')
+    : '<span class="muted">Ask about times</span>';
+  return `
+    <div class="cv-head">
+      <div class="avatar lg">${c.photo ? `<img src="${escapeHtml(c.photo)}" alt="" />` : `<span>${initial}</span>`}</div>
+      <div>
+        <h2>${escapeHtml(c.name)}</h2>
+        <p class="muted" style="margin:0">★ ${Number(c.rating).toFixed(1)} (${c.reviews}) · ${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
+      </div>
+    </div>
+    ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
+    ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
+    <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
+    <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
+    <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
+    <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${escapeHtml(c.id)}" data-cpname="${escapeHtml(c.name)}">Message ${first}</button></div>`;
 }
 
 // ---- Calendar helpers ----
