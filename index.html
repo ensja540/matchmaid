@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Match Maid is the local marketplace connecting independent cleaners with the households that need them." />
+    <title>Match Maid — the local cleaning marketplace</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="splash-body">
+    <div class="notice-bar">
+      We're building our marketplace — more cleaners and homes are joining soon
+    </div>
+
+    <header class="splash-top">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+      <span class="splash-tag">The local cleaning marketplace</span>
+    </header>
+
+    <main class="splash">
+      <p class="eyebrow">Two sides, one marketplace</p>
+      <h1>Are you…</h1>
+      <p class="lede splash-lede">
+        Match Maid connects independent cleaners with the households nearby who
+        need them. Choose your side to get started.
+      </p>
+
+      <div class="splash-choices">
+        <a class="choice maid" href="/for-maids.html">
+          <span class="choice-k">01 — A maid</span>
+          <span class="choice-t">Supplying</span>
+          <span class="choice-s">List your services →</span>
+        </a>
+        <a class="choice customer" href="/browse.html">
+          <span class="choice-k">02 — Need a clean</span>
+          <span class="choice-t">Hiring</span>
+          <span class="choice-s">Browse cleaners →</span>
+        </a>
+      </div>
+
+    </main>
+
+    <footer class="splash-footer">
+      <div class="sf-inner">
+        <span class="sf-brand">Match Maid</span>
+        <span class="sf-mid">Independent cleaners · They set their own rates · You choose who</span>
+        <span class="sf-copy">© <span id="sf-year"></span> · Christchurch, NZ</span>
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById('sf-year').textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Match Maid — Browse cleaners</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="app-body role-customer">
+    <header class="pitch-top">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+      <div class="pitch-top-right">
+        <a class="ulink" href="/for-customers.html">Why Match Maid</a>
+        <a class="ulink" href="/login.html?role=customer">Log in</a>
+        <button class="btn sm" id="signupHook" type="button">Create free account</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="browse-hero container">
+        <p class="eyebrow">Free · no account needed to browse</p>
+        <h1>Find a cleaner near you.</h1>
+        <p class="lede">
+          Real local maids, with their rates in plain sight. Look all you like —
+          you only sign up when you want to message someone.
+        </p>
+        <form class="browse-form" id="browseForm">
+          <label class="field"><span>Suburb</span><select name="suburb" id="suburb"></select></label>
+          <label class="field"><span>Service</span><select name="service" id="service"></select></label>
+          <label class="field"><span>Ideal rate: <span class="rangeval" id="rateOut">$35/hr</span></span>
+            <input type="range" id="rate" min="20" max="80" value="35" />
+          </label>
+          <button class="btn solid" type="submit">Search</button>
+        </form>
+      </section>
+
+      <section class="container">
+        <p class="browse-meta" id="meta"></p>
+        <div id="results" class="results"></div>
+      </section>
+    </main>
+
+    <!-- Capture: fires only when they want to make contact -->
+    <div class="modal-overlay" id="modal" hidden>
+      <div class="modal">
+        <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+        <h2 id="modalTitle">Create your free account</h2>
+        <p class="msub" id="modalSub">Free forever, and about 20 seconds.</p>
+        <form id="capForm" novalidate>
+          <label class="field"><span>Full name</span><input name="fullName" autocomplete="name" placeholder="Alex Taylor" required /></label>
+          <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
+          <label class="field"><span>Password</span><input name="password" type="password" autocomplete="new-password" placeholder="••••••••" required /></label>
+          <button class="btn solid full" type="submit" id="capSubmit">Create account &amp; continue</button>
+          <p class="auth-msg" id="capMsg" role="status"></p>
+        </form>
+        <p class="reassure">Free for households, always. No card required.</p>
+        <p class="switch">Already have an account? <a class="ulink" href="/login.html?role=customer">Log in</a></p>
+      </div>
+    </div>
+
+    <footer class="splash-footer accent">
+      <div class="sf-inner">
+        <span class="sf-brand">Match Maid</span>
+        <span class="sf-mid">Free for households · Rates up front · You choose who</span>
+        <span class="sf-copy">© <span id="sf-year"></span> · Christchurch, NZ</span>
+      </div>
+    </footer>
+
+    <script src="session.js"></script>
+    <script src="demo.js"></script>
+    <script src="browse.js"></script>
+  </body>
+</html>

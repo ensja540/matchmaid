@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Match Maid | Your availability</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="app-body">
+    <header class="app-bar">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+      <div class="app-bar-right">
+        <span id="who" class="who"></span>
+        <button class="btn ghost" id="logout" type="button">Log out</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section class="wizard-card">
+        <p class="eyebrow">Your weekly availability</p>
+        <h1>When can you clean?</h1>
+        <p class="wizard-lede">
+          Tap the times you're usually free. Customers are matched to you when they want a clean at
+          a time you're available, so the more you mark, the more matches you'll get.
+        </p>
+
+        <div class="cal" id="cal"></div>
+
+        <div class="save-row">
+          <button class="btn solid" id="saveBtn" type="button">Save availability</button>
+          <span class="save-msg" id="saveMsg" role="status"></span>
+        </div>
+      </section>
+    </main>
+
+    <script src="session.js"></script>
+    <script src="availability.js"></script>
+  </body>
+</html>

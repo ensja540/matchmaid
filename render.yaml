@@ -1,0 +1,15 @@
+# Render.com deployment for Match Maid (Node server that also serves the
+# static front-end). Import this repo in Render and it reads this file.
+services:
+  - type: web
+    name: matchmaid
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false # set this in the Render dashboard (your Neon connection string)

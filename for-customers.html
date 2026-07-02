@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Match Maid — Need a clean</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="pitch-body role-customer">
+    <header class="pitch-top">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+      <div class="pitch-top-right">
+        <a class="ulink" href="/">← Home</a>
+        <a class="btn sm" href="/login.html?role=customer">Log in</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- HERO -->
+      <section class="pitch-hero container">
+        <p class="eyebrow">Need a clean</p>
+        <h1>Find a cleaner<br />worth <em style="font-style:italic;color:var(--green)">keeping</em>.</h1>
+        <p class="lede">
+          Browse independent local cleaners with their rates in plain sight,
+          pick the one you like, and deal with them directly. No bidding wars,
+          no middleman, and it's free for you — always.
+        </p>
+        <div class="hero-actions">
+          <a class="btn solid lg" href="/browse.html">Browse cleaners</a>
+          <a class="btn outline lg" href="/login.html?role=customer">Log in</a>
+        </div>
+      </section>
+
+      <!-- STATS -->
+      <section class="container">
+        <div class="pitch-stats">
+          <div class="stat"><span class="n">$0</span><span class="l">Free for you, always</span></div>
+          <div class="stat"><span class="n">1</span><span class="l">Cleaner, not ten bidders</span></div>
+          <div class="stat"><span class="n">100%</span><span class="l">Your choice, your terms</span></div>
+        </div>
+      </section>
+
+      <!-- BENEFITS -->
+      <section class="section container">
+        <div style="margin-bottom:2.4rem">
+          <p class="eyebrow">What you gain</p>
+          <h2 style="max-width:18ch">A cleaner home, without the runaround.</h2>
+        </div>
+        <div class="benefit-grid">
+          <div class="benefit">
+            <span class="b-mark">01 — FREE</span>
+            <h3>Always free for you</h3>
+            <p>Search, compare and contact cleaners at no cost. You never pay Match Maid a cent.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">02 — TRANSPARENT</span>
+            <h3>Rates up front</h3>
+            <p>Every cleaner's hourly rate is shown before you say hi. No quotes chased, no surprises.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">03 — YOUR PICK</span>
+            <h3>Choose your own cleaner</h3>
+            <p>See reviews and verified badges, then pick the person who feels right for your home.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">04 — NO BIDDING</span>
+            <h3>Contact just one</h3>
+            <p>Reach out to the single cleaner you chose — no inbox full of competing quotes.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">05 — RECURRING</span>
+            <h3>Keep the same maid</h3>
+            <p>Built around lasting relationships, so the same trusted cleaner comes back each week.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">06 — LOCAL</span>
+            <h3>Verified &amp; nearby</h3>
+            <p>Reviewed, badge-verified cleaners who actually cover your suburb.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- HOW IT WORKS -->
+      <section class="section howto container">
+        <div class="grid12">
+          <div style="grid-column: span 5">
+            <p class="eyebrow">How it works</p>
+            <h2>Three steps,<br />no guesswork.</h2>
+          </div>
+          <div style="grid-column: span 7">
+            <ol class="steps">
+              <li><span class="num">01</span><div><h3>Search your suburb</h3><p>Pick your suburb and the type of clean. See local maids, best match first.</p></div></li>
+              <li><span class="num">02</span><div><h3>Compare openly</h3><p>Rates, reviews and verified badges are all in the open. Nothing hidden.</p></div></li>
+              <li><span class="num">03</span><div><h3>Contact one maid</h3><p>Message the cleaner you choose and arrange it directly between you.</p></div></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="pitch-cta">
+        <div class="narrow">
+          <p class="eyebrow">Ready when you are</p>
+          <h2>A cleaner home is a few clicks away.</h2>
+          <div class="hero-actions" style="justify-content:center; margin-top:2rem">
+            <a class="btn solid lg" href="/login.html?role=customer&mode=signup">Find a cleaner</a>
+            <a class="btn outline lg" href="/login.html?role=customer">Log in</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="splash-footer accent">
+      <div class="sf-inner">
+        <span class="sf-brand">Match Maid</span>
+        <span class="sf-mid">Free for households · Rates up front · You choose who</span>
+        <span class="sf-copy">© <span id="sf-year"></span> · Christchurch, NZ</span>
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById('sf-year').textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

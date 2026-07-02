@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Match Maid | Find your cleaner</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="app-body">
+    <header class="app-bar">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+      <div class="app-bar-right">
+        <span id="who" class="who"></span>
+        <button class="btn ghost" id="logout" type="button">Log out</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Progress -->
+      <div class="wizard-progress" id="progress" aria-hidden="true"></div>
+
+      <!-- The wizard renders here -->
+      <section class="wizard-card" id="stepHost" aria-live="polite"></section>
+
+      <!-- Nav -->
+      <div class="wizard-nav" id="wizardNav">
+        <button class="btn outline" id="backBtn" type="button">Back</button>
+        <button class="btn solid" id="nextBtn" type="button">Next</button>
+      </div>
+    </main>
+
+    <script src="session.js"></script>
+    <script src="search.js"></script>
+  </body>
+</html>

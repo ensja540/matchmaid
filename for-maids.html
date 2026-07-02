@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Match Maid — For maids</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="pitch-body role-maid">
+    <header class="pitch-top">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+      <div class="pitch-top-right">
+        <a class="ulink" href="/">← Home</a>
+        <a class="btn sm" href="/login.html?role=maid">Log in</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- HERO -->
+      <section class="pitch-hero container">
+        <p class="eyebrow">For maids</p>
+        <h1>Fill your week with clients who chose <em style="font-style:italic;color:var(--copper)">you</em>.</h1>
+        <p class="lede">
+          Match Maid puts you in front of local households looking for exactly
+          what you offer. Every enquiry is yours alone — no bidding, no
+          undercutting, no commission skimmed off your work.
+        </p>
+        <div class="hero-actions">
+          <a class="btn solid lg" href="/login.html?role=maid&mode=signup">Create your maid account</a>
+          <a class="btn outline lg" href="/login.html?role=maid">Log in</a>
+        </div>
+      </section>
+
+      <!-- STATS -->
+      <section class="container">
+        <div class="pitch-stats">
+          <div class="stat"><span class="n">5</span><span class="l">Free matches to start</span></div>
+          <div class="stat"><span class="n">0%</span><span class="l">Commission on your jobs</span></div>
+          <div class="stat"><span class="n">$40</span><span class="l">Flat per month after</span></div>
+        </div>
+      </section>
+
+      <!-- BENEFITS -->
+      <section class="section container">
+        <div style="margin-bottom:2.4rem">
+          <p class="eyebrow">What you gain</p>
+          <h2 style="max-width:16ch">Cleaning on your own terms.</h2>
+        </div>
+        <div class="benefit-grid">
+          <div class="benefit">
+            <span class="b-mark">01 — FREE START</span>
+            <h3>Free until your 5th match</h3>
+            <p>List and get matched at no cost. You only pay once the platform has already earned you work.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">02 — YOUR PRICE</span>
+            <h3>Set your own rate</h3>
+            <p>You decide your hourly rate, and it's shown openly. No race to the bottom.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">03 — EXCLUSIVE</span>
+            <h3>Enquiries just for you</h3>
+            <p>When a customer picks you, it comes to you alone — never a scramble of competing bids.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">04 — NO CUT</span>
+            <h3>Zero commission</h3>
+            <p>What you agree with your client is what you keep. We never take a slice of the job.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">05 — REGULARS</span>
+            <h3>Build a book of regulars</h3>
+            <p>Match Maid is built around recurring, same-cleaner relationships — steady weekly work.</p>
+          </div>
+          <div class="benefit">
+            <span class="b-mark">06 — TRUST</span>
+            <h3>Verification badges</h3>
+            <p>Add ID, police and insurance badges so new clients book you with confidence.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- HOW IT WORKS -->
+      <section class="section howto container">
+        <div class="grid12">
+          <div style="grid-column: span 5">
+            <p class="eyebrow">How it works</p>
+            <h2>Three steps<br />to booked.</h2>
+          </div>
+          <div style="grid-column: span 7">
+            <ol class="steps">
+              <li><span class="num">01</span><div><h3>List your profile</h3><p>Your suburbs, services, rate and photo — set up in minutes.</p></div></li>
+              <li><span class="num">02</span><div><h3>Get matched locally</h3><p>Nearby customers find you and send an enquiry that's yours alone.</p></div></li>
+              <li><span class="num">03</span><div><h3>Arrange &amp; get paid direct</h3><p>Message, agree, clean. Payment stays between you and your client.</p></div></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="pitch-cta">
+        <div class="narrow">
+          <p class="eyebrow">Ready when you are</p>
+          <h2>Start earning on your terms.</h2>
+          <div class="hero-actions" style="justify-content:center; margin-top:2rem">
+            <a class="btn solid lg" href="/login.html?role=maid&mode=signup">Create your maid account</a>
+            <a class="btn outline lg" href="/login.html?role=maid">Log in</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="splash-footer accent">
+      <div class="sf-inner">
+        <span class="sf-brand">Match Maid</span>
+        <span class="sf-mid">For independent cleaners · Set your own rates · Keep 100%</span>
+        <span class="sf-copy">© <span id="sf-year"></span> · Christchurch, NZ</span>
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById('sf-year').textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

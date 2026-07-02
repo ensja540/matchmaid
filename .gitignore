@@ -1,0 +1,9 @@
+node_modules/
+server/node_modules/
+server/.env
+.env
+*.log
+
+# local artifacts / originals (not needed in the deploy)
+*.zip
+unzipped/

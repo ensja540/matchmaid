@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Match Maid | Sign in</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="auth-body">
+    <div class="auth-wrap">
+      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+
+      <div class="auth-card">
+        <p class="auth-role serif" id="roleLabel"></p>
+        <p class="auth-sub" id="roleBlurb"></p>
+
+        <form id="authForm" novalidate>
+          <label class="field" data-signup-only>
+            <span>Full name</span>
+            <input name="fullName" type="text" autocomplete="name" placeholder="Alex Taylor" />
+          </label>
+          <label class="field">
+            <span>Email</span>
+            <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input name="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+          </label>
+
+          <button class="btn solid lg full" type="submit" id="submitBtn">Log in</button>
+          <p class="auth-msg" id="msg" role="status"></p>
+        </form>
+
+        <p class="auth-switch">
+          <span id="switchText">New to Match Maid?</span>
+          <button type="button" class="linklike" id="switchMode">Create an account</button>
+        </p>
+      </div>
+
+      <a class="back" href="/">← Back to home</a>
+    </div>
+
+    <script src="session.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>
