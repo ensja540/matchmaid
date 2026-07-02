@@ -20,7 +20,21 @@ const tabs = document.getElementById('tabs');
 let current = 'overview';
 
 // Find-a-cleaner working state
-const find = { suburb: customer.defaultSuburb, service: 'regular', desiredRate: 35, slots: [], ran: false };
+const find = { suburb: customer.defaultSuburb, service: 'regular', desiredRate: 35, slots: [], ran: false, results: [] };
+
+// Suburbs come from the real database (fall back to demo until loaded).
+let suburbList = DEMO.suburbs.slice();
+if (typeof fetch !== 'undefined') {
+  fetch('/api/suburbs')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((list) => {
+      if (list) {
+        suburbList = list.map((s) => s.name);
+        if (current === 'find' || current === 'profile') render();
+      }
+    })
+    .catch(() => {});
+}
 
 // ---- Persistent chat store (localStorage — kept indefinitely per browser) ----
 const CHATS_KEY = 'mm_chats';
@@ -138,7 +152,7 @@ const PANELS = {
       <form class="find-form" id="findForm">
         <div class="field-row">
           <label class="field"><span>Suburb</span>
-            <select name="suburb">${DEMO.suburbs.map((s) => opt(s, s, find.suburb)).join('')}</select>
+            <select name="suburb">${suburbList.map((s) => opt(s, s, find.suburb)).join('')}</select>
           </label>
           <label class="field"><span>Service</span>
             <select name="service">${DEMO.services.map((s) => opt(s.slug, s.name, find.service)).join('')}</select>
@@ -146,13 +160,14 @@ const PANELS = {
         </div>
         <label class="field"><span>Ideal hourly rate: <strong id="rateOut">$${find.desiredRate}/hr</strong></span>
           <input type="range" id="rate" min="20" max="80" value="${find.desiredRate}" />
+          <span class="muted" style="font-size:0.82rem">We find a fair value within each cleaner's rate range near this.</span>
         </label>
         <div class="field"><span>When suits you? (optional)</span>
           <div class="cal" id="cal">${calendarHTML(find.slots)}</div>
         </div>
         <button class="btn solid" type="submit">Show my matches</button>
       </form>
-      <div id="findResults" class="results">${find.ran ? renderResults() : ''}</div>`;
+      <div id="findResults" class="results">${find.ran ? renderResults(find.results) : ''}</div>`;
   },
 
   messages() {
@@ -214,7 +229,7 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="field"><span>Phone</span><input name="phone" value="${attr(cprof.phone)}" placeholder="Optional" /></label>
-          <label class="field"><span>Suburb</span><select name="suburb">${DEMO.suburbs.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>
+          <label class="field"><span>Suburb</span><select name="suburb">${suburbList.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>
         </div>
         <label class="field"><span>Address</span><input name="address" value="${attr(cprof.address)}" /></label>
 
@@ -250,13 +265,36 @@ const WIRE = {
       rateOut.textContent = `$${find.desiredRate}/hr`;
     });
     wireCalendar(panel.querySelector('#cal'), find.slots);
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       find.suburb = form.suburb.value;
       find.service = form.service.value;
       find.ran = true;
-      panel.querySelector('#findResults').innerHTML = renderResults();
-      panel.querySelectorAll('#findResults [data-save]').forEach(saveBtnWire);
+      const box = panel.querySelector('#findResults');
+      box.innerHTML = '<p class="muted">Searching…</p>';
+      try {
+        const res = await fetch('/api/match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            suburb: find.suburb,
+            services: [find.service],
+            budgetMin: Math.max(0, find.desiredRate - 10),
+            budgetMax: find.desiredRate + 10,
+            verif: [],
+            durationHours: 2,
+            slots: find.slots,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error();
+        find.results = data.results || [];
+      } catch {
+        box.innerHTML = '<p class="muted">Search is unavailable right now — please try again.</p>';
+        return;
+      }
+      box.innerHTML = renderResults(find.results);
+      wireContact(box);
     });
   },
   messages() {
@@ -317,13 +355,9 @@ const WIRE = {
   },
 };
 
-// ---------- Results ----------
-function renderResults() {
-  const scored = DEMO.cleaners
-    .map((c) => DEMO.scoreCleaner(c, find))
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score || Number(b.featured) - Number(a.featured) || b.rating - a.rating);
-
+// ---------- Results (from the real /api/match) ----------
+function renderResults(scored) {
+  scored = scored || [];
   if (!scored.length)
     return `<p class="muted">No cleaners cover ${find.suburb} for that service yet. More are coming soon.</p>`;
 
@@ -338,20 +372,34 @@ function renderResults() {
 function resultCard(r) {
   const tierLabel = r.tier === 'great' ? 'Strong match' : r.tier === 'good' ? 'Good match' : 'Also available';
   const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured'].filter(Boolean);
-  const slotChips = r.matched
-    .map((m) => `<span class="chip on">${DAYS[m.day]} ${SLOTS.find((s) => s.key === m.slot).label}</span>`)
+  const slotChips = (r.matched || [])
+    .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');
+  const rateStr = r.rateMin != null && r.rateMax != null ? `$${r.rateMin}–$${r.rateMax}/hr` : 'rate on enquiry';
+  const fairStr = r.fair != null ? ` · fair ~$${r.fair}/hr` : '';
+  const reqSlots = find.slots.length;
+  const first = escapeHtml(r.name.split(/['\s]/)[0]);
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
-      <div><h3>${r.name} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
-        <p class="result-meta">★ ${r.rating.toFixed(1)} (${r.reviews}) · $${r.rate}/hr</p></div>
+      <div><h3>${escapeHtml(r.name)} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
+        <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
-    ${r.requestedCount > 0 && r.matched.length ? `<div class="chips">${slotChips}</div>` : ''}
-    ${r.requestedCount > 0 && !r.matched.length ? `<p class="no-overlap">Not free at your chosen times, ask about other slots.</p>` : ''}
-    <div class="result-actions"><button class="btn solid sm" type="button">Contact ${r.name.split(/['\s]/)[0]}</button></div>
+    ${reqSlots && (r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
+    ${reqSlots && !(r.matched || []).length ? `<p class="no-overlap">Not free at your chosen times — ask about other slots.</p>` : ''}
+    <div class="result-actions"><button class="btn solid sm" type="button" data-contact="${attr(r.name)}" data-cid="${attr(r.id)}">Contact ${first}</button></div>
   </article>`;
+}
+
+// Contact from a result opens (or starts) a chat with that cleaner.
+function wireContact(box) {
+  box.querySelectorAll('[data-contact]').forEach((b) =>
+    b.addEventListener('click', () => {
+      activeConvo = getOrCreateChat(b.dataset.contact, b.dataset.cid || null).id;
+      goTo('messages');
+    })
+  );
 }
 
 function savedRow(c) {
