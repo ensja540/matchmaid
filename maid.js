@@ -399,6 +399,9 @@ const WIRE = {
         render();
       })
     );
+    panel.querySelectorAll('[data-client]').forEach((b) =>
+      b.addEventListener('click', () => openClientModal(b.dataset.client))
+    );
   },
   messages() {
     bindConvoButtons();
@@ -520,7 +523,10 @@ function enquiryCard(e) {
       <span class="status status-${e.status}">${e.status}</span>
     </div>
     <p class="enquiry-msg">“${e.message}”</p>
-    <div class="enquiry-actions">${actions}</div>
+    <div class="enquiry-actions">
+      <button class="btn outline sm" type="button" data-client="${e.id}">View profile</button>
+      ${actions}
+    </div>
   </article>`;
 }
 
@@ -559,6 +565,51 @@ function bindConvoButtons() {
   panel.querySelectorAll('[data-convo]').forEach((b) =>
     b.addEventListener('click', () => openConvo(b.dataset.convo))
   );
+}
+
+// ---- Client vetting modal (from an enquiry) ----
+const clientModal = document.getElementById('clientModal');
+const clientModalBody = document.getElementById('clientModalBody');
+document.getElementById('clientModalClose')?.addEventListener('click', () => { clientModal.hidden = true; });
+clientModal?.addEventListener('click', (e) => { if (e.target === clientModal) clientModal.hidden = true; });
+
+async function openClientModal(enquiryId) {
+  if (!sessionUser?.id || !clientModal) return;
+  clientModalBody.innerHTML = '<p class="muted">Loading…</p>';
+  clientModal.hidden = false;
+  try {
+    const c = await mGet(
+      `/api/client-view?enquiryId=${encodeURIComponent(enquiryId)}&userId=${encodeURIComponent(sessionUser.id)}`
+    );
+    clientModalBody.innerHTML = clientCardHTML(c);
+  } catch {
+    clientModalBody.innerHTML = '<p class="muted">Could not load this client’s profile.</p>';
+  }
+}
+function clientCardHTML(c) {
+  const home = [
+    c.bedrooms && `${c.bedrooms} bed`,
+    c.bathrooms && `${c.bathrooms} bath`,
+    c.homeType,
+    c.stairs ? 'stairs' : '',
+  ].filter(Boolean).join(' · ');
+  const fact = (label, val) => (val ? `<div class="cv-fact"><dt>${label}</dt><dd>${escapeHtml(val)}</dd></div>` : '');
+  const initial = escapeHtml((c.fullName || '?').slice(0, 1).toUpperCase());
+  return `
+    <div class="cv-head">
+      <div class="avatar lg">${c.photo ? `<img src="${escapeHtml(c.photo)}" alt="" />` : `<span>${initial}</span>`}</div>
+      <div>
+        <h2>${escapeHtml(c.fullName || 'Client')}</h2>
+        <p class="muted" style="margin:0">${escapeHtml(c.suburb || 'Suburb not set')}</p>
+      </div>
+    </div>
+    <dl class="cv-facts">
+      ${fact('Home', home)}
+      ${fact('Address', c.address)}
+      ${fact('Phone', c.phone)}
+      ${fact('Email', c.email)}
+      ${fact('Notes &amp; access', c.notes)}
+    </dl>`;
 }
 
 function chip(label, on, kind) {

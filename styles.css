@@ -719,6 +719,13 @@ a { color: inherit; text-decoration: none; }
 .avatar-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.3rem; }
 .avatar { width: 84px; height: 84px; border-radius: 50%; overflow: hidden; border: 1px solid var(--line); background: #f4f1ea; display: grid; place-items: center; color: var(--muted); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.lg { width: 60px; height: 60px; font-size: 1.4rem; }
+.cv-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.2rem; }
+.cv-head h2 { font-size: 1.5rem; margin: 0; }
+.cv-facts { margin: 0; }
+.cv-fact { display: grid; grid-template-columns: 130px 1fr; gap: 0.6rem; padding: 0.6rem 0; border-top: 1px solid var(--line); }
+.cv-fact dt { color: var(--muted); font-size: 0.82rem; }
+.cv-fact dd { margin: 0; }
 .check-inline { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
 .check-inline input { width: auto; }
 .verif-list { display: flex; flex-direction: column; gap: 0.6rem; }

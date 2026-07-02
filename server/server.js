@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v11 — drop "(most important)" tag (2026-07-02).
+// deploy: v12 — vet enquirer: client profile from an enquiry (2026-07-02).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -547,6 +547,45 @@ app.get('/api/enquiries', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load enquiries.' });
+  }
+});
+
+// Cleaner views the profile of a client who enquired — so they can vet them.
+app.get('/api/client-view', async (req, res) => {
+  try {
+    const { enquiryId, userId } = req.query;
+    if (!enquiryId || !userId) return res.status(400).json({ error: 'enquiryId and userId are required.' });
+    const { rows } = await query(
+      `select u.full_name, u.email, cp.phone, cp.address_line, cp.notes,
+              cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.profile_photo_url,
+              s.name as suburb, cpf.user_id as cleaner_user_id
+         from enquiries e
+         join client_profiles cp on cp.id = e.client_id
+         join users u on u.id = cp.user_id
+         join cleaner_profiles cpf on cpf.id = e.cleaner_id
+         left join suburbs s on s.id = cp.default_suburb_id
+        where e.id = $1`,
+      [enquiryId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'No such enquiry.' });
+    const r = rows[0];
+    if (r.cleaner_user_id !== userId) return res.status(403).json({ error: 'Not your enquiry.' });
+    res.json({
+      fullName: r.full_name,
+      email: r.email,
+      phone: r.phone || '',
+      suburb: r.suburb || '',
+      address: r.address_line || '',
+      notes: r.notes || '',
+      bedrooms: r.bedrooms || '',
+      bathrooms: r.bathrooms || '',
+      homeType: r.home_type || '',
+      stairs: !!r.has_stairs,
+      photo: r.profile_photo_url || '',
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load client profile.' });
   }
 });
 
