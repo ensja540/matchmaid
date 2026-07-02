@@ -13,7 +13,8 @@ const publicDir = join(here, '..'); // project root holds index.html etc.
 
 const app = express();
 app.use(express.json());
-app.use(express.static(publicDir));
+// `extensions: ['html']` lets /customer serve customer.html — clean URLs.
+app.use(express.static(publicDir, { extensions: ['html'] }));
 
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };

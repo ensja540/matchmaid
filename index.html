@@ -27,8 +27,8 @@
         var sess = window.Session && Session.get();
         if (sess) { location.replace(Session.homeFor(sess.role)); return; }
         var side = localStorage.getItem('mm_side');
-        if (side === 'maid') location.replace('/for-maids.html');
-        else if (side === 'customer') location.replace('/browse.html');
+        if (side === 'maid') location.replace('/for-maids');
+        else if (side === 'customer') location.replace('/browse');
       })();
     </script>
   </head>
@@ -51,12 +51,12 @@
       </p>
 
       <div class="splash-choices">
-        <a class="choice maid" href="/for-maids.html">
+        <a class="choice maid" href="/for-maids">
           <span class="choice-k">01 — A maid</span>
           <span class="choice-t">Supplying</span>
           <span class="choice-s">List your services →</span>
         </a>
-        <a class="choice customer" href="/browse.html">
+        <a class="choice customer" href="/browse">
           <span class="choice-k">02 — Hiring</span>
           <span class="choice-t">In need of a clean</span>
           <span class="choice-s">Browse cleaners →</span>

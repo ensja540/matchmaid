@@ -98,7 +98,7 @@ function runSearch() {
       // Already logged in? Skip signup and open that cleaner's chat.
       if (window.Session && Session.get()) {
         localStorage.setItem('mm_pending_chat', name);
-        location.href = '/customer.html';
+        location.href = '/customer';
         return;
       }
       openModal(name);
@@ -215,11 +215,11 @@ capForm.addEventListener('submit', async (e) => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     Session.set(data.user);
-    location.href = '/customer.html';
+    location.href = '/customer';
   } catch {
     Session.set({ id: 'demo', role: 'client', fullName: body.fullName || 'You', email: body.email });
     capMsg.textContent = 'Account created — taking you to your portal…';
     capMsg.classList.add('ok');
-    setTimeout(() => (location.href = '/customer.html'), 700);
+    setTimeout(() => (location.href = '/customer'), 700);
   }
 });

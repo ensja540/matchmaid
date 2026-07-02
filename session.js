@@ -18,13 +18,13 @@ const Session = {
   },
   // Redirect a role to its portal.
   homeFor(role) {
-    return role === 'cleaner' ? '/maid.html' : '/customer.html';
+    return role === 'cleaner' ? '/maid' : '/customer';
   },
   // Guard a page: ensure someone is logged in with the required role.
   require(role) {
     const user = Session.get();
     if (!user) {
-      location.href = `/login.html?role=${role === 'cleaner' ? 'maid' : 'customer'}`;
+      location.href = `/login?role=${role === 'cleaner' ? 'maid' : 'customer'}`;
       return null;
     }
     if (user.role !== role) {
@@ -45,7 +45,7 @@ function reflectAuthNav() {
   if (!user) return;
   const bar = document.querySelector('.pitch-top-right');
   if (!bar) return;
-  bar.querySelectorAll('a[href*="login.html"], #signupHook').forEach((el) => el.remove());
+  bar.querySelectorAll('a[href*="/login"], #signupHook').forEach((el) => el.remove());
   const out = document.createElement('a');
   out.className = 'ulink';
   out.href = '#';
