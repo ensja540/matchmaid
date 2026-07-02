@@ -42,6 +42,16 @@ const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
 let current = 'overview';
 
+// Availability is real: load the logged-in maid's saved slots from the API,
+// and save changes back to the database. Falls back to demo when not logged in.
+let avail = profile.availability.map((s) => ({ ...s }));
+if (sessionUser?.id) {
+  fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => { if (data?.slots) { avail = data.slots; render(); } })
+    .catch(() => {});
+}
+
 tabs.addEventListener('click', (e) => {
   const btn = e.target.closest('.portal-tab');
   if (!btn) return;
@@ -76,7 +86,7 @@ const PANELS = {
       <div class="dash-grid">
         <div class="stat-card"><span class="stat-num">${profile.rating.toFixed(1)}★</span><span class="stat-label">Rating (${profile.reviews})</span></div>
         <div class="stat-card"><span class="stat-num">${newCount}</span><span class="stat-label">New enquiries</span></div>
-        <div class="stat-card"><span class="stat-num">${profile.availability.length}</span><span class="stat-label">Weekly slots open</span></div>
+        <div class="stat-card"><span class="stat-num">${avail.length}</span><span class="stat-label">Weekly slots open</span></div>
         <div class="stat-card"><span class="stat-num cap">${profile.listingStatus}</span><span class="stat-label">Listing status</span></div>
       </div>
 
@@ -106,7 +116,7 @@ const PANELS = {
       <h1>Your weekly availability</h1>
       <p class="wizard-lede">Tap the times you're usually free. Customers match to you when they
         want a clean at a time you're available.</p>
-      <div class="cal" id="cal">${calendarHTML(profile.availability)}</div>
+      <div class="cal" id="cal">${calendarHTML(avail)}</div>
       <div class="save-row">
         <button class="btn solid" id="saveAvail" type="button">Save availability</button>
         <span class="save-msg" id="availMsg"></span>
@@ -193,11 +203,27 @@ const WIRE = {
     });
   },
   availability() {
-    wireCalendar(panel.querySelector('#cal'), profile.availability, () => {
+    wireCalendar(panel.querySelector('#cal'), avail, () => {
       setMsg('availMsg', 'Unsaved changes', 'pending');
     });
-    panel.querySelector('#saveAvail').addEventListener('click', () => {
-      setMsg('availMsg', `Saved (demo). ${profile.availability.length} slots set.`, 'ok');
+    panel.querySelector('#saveAvail').addEventListener('click', async () => {
+      if (!sessionUser?.id) {
+        setMsg('availMsg', `Saved (demo — log in as a maid to save for real). ${avail.length} slots set.`, 'ok');
+        return;
+      }
+      setMsg('availMsg', 'Saving…', 'pending');
+      try {
+        const res = await fetch('/api/availability', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: sessionUser.id, slots: avail }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Save failed');
+        setMsg('availMsg', `Saved — ${data.saved} slot${data.saved === 1 ? '' : 's'} on your profile. Customers can now match these times.`, 'ok');
+      } catch {
+        setMsg('availMsg', 'Could not save — please try again.', 'err');
+      }
     });
   },
   enquiries() {

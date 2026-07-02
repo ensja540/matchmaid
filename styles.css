@@ -581,6 +581,7 @@ a { color: inherit; text-decoration: none; }
 .save-row { display: flex; align-items: center; gap: 1rem; margin-top: 1.5rem; }
 .save-msg.pending { color: var(--gold); }
 .save-msg.ok { color: var(--green); }
+.save-msg.err { color: #c0392b; }
 .save-msg.error { color: #a3402f; }
 
 /* Results */
