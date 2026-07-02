@@ -30,7 +30,7 @@ Postgres database. We'll deploy in this order:
 ## 3. Domain (Cloudflare)
 
 1. In Render → your service → **Settings → Custom Domains** → add both
-   `yourdomain.com` and `www.yourdomain.com`. Render shows a target host.
+   `matchmaid.co.nz` and `www.matchmaid.co.nz`. Render shows a target host.
 2. In Cloudflare → your domain → **DNS → Records**, add:
    - `CNAME` `@`   → `matchmaid.onrender.com`  (Cloudflare flattens root CNAMEs)
    - `CNAME` `www` → `matchmaid.onrender.com`
@@ -38,7 +38,7 @@ Postgres database. We'll deploy in this order:
    cert; you can switch to Proxied later.
 3. In Cloudflare → **SSL/TLS**, set mode to **Full (strict)**.
 4. Wait for Render to show the domain as **Verified / Certificate issued**
-   (usually minutes). Done — visit https://yourdomain.com.
+   (usually minutes). Done — visit https://matchmaid.co.nz.
 
 ---
 
