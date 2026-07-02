@@ -1,9 +1,10 @@
-// Customer portal. Runs on demo data so it works standalone.
+// Customer portal — fully backed by the real API (no demo data).
+// Reference constants (calendar labels, service catalogue) still come from DEMO.
 const { DAYS, SLOTS } = DEMO;
-const customer = DEMO.customerProfile;
 
 const sessionUser = Session.get();
-const displayName = sessionUser?.fullName || customer.fullName;
+const uid = sessionUser?.id && sessionUser.id !== 'demo' ? sessionUser.id : null;
+const displayName = sessionUser?.fullName || 'there';
 document.getElementById('who').textContent = `Hi, ${displayName.split(' ')[0]} (customer)`;
 document.getElementById('logout').addEventListener('click', () => {
   Session.clear();
@@ -19,71 +20,99 @@ const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
 let current = 'overview';
 
-// Find-a-cleaner working state
-const find = { suburb: customer.defaultSuburb, service: 'regular', desiredRate: 35, slots: [], ran: false, results: [] };
-
-// Suburbs come from the real database (fall back to demo until loaded).
+// ---- Working state (all loaded from the API) ----
+const find = { suburb: 'Riccarton', service: 'regular', desiredRate: 35, slots: [], ran: false, results: [] };
 let suburbList = DEMO.suburbs.slice();
-if (typeof fetch !== 'undefined') {
-  fetch('/api/suburbs')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((list) => {
-      if (list) {
-        suburbList = list.map((s) => s.name);
-        if (current === 'find' || current === 'profile') render();
-      }
-    })
+let directory = []; // active cleaners (for the messages picker)
+let convos = []; // this user's conversations
+let msgCache = {}; // conversationId -> messages[]
+let activeConvo = null;
+let myEnquiries = []; // enquiries this customer has sent
+
+const PROFILE_DEFAULTS = {
+  photo: '', fullName: displayName, email: sessionUser?.email || '', phone: '',
+  suburb: 'Riccarton', address: '', bedrooms: '3', bathrooms: '1', stairs: false, homeType: 'House', notes: '',
+};
+let cprof = { ...PROFILE_DEFAULTS };
+
+// ---- API helpers ----
+const HAS_FETCH = typeof fetch !== 'undefined';
+const getJSON = (url) =>
+  HAS_FETCH ? fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(r))) : Promise.reject();
+const postJSON = (url, body) =>
+  HAS_FETCH
+    ? fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) =>
+        r.ok ? r.json() : Promise.reject(r)
+      )
+    : Promise.reject();
+
+function loadSuburbs() {
+  getJSON('/api/suburbs')
+    .then((list) => { suburbList = list.map((s) => s.name); reRenderIf('find', 'profile'); })
     .catch(() => {});
 }
-
-// ---- Persistent chat store (localStorage — kept indefinitely per browser) ----
-const CHATS_KEY = 'mm_chats';
-function loadChats() {
-  try {
-    const s = JSON.parse(localStorage.getItem(CHATS_KEY));
-    if (Array.isArray(s)) return s;
-  } catch {}
-  const seed = DEMO.conversations.map((c) => ({
-    id: c.id, with: c.with, cleanerId: c.cleanerId, messages: c.messages.map((m) => ({ ...m })),
-  }));
-  localStorage.setItem(CHATS_KEY, JSON.stringify(seed));
-  return seed;
+function loadDirectory() {
+  getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages'); }).catch(() => {});
 }
-let chats = loadChats();
-const saveChats = () => localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
-function getOrCreateChat(name, cleanerId) {
-  let c = chats.find((x) => x.with === name);
-  if (!c) {
-    c = { id: 'c' + Date.now(), with: name, cleanerId: cleanerId || null, messages: [] };
-    chats.unshift(c);
-    saveChats();
+function loadProfile() {
+  getJSON(`/api/client-profile?userId=${encodeURIComponent(uid)}`)
+    .then((data) => { cprof = { ...PROFILE_DEFAULTS, ...data }; reRenderIf('profile', 'overview'); })
+    .catch(() => {});
+}
+function loadEnquiries() {
+  getJSON(`/api/enquiries?userId=${encodeURIComponent(uid)}`)
+    .then((list) => { myEnquiries = list.filter((e) => e.role === 'client'); reRenderIf('overview'); })
+    .catch(() => {});
+}
+function refreshConvos() {
+  return getJSON(`/api/conversations?userId=${encodeURIComponent(uid)}`)
+    .then((list) => { convos = list; })
+    .catch(() => {});
+}
+function loadMsgs(id) {
+  return getJSON(`/api/messages?conversationId=${encodeURIComponent(id)}&userId=${encodeURIComponent(uid)}`)
+    .then((data) => { msgCache[id] = data.messages || []; })
+    .catch(() => { msgCache[id] = []; });
+}
+const apiContact = (cleanerId, message) =>
+  postJSON('/api/contact', { clientUserId: uid, cleanerId, message, serviceSlug: find.service, suburb: find.suburb }).then(
+    (d) => d.conversationId
+  );
+
+function reRenderIf(...panels) {
+  if (panels.includes(current)) render();
+}
+
+async function initMessages() {
+  await refreshConvos();
+  const pending = localStorage.getItem('mm_pending_contact');
+  if (pending) {
+    localStorage.removeItem('mm_pending_contact');
+    try {
+      const { id } = JSON.parse(pending);
+      activeConvo = await apiContact(id);
+      current = 'messages';
+      tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'messages'));
+      await refreshConvos();
+    } catch {}
   }
-  return c;
-}
-let activeConvo = chats[0]?.id || null;
-
-// ---- Persistent customer profile (localStorage) ----
-const CPROF_KEY = 'mm_customer_profile';
-const PROFILE_DEFAULTS = {
-  photo: '', fullName: displayName, email: customer.email, phone: '',
-  suburb: customer.defaultSuburb, address: customer.address,
-  bedrooms: '3', bathrooms: '1', stairs: false, homeType: 'House', notes: customer.notes,
-};
-function loadCProfile() {
-  try { return { ...PROFILE_DEFAULTS, ...JSON.parse(localStorage.getItem(CPROF_KEY)) }; } catch { return { ...PROFILE_DEFAULTS }; }
-}
-let cprof = loadCProfile();
-const saveCProfile = () => localStorage.setItem(CPROF_KEY, JSON.stringify(cprof));
-
-// Arriving from browse "Contact {cleaner}" opens that chat.
-const pendingChat = localStorage.getItem('mm_pending_chat');
-if (pendingChat) {
-  const cl = DEMO.cleaners.find((c) => c.name === pendingChat);
-  activeConvo = getOrCreateChat(pendingChat, cl?.id).id;
-  localStorage.removeItem('mm_pending_chat');
-  current = 'messages';
+  if (!activeConvo && convos[0]) activeConvo = convos[0].id;
+  if (activeConvo) await loadMsgs(activeConvo);
+  render();
 }
 
+// Kick off all loads for the logged-in customer.
+if (uid) {
+  loadSuburbs();
+  loadDirectory();
+  loadProfile();
+  loadEnquiries();
+  initMessages();
+} else {
+  loadSuburbs();
+}
+
+// ---- Navigation ----
 tabs.addEventListener('click', (e) => {
   const btn = e.target.closest('.portal-tab');
   if (!btn) return;
@@ -94,7 +123,6 @@ function goTo(tab) {
   tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
   render();
 }
-
 function render() {
   panel.innerHTML = PANELS[current]();
   WIRE[current]?.();
@@ -102,11 +130,8 @@ function render() {
 
 const PANELS = {
   overview() {
-    const saved = DEMO.savedCleaners
-      .map((id) => DEMO.cleaners.find((c) => c.id === id))
-      .filter(Boolean);
     return `
-      <h1>Welcome, ${displayName.split(' ')[0]}.</h1>
+      <h1>Welcome, ${escapeHtml(displayName.split(' ')[0])}.</h1>
       <div class="cta-card">
         <div>
           <h2>Need a clean?</h2>
@@ -119,7 +144,7 @@ const PANELS = {
         <h2>How Match Maid works</h2>
         <div class="howto"><ol class="steps">
           <li><span class="num">01</span><div><h3>Search your area</h3><p>Choose your suburb and the type of clean to see local maids, best match first.</p></div></li>
-          <li><span class="num">02</span><div><h3>Compare openly</h3><p>Check each maid's hourly rate, rating, reviews and verified badges. Nothing hidden.</p></div></li>
+          <li><span class="num">02</span><div><h3>Compare openly</h3><p>Check each maid's rate range, rating, reviews and verified badges. Nothing hidden.</p></div></li>
           <li><span class="num">03</span><div><h3>Contact your pick</h3><p>Message the single cleaner you like — no bidding wars, no shared leads.</p></div></li>
           <li><span class="num">04</span><div><h3>Arrange it directly</h3><p>Agree the day, time and price between you. Payment stays between you and your cleaner.</p></div></li>
           <li><span class="num">05</span><div><h3>Review after the clean</h3><p>Rate cleanliness, value and punctuality to help the next household choose well.</p></div></li>
@@ -128,19 +153,23 @@ const PANELS = {
 
       <div class="panel-card">
         <h2>Your enquiries</h2>
-        ${DEMO.customerEnquiries
-          .map(
-            (e) => `<div class="enquiry-row">
-              <div><strong>${e.cleaner}</strong> · ${e.service}<br /><span class="muted">${e.when}</span></div>
-              <span class="status status-${e.status}">${e.status}</span>
-            </div>`
-          )
-          .join('')}
+        ${myEnquiries.length
+          ? myEnquiries
+              .map(
+                (e) => `<div class="enquiry-row">
+                  <div><strong>${escapeHtml(e.cleaner)}</strong> · ${escapeHtml(e.service)}<br /><span class="muted">${escapeHtml(e.when)}</span></div>
+                  <span class="status status-${e.status}">${e.status}</span>
+                </div>`
+              )
+              .join('')
+          : '<p class="muted">You haven\'t sent any enquiries yet. Find a cleaner and say hello.</p>'}
       </div>
 
       <div class="panel-card">
-        <h2>Saved cleaners</h2>
-        <div class="results">${saved.map((c) => savedRow(c)).join('')}</div>
+        <h2>Cleaners you've contacted</h2>
+        ${convos.length
+          ? `<div class="results">${convos.map(contactedRow).join('')}</div>`
+          : '<p class="muted">No one yet — the cleaners you message will appear here.</p>'}
       </div>`;
   },
 
@@ -171,29 +200,31 @@ const PANELS = {
   },
 
   messages() {
-    const convo = chats.find((c) => c.id === activeConvo) || chats[0];
-    const unmessaged = DEMO.cleaners.filter((c) => !chats.some((ch) => ch.with === c.name));
+    const convo = convos.find((c) => c.id === activeConvo) || convos[0] || null;
+    if (convo) activeConvo = convo.id;
+    const contactedIds = new Set(convos.map((c) => c.cleanerId));
+    const pickable = directory.filter((c) => !contactedIds.has(c.id));
     return `
       <h1>Messages</h1>
-      <p class="wizard-lede">Chat directly with any cleaner on Match Maid. Your history is saved and stays here.</p>
+      <p class="wizard-lede">Chat directly with any cleaner on Match Maid. Your history is saved to your account.</p>
       <div class="msg-layout">
         <div class="convo-col">
           <form class="new-chat" id="newChat">
             <select id="newCleaner">${
-              unmessaged.length
-                ? unmessaged.map((c) => `<option value="${c.name}">${c.name}</option>`).join('')
+              pickable.length
+                ? pickable.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
                 : '<option value="">All cleaners messaged</option>'
             }</select>
-            <button class="btn outline sm" type="submit" ${unmessaged.length ? '' : 'disabled'}>New</button>
+            <button class="btn outline sm" type="submit" ${pickable.length ? '' : 'disabled'}>New</button>
           </form>
           <div class="convo-list">
             ${
-              chats.length
-                ? chats
+              convos.length
+                ? convos
                     .map(
                       (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
-                        <strong>${c.with}</strong>
-                        <span class="muted">${lastLine(c)}</span>
+                        <strong>${escapeHtml(c.with)}</strong>
+                        <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
                       </button>`
                     )
                     .join('')
@@ -204,7 +235,7 @@ const PANELS = {
         <div class="thread">
           ${
             convo
-              ? threadHTML(convo)
+              ? threadHTML(convo, msgCache[convo.id] ?? null)
               : '<div class="bubbles"><p class="muted" style="margin:auto">Start a chat with any cleaner →</p></div>'
           }
         </div>
@@ -255,6 +286,9 @@ const PANELS = {
 const WIRE = {
   overview() {
     panel.querySelector('[data-goto]')?.addEventListener('click', () => goTo('find'));
+    panel.querySelectorAll('[data-open]').forEach((b) =>
+      b.addEventListener('click', () => openConvo(b.dataset.open, true))
+    );
   },
   find() {
     const form = panel.querySelector('#findForm');
@@ -273,21 +307,15 @@ const WIRE = {
       const box = panel.querySelector('#findResults');
       box.innerHTML = '<p class="muted">Searching…</p>';
       try {
-        const res = await fetch('/api/match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            suburb: find.suburb,
-            services: [find.service],
-            budgetMin: Math.max(0, find.desiredRate - 10),
-            budgetMax: find.desiredRate + 10,
-            verif: [],
-            durationHours: 2,
-            slots: find.slots,
-          }),
+        const data = await postJSON('/api/match', {
+          suburb: find.suburb,
+          services: [find.service],
+          budgetMin: Math.max(0, find.desiredRate - 10),
+          budgetMax: find.desiredRate + 10,
+          verif: [],
+          durationHours: 2,
+          slots: find.slots,
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error();
         find.results = data.results || [];
       } catch {
         box.innerHTML = '<p class="muted">Search is unavailable right now — please try again.</p>';
@@ -299,28 +327,29 @@ const WIRE = {
   },
   messages() {
     panel.querySelectorAll('[data-convo]').forEach((b) =>
-      b.addEventListener('click', () => {
-        activeConvo = b.dataset.convo;
-        render();
-      })
+      b.addEventListener('click', () => openConvo(b.dataset.convo))
     );
     const nc = panel.querySelector('#newChat');
-    nc?.addEventListener('submit', (e) => {
+    nc?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = panel.querySelector('#newCleaner').value;
-      if (!name) return;
-      const cl = DEMO.cleaners.find((c) => c.name === name);
-      activeConvo = getOrCreateChat(name, cl?.id).id;
+      const cleanerId = panel.querySelector('#newCleaner').value;
+      if (!cleanerId || !uid) return;
+      activeConvo = await apiContact(cleanerId);
+      await refreshConvos();
+      await loadMsgs(activeConvo);
       render();
     });
     const composer = panel.querySelector('#composer');
-    composer?.addEventListener('submit', (e) => {
+    composer?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const t = composer.body.value.trim();
-      if (!t) return;
-      const c = chats.find((x) => x.id === activeConvo);
-      c.messages.push({ from: 'me', body: t, at: nowLabel() });
-      saveChats();
+      if (!t || !activeConvo || !uid) return;
+      composer.body.value = '';
+      try {
+        await postJSON('/api/messages', { conversationId: activeConvo, senderUserId: uid, body: t });
+        await loadMsgs(activeConvo);
+        await refreshConvos();
+      } catch {}
       render();
       const bubbles = panel.querySelector('#bubbles');
       if (bubbles) bubbles.scrollTop = bubbles.scrollHeight;
@@ -338,7 +367,7 @@ const WIRE = {
       };
       reader.readAsDataURL(file);
     });
-    panel.querySelector('#profileForm').addEventListener('submit', (e) => {
+    panel.querySelector('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
       Object.assign(cprof, {
@@ -347,13 +376,41 @@ const WIRE = {
         bedrooms: f.bedrooms.value, bathrooms: f.bathrooms.value,
         homeType: f.homeType.value, stairs: f.stairs.checked, notes: f.notes.value,
       });
-      saveCProfile();
       const el = panel.querySelector('#profMsg');
-      el.textContent = 'Saved. Your profile is stored on this device.';
-      el.className = 'save-msg ok';
+      if (!uid) {
+        el.textContent = 'Log in to save your profile.';
+        el.className = 'save-msg err';
+        return;
+      }
+      el.textContent = 'Saving…';
+      el.className = 'save-msg';
+      try {
+        await putClientProfile({ userId: uid, ...cprof });
+        el.textContent = 'Saved to your account.';
+        el.className = 'save-msg ok';
+      } catch {
+        el.textContent = 'Could not save — please try again.';
+        el.className = 'save-msg err';
+      }
     });
   },
 };
+// PUT via fetch (postJSON is POST; client-profile needs PUT).
+function putClientProfile(body) {
+  if (!HAS_FETCH) return Promise.reject();
+  return fetch('/api/client-profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => (r.ok ? r.json() : Promise.reject(r)));
+}
+
+async function openConvo(id, jump) {
+  activeConvo = id;
+  if (msgCache[id] === undefined) await loadMsgs(id);
+  if (jump) goTo('messages');
+  else render();
+}
 
 // ---------- Results (from the real /api/match) ----------
 function renderResults(scored) {
@@ -392,26 +449,33 @@ function resultCard(r) {
   </article>`;
 }
 
-// Contact from a result opens (or starts) a chat with that cleaner.
+// Contact from a result: start (or reuse) a real conversation, then open it.
 function wireContact(box) {
   box.querySelectorAll('[data-contact]').forEach((b) =>
-    b.addEventListener('click', () => {
-      activeConvo = getOrCreateChat(b.dataset.contact, b.dataset.cid || null).id;
+    b.addEventListener('click', async () => {
+      if (!uid) {
+        location.href = '/login?role=customer';
+        return;
+      }
+      b.disabled = true;
+      try {
+        activeConvo = await apiContact(b.dataset.cid);
+        await refreshConvos();
+        await loadMsgs(activeConvo);
+      } catch {}
       goTo('messages');
     })
   );
 }
 
-function savedRow(c) {
+function contactedRow(c) {
   return `<article class="result">
     <div class="result-head">
-      <div><h3>${c.name}</h3><p class="result-meta">★ ${c.rating.toFixed(1)} (${c.reviews}) · $${c.rate}/hr · ${c.areas.join(', ')}</p></div>
-      <button class="btn outline sm" type="button">Contact</button>
+      <div><h3>${escapeHtml(c.with)}</h3><p class="result-meta">${escapeHtml((c.lastBody || '').slice(0, 48))}</p></div>
+      <button class="btn outline sm" type="button" data-open="${c.id}">Message</button>
     </div>
   </article>`;
 }
-
-function saveBtnWire() {}
 
 // ---------- Shared helpers ----------
 function opt(value, label, selected) {
@@ -423,19 +487,14 @@ function escapeHtml(s) {
 }
 const attr = escapeHtml;
 const text = escapeHtml;
-function nowLabel() {
-  return new Date().toLocaleString('en-NZ', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-}
-function lastLine(c) {
-  const m = c.messages[c.messages.length - 1];
-  return m ? escapeHtml(m.body.slice(0, 36)) + (m.body.length > 36 ? '…' : '') : 'New conversation';
-}
-function threadHTML(c) {
-  return `<div class="thread-head"><strong>${c.with}</strong></div>
+function threadHTML(c, msgs) {
+  return `<div class="thread-head"><strong>${escapeHtml(c.with)}</strong></div>
     <div class="bubbles" id="bubbles">
       ${
-        c.messages.length
-          ? c.messages.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
+        msgs == null
+          ? '<p class="muted" style="margin:auto">Loading…</p>'
+          : msgs.length
+          ? msgs.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
           : '<p class="muted" style="margin:auto">Say hi 👋</p>'
       }
     </div>
@@ -471,5 +530,5 @@ function wireCalendar(container, selected) {
   );
 }
 
-// Everything above is defined — safe to do the first render now.
+// First paint (data streams in from the API and re-renders as it arrives).
 render();

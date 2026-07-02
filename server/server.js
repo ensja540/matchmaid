@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v7 — force redeploy so root-level static changes ship (2026-07-02).
+// deploy: v8 — full real data: messaging, enquiries, profiles (2026-07-02).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -198,6 +198,7 @@ app.get('/api/profile', async (req, res) => {
     const { rows } = await query(
       `select cp.id, cp.business_name, cp.bio, cp.years_experience, cp.listing_status,
               cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
+              cp.avg_rating, cp.review_count,
               cp.id_verified, cp.police_verified, cp.insurance_verified,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
@@ -221,6 +222,8 @@ app.get('/api/profile', async (req, res) => {
       listingStatus: cp.listing_status,
       rateMin: cp.hourly_rate_min != null ? Number(cp.hourly_rate_min) : null,
       rateMax: cp.hourly_rate_max != null ? Number(cp.hourly_rate_max) : null,
+      avgRating: Number(cp.avg_rating) || 0,
+      reviews: cp.review_count || 0,
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
       services: svc.rows.map((r) => r.slug),
       areas: areas.rows.map((r) => r.name),
@@ -281,6 +284,295 @@ app.put('/api/profile', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not save profile.' });
+  }
+});
+
+// --- Client profile (customer basics + home details) -----------------------
+async function clientIdForUser(userId) {
+  const { rows } = await query('select id from client_profiles where user_id = $1', [userId]);
+  return rows[0]?.id ?? null;
+}
+async function ensureClientProfile(userId) {
+  let id = await clientIdForUser(userId);
+  if (!id) {
+    const { rows } = await query('insert into client_profiles (user_id) values ($1) returning id', [userId]);
+    id = rows[0].id;
+  }
+  return id;
+}
+
+app.get('/api/client-profile', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query(
+      `select u.full_name, u.email, cp.phone, cp.address_line, cp.notes,
+              cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.profile_photo_url,
+              s.name as suburb
+         from users u
+         left join client_profiles cp on cp.user_id = u.id
+         left join suburbs s on s.id = cp.default_suburb_id
+        where u.id = $1`,
+      [userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'No such user.' });
+    const r = rows[0];
+    res.json({
+      fullName: r.full_name,
+      email: r.email,
+      phone: r.phone || '',
+      suburb: r.suburb || '',
+      address: r.address_line || '',
+      notes: r.notes || '',
+      bedrooms: r.bedrooms || '3',
+      bathrooms: r.bathrooms || '1',
+      homeType: r.home_type || 'House',
+      stairs: !!r.has_stairs,
+      photo: r.profile_photo_url || '',
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load profile.' });
+  }
+});
+
+app.put('/api/client-profile', async (req, res) => {
+  try {
+    const { userId, fullName, email, phone, suburb, address, notes, bedrooms, bathrooms, homeType, stairs, photo } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    await ensureClientProfile(userId);
+    await query(
+      `update users set full_name = coalesce($2, full_name),
+              email = coalesce($3, email), updated_at = now() where id = $1`,
+      [userId, fullName ?? null, email ? email.toLowerCase().trim() : null]
+    );
+    const sub = suburb ? await query('select id from suburbs where name = $1 limit 1', [suburb]) : { rows: [] };
+    await query(
+      `update client_profiles set
+         default_suburb_id = coalesce($2, default_suburb_id),
+         address_line = $3, notes = $4, phone = $5,
+         bedrooms = $6, bathrooms = $7, home_type = $8, has_stairs = $9,
+         profile_photo_url = coalesce($10, profile_photo_url)
+       where user_id = $1`,
+      [userId, sub.rows[0]?.id ?? null, address ?? null, notes ?? null, phone ?? null,
+       bedrooms ?? null, bathrooms ?? null, homeType ?? null, !!stairs, photo || null]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not save profile.' });
+  }
+});
+
+// --- Cleaner directory (for the messages picker) ---------------------------
+app.get('/api/directory', async (_req, res) => {
+  try {
+    const { rows } = await query(
+      `select cp.id, coalesce(cp.business_name, u.full_name) as name,
+              cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count,
+              cp.id_verified, cp.police_verified, cp.insurance_verified,
+              coalesce(array_agg(distinct s.name) filter (where s.name is not null), array[]::text[]) as areas
+         from cleaner_profiles cp
+         join users u on u.id = cp.user_id
+         left join cleaner_service_areas csa on csa.cleaner_id = cp.id
+         left join suburbs s on s.id = csa.suburb_id
+        where cp.listing_status = 'active'
+        group by cp.id, u.id
+        order by cp.avg_rating desc`
+    );
+    res.json(rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      rateMin: r.hourly_rate_min != null ? Number(r.hourly_rate_min) : null,
+      rateMax: r.hourly_rate_max != null ? Number(r.hourly_rate_max) : null,
+      rating: Number(r.avg_rating) || 0,
+      reviews: r.review_count,
+      badges: { id: r.id_verified, police: r.police_verified, insurance: r.insurance_verified },
+      areas: r.areas,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load directory.' });
+  }
+});
+
+// --- Enquiries + messaging (real, cross-device) ----------------------------
+// Contact a cleaner: reuse the existing thread with them, or create an enquiry
+// + conversation, then (optionally) post the first message.
+app.post('/api/contact', async (req, res) => {
+  try {
+    const { clientUserId, cleanerId, message, serviceSlug, suburb } = req.body ?? {};
+    if (!clientUserId || !cleanerId) return res.status(400).json({ error: 'clientUserId and cleanerId are required.' });
+    const clientId = await ensureClientProfile(clientUserId);
+
+    const existing = await query(
+      'select id from conversations where client_id = $1 and cleaner_id = $2 order by created_at limit 1',
+      [clientId, cleanerId]
+    );
+    let conversationId = existing.rows[0]?.id;
+    if (!conversationId) {
+      const svc = serviceSlug ? await query('select id from service_types where slug = $1', [serviceSlug]) : { rows: [] };
+      const sub = suburb ? await query('select id from suburbs where name = $1 limit 1', [suburb]) : { rows: [] };
+      const enq = await query(
+        `insert into enquiries (client_id, cleaner_id, service_type_id, suburb_id, message)
+         values ($1, $2, $3, $4, $5) returning id`,
+        [clientId, cleanerId, svc.rows[0]?.id ?? null, sub.rows[0]?.id ?? null, message ?? null]
+      );
+      const conv = await query(
+        `insert into conversations (enquiry_id, client_id, cleaner_id, last_message_at)
+         values ($1, $2, $3, now()) returning id`,
+        [enq.rows[0].id, clientId, cleanerId]
+      );
+      conversationId = conv.rows[0].id;
+    }
+    if (message) {
+      await query('insert into messages (conversation_id, sender_user_id, body) values ($1, $2, $3)',
+        [conversationId, clientUserId, message]);
+      await query('update conversations set last_message_at = now() where id = $1', [conversationId]);
+    }
+    res.json({ conversationId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not start the conversation.' });
+  }
+});
+
+app.get('/api/conversations', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query(
+      `select c.id, c.cleaner_id, c.client_id, c.last_message_at,
+              cpf.user_id as cleaner_user_id, clpf.user_id as client_user_id,
+              coalesce(cpf.business_name, cu.full_name) as cleaner_name,
+              clu.full_name as client_name,
+              (select body from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_body,
+              (select to_char(sent_at, 'Dy HH24:MI') from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_at
+         from conversations c
+         join cleaner_profiles cpf on cpf.id = c.cleaner_id
+         join users cu on cu.id = cpf.user_id
+         join client_profiles clpf on clpf.id = c.client_id
+         join users clu on clu.id = clpf.user_id
+        where cpf.user_id = $1 or clpf.user_id = $1
+        order by c.last_message_at desc nulls last`,
+      [userId]
+    );
+    res.json(rows.map((r) => ({
+      id: r.id,
+      with: r.cleaner_user_id === userId ? r.client_name : r.cleaner_name,
+      cleanerId: r.cleaner_id,
+      lastBody: r.last_body || 'New conversation',
+      lastAt: r.last_at || '',
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load conversations.' });
+  }
+});
+
+async function isParticipant(conversationId, userId) {
+  const { rows } = await query(
+    `select 1 from conversations c
+       join cleaner_profiles cpf on cpf.id = c.cleaner_id
+       join client_profiles clpf on clpf.id = c.client_id
+      where c.id = $1 and (cpf.user_id = $2 or clpf.user_id = $2)`,
+    [conversationId, userId]
+  );
+  return rows.length > 0;
+}
+
+app.get('/api/messages', async (req, res) => {
+  try {
+    const { conversationId, userId } = req.query;
+    if (!conversationId || !userId) return res.status(400).json({ error: 'conversationId and userId are required.' });
+    if (!(await isParticipant(conversationId, userId))) return res.status(403).json({ error: 'Not your conversation.' });
+    const { rows } = await query(
+      `select sender_user_id, body, to_char(sent_at, 'Dy HH24:MI') as at
+         from messages where conversation_id = $1 order by sent_at`,
+      [conversationId]
+    );
+    res.json({ messages: rows.map((m) => ({ from: m.sender_user_id === userId ? 'me' : 'them', body: m.body, at: m.at })) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load messages.' });
+  }
+});
+
+app.post('/api/messages', async (req, res) => {
+  try {
+    const { conversationId, senderUserId, body } = req.body ?? {};
+    if (!conversationId || !senderUserId || !body) return res.status(400).json({ error: 'conversationId, senderUserId and body are required.' });
+    if (!(await isParticipant(conversationId, senderUserId))) return res.status(403).json({ error: 'Not your conversation.' });
+    await query('insert into messages (conversation_id, sender_user_id, body) values ($1, $2, $3)', [conversationId, senderUserId, body]);
+    await query('update conversations set last_message_at = now() where id = $1', [conversationId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not send message.' });
+  }
+});
+
+app.get('/api/enquiries', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query(
+      `select e.id, e.status, e.message, to_char(e.created_at, 'Dy DD Mon') as when,
+              st.name as service, s.name as suburb,
+              clu.full_name as client_name,
+              coalesce(cpf.business_name, cu.full_name) as cleaner_name,
+              cpf.user_id as cleaner_user_id
+         from enquiries e
+         join cleaner_profiles cpf on cpf.id = e.cleaner_id
+         join users cu on cu.id = cpf.user_id
+         join client_profiles clpf on clpf.id = e.client_id
+         join users clu on clu.id = clpf.user_id
+         left join service_types st on st.id = e.service_type_id
+         left join suburbs s on s.id = e.suburb_id
+        where cpf.user_id = $1 or clpf.user_id = $1
+        order by e.created_at desc`,
+      [userId]
+    );
+    res.json(rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      message: r.message || '',
+      when: r.when,
+      service: r.service || 'Cleaning',
+      suburb: r.suburb || '',
+      role: r.cleaner_user_id === userId ? 'cleaner' : 'client',
+      customer: r.client_name,
+      cleaner: r.cleaner_name,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load enquiries.' });
+  }
+});
+
+// Cleaner accepts / declines / responds to an enquiry.
+app.post('/api/enquiry-status', async (req, res) => {
+  try {
+    const { enquiryId, userId, status } = req.body ?? {};
+    const allowed = ['new', 'responded', 'accepted', 'declined', 'closed'];
+    if (!enquiryId || !userId || !allowed.includes(status))
+      return res.status(400).json({ error: 'enquiryId, userId and a valid status are required.' });
+    const auth = await query(
+      `select 1 from enquiries e join cleaner_profiles cpf on cpf.id = e.cleaner_id
+        where e.id = $1 and cpf.user_id = $2`,
+      [enquiryId, userId]
+    );
+    if (!auth.rows.length) return res.status(403).json({ error: 'Not your enquiry.' });
+    await query(
+      `update enquiries set status = $2::enquiry_status,
+              responded_at = case when $2::enquiry_status <> 'new' then now() else responded_at end
+        where id = $1`,
+      [enquiryId, status]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not update enquiry.' });
   }
 });
 

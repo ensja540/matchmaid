@@ -103,12 +103,13 @@ async function runSearch() {
   results.querySelectorAll('[data-contact]').forEach((b) =>
     b.addEventListener('click', () => {
       const name = b.dataset.contact;
+      const cid = b.dataset.cid;
       if (window.Session && Session.get()) {
-        localStorage.setItem('mm_pending_chat', name);
+        localStorage.setItem('mm_pending_contact', JSON.stringify({ id: cid, name }));
         location.href = '/customer';
         return;
       }
-      openModal(name);
+      openModal(name, cid);
     })
   );
   results.querySelectorAll('[data-hook]').forEach((b) => b.addEventListener('click', () => openModal(null)));
@@ -136,7 +137,7 @@ function resultCard(r, p) {
     ${offeredChips || missingChips ? `<div class="chips">${offeredChips}${missingChips}</div>` : ''}
     ${(r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
     <div class="result-actions">
-      <button class="btn solid sm" type="button" data-contact="${r.name}">Contact ${first}</button>
+      <button class="btn solid sm" type="button" data-contact="${r.name}" data-cid="${r.id}">Contact ${first}</button>
     </div>
   </article>`;
 }
@@ -182,6 +183,7 @@ const modalSub = document.getElementById('modalSub');
 const capForm = document.getElementById('capForm');
 const capMsg = document.getElementById('capMsg');
 let pendingCleaner = null;
+let pendingCleanerId = null;
 
 document.getElementById('signupHook')?.addEventListener('click', () => openModal(null));
 document.getElementById('modalClose').addEventListener('click', closeModal);
@@ -189,8 +191,9 @@ modal.addEventListener('click', (e) => {
   if (e.target === modal) closeModal();
 });
 
-function openModal(cleanerName) {
+function openModal(cleanerName, cleanerId) {
   pendingCleaner = cleanerName;
+  pendingCleanerId = cleanerId || null;
   if (cleanerName) {
     modalTitle.textContent = `Message ${cleanerName}`;
     modalSub.textContent = "You're one step away — create your free account to send a message.";
@@ -217,7 +220,7 @@ capForm.addEventListener('submit', async (e) => {
     email: capForm.email.value,
     password: capForm.password.value,
   };
-  if (pendingCleaner) localStorage.setItem('mm_pending_chat', pendingCleaner);
+  if (pendingCleanerId) localStorage.setItem('mm_pending_contact', JSON.stringify({ id: pendingCleanerId, name: pendingCleaner }));
   try {
     const res = await fetch('/api/register', {
       method: 'POST',

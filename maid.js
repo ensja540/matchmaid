@@ -2,7 +2,7 @@
 // exists we greet that user, otherwise we fall back to the demo maid.
 const { DAYS, SLOTS } = DEMO;
 const profile = DEMO.maidProfile;
-const enquiries = DEMO.enquiriesForMaid.map((e) => ({ ...e }));
+let enquiries = []; // real enquiries load from the API when logged in
 
 // Verification process state (demo: persisted in localStorage).
 const VERIF_KEY = 'mm_maid_verif';
@@ -54,6 +54,8 @@ let mp = {
   rateMax: profile.rateMax,
   years: profile.yearsExperience,
   listingStatus: profile.listingStatus,
+  avgRating: profile.rating,
+  reviews: profile.reviews,
 };
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
@@ -68,6 +70,8 @@ if (sessionUser?.id) {
         rateMax: data.rateMax ?? mp.rateMax,
         years: data.years ?? '',
         listingStatus: data.listingStatus ?? mp.listingStatus,
+        avgRating: data.avgRating ?? 0,
+        reviews: data.reviews ?? 0,
       };
       areas.clear();
       (data.areas || []).forEach((a) => areas.add(a));
@@ -82,11 +86,16 @@ if (sessionUser?.id) {
       render();
     })
     .catch(() => {});
-}
-if (sessionUser?.id) {
+
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => { if (data?.slots) { avail = data.slots; render(); } })
+    .catch(() => {});
+
+  // Real enquiries addressed to this maid.
+  fetch(`/api/enquiries?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((list) => { if (list) { enquiries = list.filter((e) => e.role === 'cleaner'); render(); } })
     .catch(() => {});
 }
 
@@ -120,10 +129,10 @@ const PANELS = {
       </div>
 
       <div class="dash-grid">
-        <div class="stat-card"><span class="stat-num">${profile.rating.toFixed(1)}★</span><span class="stat-label">Rating (${profile.reviews})</span></div>
+        <div class="stat-card"><span class="stat-num">${Number(mp.avgRating || 0).toFixed(1)}★</span><span class="stat-label">Rating (${mp.reviews || 0})</span></div>
         <div class="stat-card"><span class="stat-num">${newCount}</span><span class="stat-label">New enquiries</span></div>
         <div class="stat-card"><span class="stat-num">${avail.length}</span><span class="stat-label">Weekly slots open</span></div>
-        <div class="stat-card"><span class="stat-num cap">${profile.listingStatus}</span><span class="stat-label">Listing status</span></div>
+        <div class="stat-card"><span class="stat-num cap">${mp.listingStatus}</span><span class="stat-label">Listing status</span></div>
       </div>
 
       <div class="panel-card">
@@ -143,7 +152,9 @@ const PANELS = {
           <h2>Latest enquiries</h2>
           <button class="btn outline sm" data-goto="enquiries" type="button">View all</button>
         </div>
-        ${enquiries.slice(0, 2).map(enquiryRow).join('')}
+        ${enquiries.length
+          ? enquiries.slice(0, 2).map(enquiryRow).join('')
+          : '<p class="muted">No enquiries yet — complete your profile and availability so clients can find and message you.</p>'}
       </div>`;
   },
 
@@ -163,7 +174,9 @@ const PANELS = {
     return `
       <h1>Enquiries</h1>
       <p class="wizard-lede">Each enquiry is exclusive to you, no bidding against anyone else.</p>
-      <div id="enqList">${enquiries.map(enquiryCard).join('')}</div>`;
+      <div id="enqList">${enquiries.length
+        ? enquiries.map(enquiryCard).join('')
+        : '<p class="muted">No enquiries yet. When a client messages you from search, it lands here — exclusively yours.</p>'}</div>`;
   },
 
   profile() {
@@ -277,11 +290,20 @@ const WIRE = {
   },
   enquiries() {
     panel.querySelectorAll('[data-act]').forEach((b) =>
-      b.addEventListener('click', () => {
+      b.addEventListener('click', async () => {
         const enq = enquiries.find((e) => e.id === b.dataset.id);
         if (!enq) return;
-        if (b.dataset.act === 'accept') enq.status = 'accepted';
-        if (b.dataset.act === 'decline') enq.status = 'declined';
+        const status = b.dataset.act === 'accept' ? 'accepted' : 'declined';
+        if (sessionUser?.id) {
+          try {
+            await fetch('/api/enquiry-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enquiryId: enq.id, userId: sessionUser.id, status }),
+            });
+          } catch {}
+        }
+        enq.status = status;
         render();
       })
     );
@@ -367,7 +389,7 @@ const WIRE = {
 // ---------- Helpers ----------
 function enquiryRow(e) {
   return `<div class="enquiry-row">
-    <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.preferred}</span></div>
+    <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.when}</span></div>
     <span class="status status-${e.status}">${e.status}</span>
   </div>`;
 }
@@ -380,7 +402,7 @@ function enquiryCard(e) {
       : `<span class="status status-${e.status}">${e.status}</span>`;
   return `<article class="enquiry">
     <div class="enquiry-head">
-      <div><h3>${e.customer}</h3><p class="muted">${e.service} · ${e.suburb} · ${e.preferred} · ${e.frequency}</p></div>
+      <div><h3>${e.customer}</h3><p class="muted">${e.service} · ${e.suburb} · ${e.when}</p></div>
       <span class="status status-${e.status}">${e.status}</span>
     </div>
     <p class="enquiry-msg">“${e.message}”</p>
