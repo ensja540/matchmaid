@@ -11,6 +11,11 @@ document.getElementById('logout').addEventListener('click', () => {
   Session.clear();
   location.href = '/';
 });
+// Same account, other side: flip the session role and head to the hirer portal.
+document.getElementById('switchSide')?.addEventListener('click', () => {
+  const u = Session.get();
+  if (u) { u.role = 'client'; Session.set(u); }
+});
 
 const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
@@ -24,7 +29,6 @@ tabs.addEventListener('click', (e) => {
   render();
 });
 
-render();
 function render() {
   panel.innerHTML = PANELS[current]();
   WIRE[current]?.();
@@ -271,3 +275,6 @@ function wireCalendar(container, selected, onChange) {
     })
   );
 }
+
+// Everything above is defined — safe to do the first render now.
+render();
