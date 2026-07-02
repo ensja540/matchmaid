@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v16 — splash hero, sparkles, header colour (2026-07-02).
+// deploy: v17 — identity documents pathway (upload + review) (2026-07-02).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -13,7 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, '..'); // project root holds index.html etc.
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '8mb' })); // room for base64 photos + ID documents
 // `extensions: ['html']` lets /customer serve customer.html — clean URLs.
 // `no-cache` = always revalidate, so browsers/Cloudflare never serve a stale
 // page or script (this is what caused "only works on hard refresh").
@@ -250,16 +250,17 @@ app.put('/api/profile', async (req, res) => {
     const max = single != null ? single : rateMax != null && rateMax !== '' ? Number(rateMax) : null;
     const mid = single != null ? single : min != null && max != null ? (min + max) / 2 : min ?? max ?? null;
 
+    // Note: verified badges are NOT set here — they're earned by submitting a
+    // document (see /api/verification) and being approved, not self-claimed.
     await query(
       `update cleaner_profiles set
          business_name = $2, bio = $3, years_experience = $4,
          hourly_rate_min = $5, hourly_rate_max = $6, hourly_rate = $7,
-         id_verified = $8, police_verified = $9, insurance_verified = $10,
-         listing_status = coalesce($11, listing_status), updated_at = now()
+         listing_status = coalesce($8, listing_status), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
-        min, max, mid, !!badges?.id, !!badges?.police, !!badges?.insurance, listingStatus ?? null,
+        min, max, mid, listingStatus ?? null,
       ]
     );
 
@@ -364,6 +365,61 @@ app.put('/api/client-profile', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not save profile.' });
+  }
+});
+
+// --- Verification: submit an identity/police/insurance document -------------
+const VERIF_TYPES = ['id', 'police', 'insurance'];
+const VERIF_COL = { id: 'id_verified', police: 'police_verified', insurance: 'insurance_verified' };
+
+app.get('/api/verifications', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const cleanerId = await cleanerIdForUser(userId);
+    if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+    const prof = await query(
+      'select id_verified, police_verified, insurance_verified from cleaner_profiles where id = $1',
+      [cleanerId]
+    );
+    const subs = await query(
+      `select distinct on (type) type, status from verifications where cleaner_id = $1 order by type, created_at desc`,
+      [cleanerId]
+    );
+    const submitted = Object.fromEntries(subs.rows.map((r) => [r.type, r.status]));
+    const p = prof.rows[0] || {};
+    const status = {};
+    for (const t of VERIF_TYPES) {
+      if (p[VERIF_COL[t]]) status[t] = 'verified';
+      else if (submitted[t] === 'pending') status[t] = 'pending';
+      else if (submitted[t] === 'failed') status[t] = 'failed';
+      else status[t] = 'none';
+    }
+    res.json(status);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load verifications.' });
+  }
+});
+
+app.post('/api/verification', async (req, res) => {
+  try {
+    const { userId, type, documentDataUrl } = req.body ?? {};
+    if (!userId || !VERIF_TYPES.includes(type)) return res.status(400).json({ error: 'userId and a valid type are required.' });
+    if (!documentDataUrl) return res.status(400).json({ error: 'Please attach a document.' });
+    const cleanerId = await cleanerIdForUser(userId);
+    if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+    // One active submission per type: clear old, insert fresh as pending.
+    await query('delete from verifications where cleaner_id = $1 and type = $2', [cleanerId, type]);
+    await query(
+      `insert into verifications (cleaner_id, type, status, document_url, provider)
+       values ($1, $2, 'pending', $3, 'self-upload')`,
+      [cleanerId, type, documentDataUrl]
+    );
+    res.json({ ok: true, status: 'pending' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not submit document.' });
   }
 });
 

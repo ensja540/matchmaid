@@ -85,14 +85,14 @@ if (sessionUser?.id) {
       mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
       svcSet.clear();
       (data.services || []).forEach((s) => svcSet.add(s));
-      if (data.badges) {
-        ['id', 'police', 'insurance'].forEach((k) => {
-          if (data.badges[k]) verif[k] = 'verified';
-          else if (verif[k] === 'verified') verif[k] = 'none';
-        });
-      }
       render();
     })
+    .catch(() => {});
+
+  // Real verification statuses (document submissions + approvals).
+  fetch(`/api/verifications?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => { if (s) { verif = { ...verif, ...s }; render(); } })
     .catch(() => {});
 
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -437,14 +437,24 @@ const WIRE = {
       })
     );
     wireLocSection();
-    panel.querySelectorAll('[data-verify]').forEach((b) =>
-      b.addEventListener('click', () => { verif[b.dataset.verify] = 'pending'; saveVerif(); render(); })
-    );
-    panel.querySelectorAll('[data-approve]').forEach((b) =>
-      b.addEventListener('click', () => { verif[b.dataset.approve] = 'verified'; saveVerif(); render(); })
-    );
-    panel.querySelectorAll('[data-remove]').forEach((b) =>
-      b.addEventListener('click', () => { verif[b.dataset.remove] = 'none'; saveVerif(); render(); })
+    panel.querySelectorAll('[data-doc]').forEach((inp) =>
+      inp.addEventListener('change', () => {
+        const file = inp.files[0];
+        if (!file || !sessionUser?.id) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+          verif[inp.dataset.doc] = 'pending';
+          render();
+          try {
+            await fetch('/api/verification', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: sessionUser.id, type: inp.dataset.doc, documentDataUrl: reader.result }),
+            });
+          } catch {}
+        };
+        reader.readAsDataURL(file);
+      })
     );
     panel.querySelector('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -470,11 +480,6 @@ const WIRE = {
             rate: mp.rate,
             services: [...svcSet],
             areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
-            badges: {
-              id: verif.id === 'verified',
-              police: verif.police === 'verified',
-              insurance: verif.insurance === 'verified',
-            },
             listingStatus: 'active',
           }),
         });
@@ -616,11 +621,14 @@ function verifRow(item) {
   const pill =
     st === 'verified' ? '<span class="status status-accepted">Verified ✓</span>'
     : st === 'pending' ? '<span class="status status-responded">Under review</span>'
+    : st === 'failed' ? '<span class="status status-new">Not accepted — re-upload</span>'
     : '<span class="status status-new">Not added</span>';
-  const action =
-    st === 'none' ? `<button class="btn outline sm" data-verify="${item.key}" type="button">Add</button>`
-    : st === 'pending' ? `<button class="btn solid sm" data-approve="${item.key}" type="button">Simulate approval</button>`
-    : `<button class="btn outline sm" data-remove="${item.key}" type="button">Remove</button>`;
+  // Verified badges are awarded on review; the maid can (re)submit a document
+  // unless already verified.
+  const label = st === 'pending' ? 'Replace document' : st === 'verified' ? '' : 'Upload document';
+  const action = st === 'verified'
+    ? ''
+    : `<label class="btn outline sm doc-upload">${label}<input type="file" accept="image/*,application/pdf" data-doc="${item.key}" hidden /></label>`;
   return `<div class="verif-item">
     <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span></div>
     <div class="verif-item-right">${pill}${action}</div>
