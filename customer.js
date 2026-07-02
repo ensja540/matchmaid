@@ -314,8 +314,6 @@ const PANELS = {
           <label class="field"><span>Phone</span><input name="phone" value="${attr(cprof.phone)}" placeholder="Optional" /></label>
           <label class="field"><span>Suburb</span><select name="suburb">${suburbList.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>
         </div>
-        <label class="field"><span>Address</span><input name="address" value="${attr(cprof.address)}" /></label>
-
         <span class="bf-label" style="margin-top:1.4rem">Your home</span>
         <div class="field-row">
           <label class="field"><span>Bedrooms</span><select name="bedrooms">${bedOpts}</select></label>
@@ -445,7 +443,7 @@ const WIRE = {
       const f = e.target;
       Object.assign(cprof, {
         fullName: f.fullName.value, email: f.email.value, phone: f.phone.value,
-        suburb: f.suburb.value, address: f.address.value,
+        suburb: f.suburb.value,
         bedrooms: f.bedrooms.value, bathrooms: f.bathrooms.value,
         homeType: f.homeType.value, stairs: f.stairs.checked, notes: f.notes.value,
       });
