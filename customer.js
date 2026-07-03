@@ -162,10 +162,14 @@ function loadMsgs(id) {
     .then((data) => { msgCache[id] = data.messages || []; })
     .catch(() => { msgCache[id] = []; });
 }
-const apiContact = (cleanerId, message) =>
-  postJSON('/api/contact', { clientUserId: uid, cleanerId, message, serviceSlug: find.service, suburb: find.suburb }).then(
-    (d) => d.conversationId
-  );
+const apiContact = (cleanerId, message, serviceSlug, suburb) =>
+  postJSON('/api/contact', {
+    clientUserId: uid,
+    cleanerId,
+    message,
+    serviceSlug: serviceSlug || find.service,
+    suburb: suburb || cprof.suburb || find.suburb,
+  }).then((d) => d.conversationId);
 
 function reRenderIf(...panels) {
   if (panels.includes(current)) render();
@@ -210,19 +214,16 @@ function renderConvoList() {
 async function initMessages() {
   await refreshConvos();
   const pending = localStorage.getItem('mm_pending_contact');
+  let pendingContact = null;
   if (pending) {
     localStorage.removeItem('mm_pending_contact');
-    try {
-      const { id } = JSON.parse(pending);
-      activeConvo = await apiContact(id);
-      current = 'messages';
-      tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'messages'));
-      await refreshConvos();
-    } catch {}
+    try { pendingContact = JSON.parse(pending); } catch {}
   }
   if (!activeConvo && convos[0]) activeConvo = convos[0].id;
   if (activeConvo) await loadMsgs(activeConvo);
   render();
+  // Came from browse via "Contact" — open the official enquiry form for them.
+  if (pendingContact && pendingContact.id) openEnquiryModal(pendingContact.id, pendingContact.name);
 }
 
 // Kick off all loads for the logged-in customer.
@@ -593,19 +594,7 @@ function resultCard(r) {
 // Contact from a result: start (or reuse) a real conversation, then open it.
 function wireContact(box) {
   box.querySelectorAll('[data-contact]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      if (!uid) {
-        location.href = '/login?role=customer';
-        return;
-      }
-      b.disabled = true;
-      try {
-        activeConvo = await apiContact(b.dataset.cid);
-        await refreshConvos();
-        await loadMsgs(activeConvo);
-      } catch {}
-      goTo('messages');
-    })
+    b.addEventListener('click', () => openEnquiryModal(b.dataset.cid, b.dataset.contact))
   );
 }
 
@@ -628,20 +617,60 @@ async function openCleanerModal(id) {
     const c = await getJSON(`/api/cleaner-profile?id=${encodeURIComponent(id)}`);
     cleanerModalBody.innerHTML = cleanerCardHTML(c);
     const btn = cleanerModalBody.querySelector('[data-cpcontact]');
-    btn?.addEventListener('click', async () => {
+    btn?.addEventListener('click', () => {
       cleanerModal.hidden = true;
-      if (!uid) { location.href = '/login?role=customer'; return; }
-      try {
-        activeConvo = await apiContact(btn.dataset.cpcontact);
-        await refreshConvos();
-        await loadMsgs(activeConvo);
-      } catch {}
-      goTo('messages');
+      openEnquiryModal(btn.dataset.cpcontact, c.name);
     });
   } catch {
     cleanerModalBody.innerHTML = '<p class="muted">Could not load this profile.</p>';
   }
 }
+// ---- Official enquiry modal (structured first contact -> message thread) ----
+const enquiryModal = document.getElementById('enquiryModal');
+const enquiryModalBody = document.getElementById('enquiryModalBody');
+document.getElementById('enquiryModalClose')?.addEventListener('click', () => { if (enquiryModal) enquiryModal.hidden = true; });
+enquiryModal?.addEventListener('click', (e) => { if (e.target === enquiryModal) enquiryModal.hidden = true; });
+
+function openEnquiryModal(cleanerId, cleanerName) {
+  if (!uid) { location.href = '/login?role=customer'; return; }
+  if (!enquiryModal) return;
+  const first = escapeHtml((cleanerName || 'them').split(/['\s]/)[0]);
+  const svcOpts = DEMO.services.map((s) => `<option value="${s.slug}" ${s.slug === find.service ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
+  const home = [cprof.bedrooms && `${cprof.bedrooms} bed`, cprof.bathrooms && `${cprof.bathrooms} bath`, cprof.homeType, cprof.storeys, cprof.stairs && 'stairs', cprof.pets && 'pets'].filter(Boolean).join(' · ');
+  enquiryModalBody.innerHTML = `
+    <h2 style="margin-top:0">Enquire with ${escapeHtml(cleanerName || 'this cleaner')}</h2>
+    <p class="muted">Send an official enquiry — it opens a private message thread with just the two of you.</p>
+    <form id="enquiryForm">
+      <label class="field"><span>Service</span><select name="service">${svcOpts}</select></label>
+      <div class="field-row">
+        <label class="field"><span>Suburb</span><input name="suburb" value="${attr(cprof.suburb || '')}" /></label>
+        <label class="field"><span>Preferred times</span><input name="when" placeholder="e.g. weekday mornings" /></label>
+      </div>
+      <label class="field"><span>Message</span><textarea name="message" rows="4">Hi ${first}, I'd like to enquire about a clean${home ? ` for my home (${escapeHtml(home)})` : ''}. Are you available?</textarea></label>
+      <div class="cp-actions"><button class="btn solid full" type="submit">Send enquiry</button></div>
+    </form>`;
+  enquiryModal.hidden = false;
+  const form = enquiryModalBody.querySelector('#enquiryForm');
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    let msg = f.message.value.trim();
+    const when = f.when.value.trim();
+    if (when) msg += `\n\nPreferred times: ${when}`;
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    try {
+      activeConvo = await apiContact(cleanerId, msg, f.service.value, f.suburb.value.trim());
+      enquiryModal.hidden = true;
+      await refreshConvos();
+      await loadMsgs(activeConvo);
+      goTo('messages');
+    } catch {
+      if (btn) { btn.disabled = false; btn.textContent = 'Send enquiry'; }
+    }
+  });
+}
+
 function rateLabel(min, max) {
   if (min == null || max == null) return 'rate on enquiry';
   return min === max ? `$${min}/hr` : `$${min}–$${max}/hr`;
