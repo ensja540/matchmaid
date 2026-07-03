@@ -29,6 +29,11 @@ const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
 const sessionUser = Session.get();
 const displayName = sessionUser?.fullName || profile.fullName;
 document.getElementById('who').textContent = `Hi, ${displayName.split(' ')[0]} (maid)`;
+// Show the admin link only for the operator account.
+if (String(sessionUser?.email || '').toLowerCase() === 'ensor.jack@gmail.com') {
+  const adminLink = document.getElementById('adminLink');
+  if (adminLink) adminLink.hidden = false;
+}
 document.getElementById('logout').addEventListener('click', () => {
   Session.clear();
   location.href = '/';
@@ -567,6 +572,7 @@ function howflowHTML() {
 // IntersectionObserver / rAF / matchMedia) and reduced-motion both no-op safely.
 let howObserver = null;
 let howScrollBound = false;
+const howflowSeen = new Set(); // step indices already revealed (survives re-renders)
 function initHowflow(panel) {
   const section = panel.querySelector('#howflow');
   if (!section) return;
@@ -579,16 +585,24 @@ function initHowflow(panel) {
     if (fill && fill.style) fill.style.transform = 'scaleY(1)';
     return;
   }
+  const stepArr = [...steps];
   // Opt in to the hidden start state only now that JS is driving the reveal.
   section.classList.add('js-anim');
+  // Steps already revealed must not re-hide when the overview re-renders on
+  // data loads — show those instantly, only observe the rest.
+  stepArr.forEach((s, i) => { if (howflowSeen.has(i)) s.classList.add('in-view'); });
   if (howObserver) howObserver.disconnect();
   howObserver = new IntersectionObserver(
     (entries) => entries.forEach((en) => {
-      if (en.isIntersecting) { en.target.classList.add('in-view'); howObserver.unobserve(en.target); }
+      if (en.isIntersecting) {
+        en.target.classList.add('in-view');
+        howflowSeen.add(stepArr.indexOf(en.target));
+        howObserver.unobserve(en.target);
+      }
     }),
     { threshold: 0.18 } // fire once each step is ~18% into view
   );
-  steps.forEach((s) => howObserver.observe(s));
+  stepArr.forEach((s, i) => { if (!howflowSeen.has(i)) howObserver.observe(s); });
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const updateLine = () => {
@@ -681,8 +695,12 @@ function bubblesHTML(msgs) {
     ? msgs.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
     : '<p class="muted" style="margin:auto">Say hello 👋</p>';
 }
+// Person's name, with their business (if any) on a second line underneath.
+function withLabel(c) {
+  return `${escapeHtml(c.with)}${c.withBusiness ? `<span class="with-biz">${escapeHtml(c.withBusiness)}</span>` : ''}`;
+}
 function threadHTML(c, msgs) {
-  return `<div class="thread-head"><strong>${escapeHtml(c.with)}</strong></div>
+  return `<div class="thread-head"><strong>${withLabel(c)}</strong></div>
     <div class="bubbles" id="bubbles">${bubblesHTML(msgs)}</div>
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
@@ -694,7 +712,7 @@ function convoListHTML() {
     ? convos
         .map(
           (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
-            <strong>${escapeHtml(c.with)}</strong>
+            <strong>${withLabel(c)}</strong>
             <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
           </button>`
         )

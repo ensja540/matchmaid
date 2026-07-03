@@ -74,25 +74,35 @@ function howflowHTML() {
 // JS opts in to the hidden start state via `.js-anim`, so no-JS users see all.
 let howObserver = null;
 let howScrollBound = false;
+const howflowSeen = new Set(); // step indices already revealed (survives re-renders)
 function initHowflow(panel) {
   const section = panel.querySelector('#howflow');
   if (!section) return;
-  const steps = section.querySelectorAll('.howstep');
+  const steps = [...section.querySelectorAll('.howstep')];
   const fill = section.querySelector('.howflow-line-fill');
   const prefersReduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (prefersReduce || typeof IntersectionObserver === 'undefined') {
+    steps.forEach((s) => s.classList.add('in-view'));
     if (fill && fill.style) fill.style.transform = 'scaleY(1)';
     return;
   }
   section.classList.add('js-anim');
+  // The overview re-renders as data loads; steps already revealed must NOT
+  // re-hide (that flicker is the "buggy on load"). Show seen ones instantly,
+  // only observe the rest.
+  steps.forEach((s, i) => { if (howflowSeen.has(i)) s.classList.add('in-view'); });
   if (howObserver) howObserver.disconnect();
   howObserver = new IntersectionObserver(
     (entries) => entries.forEach((en) => {
-      if (en.isIntersecting) { en.target.classList.add('in-view'); howObserver.unobserve(en.target); }
+      if (en.isIntersecting) {
+        en.target.classList.add('in-view');
+        howflowSeen.add(steps.indexOf(en.target));
+        howObserver.unobserve(en.target);
+      }
     }),
     { threshold: 0.18 } // fire once each step is ~18% into view
   );
-  steps.forEach((s) => howObserver.observe(s));
+  steps.forEach((s, i) => { if (!howflowSeen.has(i)) howObserver.observe(s); });
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const updateLine = () => {
@@ -392,7 +402,6 @@ const PANELS = {
           <label class="field"><span>Storeys</span><select name="storeys">${storeyOpts}</select></label>
         </div>
         <div class="field-row">
-          <label class="check-inline" style="align-self:center"><input type="checkbox" name="stairs" ${cprof.stairs ? 'checked' : ''} /> Has stairs</label>
           <label class="check-inline" style="align-self:center"><input type="checkbox" name="pets" ${cprof.pets ? 'checked' : ''} /> Pets at home</label>
         </div>
         <label class="field"><span>Layout notes &amp; access</span><textarea name="notes" rows="3" placeholder="e.g. 3 bed 1 bath, stairs to the upper floor, park in the driveway, friendly dog.">${text(cprof.notes)}</textarea></label>
@@ -504,7 +513,7 @@ const WIRE = {
         fullName: f.fullName.value, email: f.email.value, phone: f.phone.value,
         suburb: f.suburb.value,
         bedrooms: f.bedrooms.value, bathrooms: f.bathrooms.value,
-        homeType: f.homeType.value, stairs: f.stairs.checked,
+        homeType: f.homeType.value,
         pets: f.pets.checked, storeys: f.storeys.value, notes: f.notes.value,
       });
       const el = panel.querySelector('#profMsg');
@@ -702,7 +711,7 @@ function cleanerCardHTML(c) {
 function contactedRow(c) {
   return `<article class="result">
     <div class="result-head">
-      <div><h3>${escapeHtml(c.with)}</h3><p class="result-meta">${escapeHtml((c.lastBody || '').slice(0, 48))}</p></div>
+      <div><h3>${withLabel(c)}</h3><p class="result-meta">${escapeHtml((c.lastBody || '').slice(0, 48))}</p></div>
       <button class="btn outline sm" type="button" data-open="${c.id}">Message</button>
     </div>
   </article>`;
@@ -726,19 +735,23 @@ function bubblesHTML(msgs) {
     : '<p class="muted" style="margin:auto">Say hi 👋</p>';
 }
 function threadHTML(c, msgs) {
-  return `<div class="thread-head"><strong>${escapeHtml(c.with)}</strong></div>
+  return `<div class="thread-head"><strong>${withLabel(c)}</strong></div>
     <div class="bubbles" id="bubbles">${bubblesHTML(msgs)}</div>
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
       <button class="btn solid" type="submit">Send</button>
     </form>`;
 }
+// Person's name, with their business (if any) on a second line underneath.
+function withLabel(c) {
+  return `${escapeHtml(c.with)}${c.withBusiness ? `<span class="with-biz">${escapeHtml(c.withBusiness)}</span>` : ''}`;
+}
 function convoListHTML() {
   return convos.length
     ? convos
         .map(
           (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
-            <strong>${escapeHtml(c.with)}</strong>
+            <strong>${withLabel(c)}</strong>
             <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
           </button>`
         )

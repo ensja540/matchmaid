@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v32 — admin verification review; enquiry flow via form (2026-07-03).
+// deploy: v33 — explainer flicker fix; msg name+business; admin link; badge align; drop stairs (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -613,9 +613,7 @@ app.get('/api/conversations', async (req, res) => {
     const { rows } = await query(
       `select c.id, c.cleaner_id, c.client_id, c.last_message_at,
               cpf.user_id as cleaner_user_id, clpf.user_id as client_user_id,
-              case when nullif(cpf.business_name, '') is not null
-                   then split_part(cu.full_name, ' ', 1) || ' from ' || cpf.business_name
-                   else cu.full_name end as cleaner_name,
+              cu.full_name as cleaner_person, nullif(cpf.business_name, '') as cleaner_business,
               clu.full_name as client_name,
               (select body from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_body,
               (select to_char(sent_at, 'Dy HH24:MI') from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_at
@@ -628,13 +626,18 @@ app.get('/api/conversations', async (req, res) => {
         order by c.last_message_at desc nulls last`,
       [userId]
     );
-    res.json(rows.map((r) => ({
-      id: r.id,
-      with: r.cleaner_user_id === userId ? r.client_name : r.cleaner_name,
-      cleanerId: r.cleaner_id,
-      lastBody: r.last_body || 'New conversation',
-      lastAt: r.last_at || '',
-    })));
+    res.json(rows.map((r) => {
+      const viewerIsCleaner = r.cleaner_user_id === userId;
+      return {
+        id: r.id,
+        // Person's name on top; their business (if any) shown underneath.
+        with: viewerIsCleaner ? r.client_name : r.cleaner_person,
+        withBusiness: viewerIsCleaner ? '' : r.cleaner_business || '',
+        cleanerId: r.cleaner_id,
+        lastBody: r.last_body || 'New conversation',
+        lastAt: r.last_at || '',
+      };
+    }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load conversations.' });
