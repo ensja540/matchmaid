@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v39 new maids start clean; capitalise first name; cache-bust portal JS (2026-07-03).
+// deploy: v40 clean customer forms; green create btns; getting-started labels; header bracket (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';

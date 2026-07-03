@@ -5,7 +5,8 @@ const { DAYS, SLOTS } = DEMO;
 const sessionUser = Session.get();
 const uid = sessionUser?.id && sessionUser.id !== 'demo' ? sessionUser.id : null;
 const displayName = sessionUser?.fullName || 'there';
-document.getElementById('who').textContent = `Hi, ${displayName.split(' ')[0]} (customer)`;
+const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpperCase());
+document.getElementById('who').textContent = `Hi, ${firstName}`;
 document.getElementById('logout').addEventListener('click', () => {
   Session.clear();
   location.href = '/';
@@ -127,9 +128,11 @@ function initHowflow(panel) {
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(updateLine);
 }
 
+// New accounts start clean — only the name/email (the user's own account data)
+// are pre-filled; everything about their home is blank until they set it.
 const PROFILE_DEFAULTS = {
-  photo: '', fullName: displayName, email: sessionUser?.email || '', phone: '',
-  suburb: 'Riccarton', address: '', bedrooms: '3', bathrooms: '1', stairs: false, pets: false, storeys: 'Single storey', homeType: 'House', notes: '',
+  photo: '', fullName: sessionUser?.fullName || '', email: sessionUser?.email || '', phone: '',
+  suburb: '', address: '', bedrooms: '', bathrooms: '', stairs: false, pets: false, storeys: '', homeType: '', notes: '',
 };
 let cprof = { ...PROFILE_DEFAULTS };
 
@@ -372,10 +375,11 @@ const PANELS = {
   },
 
   profile() {
-    const bedOpts = ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
-    const bathOpts = ['1', '2', '3', '4+'].map((v) => opt(v, v, cprof.bathrooms)).join('');
-    const typeOpts = ['House', 'Apartment', 'Townhouse', 'Unit'].map((v) => opt(v, v, cprof.homeType)).join('');
-    const storeyOpts = ['Single storey', 'Multi storey'].map((v) => opt(v, v, cprof.storeys)).join('');
+    const ph = (sel) => opt('', 'Select…', sel);
+    const bedOpts = ph(cprof.bedrooms) + ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
+    const bathOpts = ph(cprof.bathrooms) + ['1', '2', '3', '4+'].map((v) => opt(v, v, cprof.bathrooms)).join('');
+    const typeOpts = ph(cprof.homeType) + ['House', 'Apartment', 'Townhouse', 'Unit'].map((v) => opt(v, v, cprof.homeType)).join('');
+    const storeyOpts = ph(cprof.storeys) + ['Single storey', 'Multi storey'].map((v) => opt(v, v, cprof.storeys)).join('');
     return `
       <h1>Your profile</h1>
       <form class="profile-form" id="profileForm">
@@ -390,7 +394,7 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="field"><span>Phone</span><input name="phone" value="${attr(cprof.phone)}" placeholder="Optional" /></label>
-          <label class="field"><span>Suburb</span><select name="suburb">${suburbList.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>
+          <label class="field"><span>Suburb</span><select name="suburb">${ph(cprof.suburb)}${suburbList.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>
         </div>
         <span class="bf-label" style="margin-top:1.4rem">Your home</span>
         <div class="field-row">

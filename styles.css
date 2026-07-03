@@ -437,6 +437,15 @@ a { color: inherit; text-decoration: none; }
 .hook-card .btn.solid { background: #fff; border-color: #fff; color: var(--accent-dark); flex: none; }
 .hook-card .btn.solid:hover { background: transparent; color: #fff; }
 
+/* "Create account" CTAs are consistently green (the brand copper) everywhere —
+   including inside the dark CTA/hook cards, where plain .btn.solid goes white. */
+.btn.create,
+.pitch-cta .btn.create,
+.hook-card .btn.create { background: var(--copper); border-color: var(--copper); color: #fff; }
+.btn.create:hover,
+.pitch-cta .btn.create:hover,
+.hook-card .btn.create:hover { background: var(--copper-dark); border-color: var(--copper-dark); color: #fff; }
+
 /* Signup capture modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(17, 17, 17, 0.55); display: grid; place-items: center; padding: 1.5rem; z-index: 200; }
 .modal-overlay[hidden] { display: none; }

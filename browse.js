@@ -77,13 +77,13 @@ function currentPrefs() {
   };
 }
 
-// Nothing shows until the visitor actually searches — no results before prefs.
+// Nothing shows until the visitor actually searches — no results (and no big
+// empty-state image) before prefs; just a one-line prompt in the meta row.
 function showSearchPrompt() {
   meta.textContent = 'Choose your area and what you need, then search.';
   const sw = document.getElementById('sortWrap');
   if (sw) sw.hidden = true;
-  results.innerHTML =
-    '<img class="empty-art" src="assets/brand/empty_state.svg" alt="" /><p class="browse-prompt">Pick your suburb and the type of clean above, then <strong>search</strong> to see local cleaners.</p>';
+  results.innerHTML = '';
 }
 
 async function runSearch() {
@@ -184,7 +184,7 @@ function resultCard(r, p) {
 function hookCard() {
   return `<div class="hook-card">
     <div><h3>Found someone you like?</h3><p>Create a free account to message your maid. Takes seconds, no card needed.</p></div>
-    <button class="btn solid" type="button" data-hook>Create free account</button>
+    <button class="btn solid create" type="button" data-hook>Create free account</button>
   </div>`;
 }
 

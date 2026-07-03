@@ -34,7 +34,7 @@ const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
 const displayName = sessionUser?.fullName || profile.fullName;
 // Capitalise the first name for greetings (people often type it lower-case).
 const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpperCase());
-document.getElementById('who').textContent = `Hi, ${firstName} (maid)`;
+document.getElementById('who').textContent = `Hi, ${firstName}`;
 // Show the admin link only for the operator account.
 if (String(sessionUser?.email || '').toLowerCase() === 'ensor.jack@gmail.com') {
   const adminLink = document.getElementById('adminLink');
@@ -642,7 +642,7 @@ function gettingStartedHTML() {
           (s) => `<div class="gs-step ${s.done ? 'done' : ''}">
             <span class="gs-num">${s.done ? '✓' : s.n}</span>
             <div class="gs-body"><strong>${s.label}</strong><span class="muted">${s.desc}</span></div>
-            ${s.done ? '<span class="status status-accepted">Done</span>' : `<button class="btn solid sm" data-start="${s.tab}" type="button">${s.n === 1 ? 'Start' : 'Go'}</button>`}
+            ${s.done ? '<span class="status status-accepted">Done</span>' : `<button class="btn solid sm" data-start="${s.tab}" type="button">Complete</button>`}
           </div>`
         )
         .join('')}
