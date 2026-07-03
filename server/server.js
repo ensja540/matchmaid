@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v31 — restore splash intro to right panel; balance choice boxes (2026-07-03).
+// deploy: v32 — admin verification review; enquiry flow via form (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -429,6 +429,59 @@ app.post('/api/verification', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not submit document.' });
+  }
+});
+
+// --- Admin: review uploaded verification documents --------------------------
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'ensor.jack@gmail.com').toLowerCase();
+async function isAdmin(userId) {
+  if (!userId) return false;
+  const { rows } = await query('select email from users where id = $1', [userId]);
+  return !!rows[0] && String(rows[0].email).toLowerCase() === ADMIN_EMAIL;
+}
+
+app.get('/api/admin/verifications', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const { rows } = await query(
+      `select v.id, v.type, v.status, v.document_url, v.extracted_text,
+              to_char(v.created_at, 'DD Mon YYYY, HH24:MI') as when,
+              coalesce(cpf.business_name, u.full_name) as cleaner, u.email
+         from verifications v
+         join cleaner_profiles cpf on cpf.id = v.cleaner_id
+         join users u on u.id = cpf.user_id
+        where v.status = 'pending'
+        order by v.created_at`
+    );
+    res.json(rows.map((r) => ({
+      id: r.id, type: r.type, documentUrl: r.document_url, extractedText: r.extracted_text || '',
+      when: r.when, cleaner: r.cleaner, email: r.email,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load review queue.' });
+  }
+});
+
+app.post('/api/admin/verification-decision', async (req, res) => {
+  try {
+    const { userId, id, decision } = req.body ?? {};
+    if (!(await isAdmin(userId))) return res.status(403).json({ error: 'Not authorized.' });
+    if (!id || !['approve', 'reject'].includes(decision)) return res.status(400).json({ error: 'id and a valid decision are required.' });
+    const v = await query('select cleaner_id, type from verifications where id = $1', [id]);
+    if (!v.rows.length) return res.status(404).json({ error: 'No such verification.' });
+    const { cleaner_id, type } = v.rows[0];
+    if (decision === 'approve') {
+      await query("update verifications set status = 'verified', verified_at = now() where id = $1", [id]);
+      const col = VERIF_COL[type];
+      if (col) await query(`update cleaner_profiles set ${col} = true where id = $1`, [cleaner_id]);
+    } else {
+      await query("update verifications set status = 'failed' where id = $1", [id]);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not record the decision.' });
   }
 });
 

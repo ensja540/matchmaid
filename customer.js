@@ -347,7 +347,7 @@ const PANELS = {
                 ? pickable.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
                 : '<option value="">All cleaners messaged</option>'
             }</select>
-            <button class="btn outline sm" type="submit" ${pickable.length ? '' : 'disabled'}>New</button>
+            <button class="btn outline sm" type="submit" ${pickable.length ? '' : 'disabled'}>Enquire</button>
           </form>
           <div class="convo-list">${convoListHTML()}</div>
         </div>
@@ -461,14 +461,13 @@ const WIRE = {
   messages() {
     bindConvoButtons();
     const nc = panel.querySelector('#newChat');
-    nc?.addEventListener('submit', async (e) => {
+    nc?.addEventListener('submit', (e) => {
       e.preventDefault();
-      const cleanerId = panel.querySelector('#newCleaner').value;
+      const sel = panel.querySelector('#newCleaner');
+      const cleanerId = sel.value;
       if (!cleanerId || !uid) return;
-      activeConvo = await apiContact(cleanerId);
-      await refreshConvos();
-      await loadMsgs(activeConvo);
-      render();
+      // Every new contact goes through the enquiry form so it carries details.
+      openEnquiryModal(cleanerId, sel.options[sel.selectedIndex]?.text || '');
     });
     const composer = panel.querySelector('#composer');
     composer?.addEventListener('submit', async (e) => {

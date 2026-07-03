@@ -874,6 +874,15 @@ a { color: inherit; text-decoration: none; }
 .enquiry-row.clickable:hover { background: var(--paper-2); }
 .hero-tagline { font-family: var(--serif); font-style: italic; font-size: clamp(1.15rem, 2vw, 1.5rem); color: var(--accent); margin: 0 0 1rem; line-height: 1.35; }
 .verif-read { margin: 0.5rem 0 0; font-size: 0.8rem; font-style: italic; max-width: 42ch; }
+
+/* Admin verification review */
+.admin-vrow { display: grid; grid-template-columns: 1fr auto; gap: 1.4rem; align-items: start; }
+.admin-vinfo { display: flex; flex-direction: column; gap: 0.3rem; }
+.admin-vinfo .muted { font-size: 0.85rem; }
+.admin-vactions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
+.admin-vdoc { justify-self: end; }
+.admin-doc { max-width: 240px; max-height: 160px; border: 1px solid var(--line); border-radius: 8px; display: block; }
+@media (max-width: 640px) { .admin-vrow { grid-template-columns: 1fr; } .admin-vdoc { justify-self: start; } }
 .check-inline { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
 .check-inline input { width: auto; }
 .verif-list { display: flex; flex-direction: column; gap: 0.6rem; }
