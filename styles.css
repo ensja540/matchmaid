@@ -260,7 +260,9 @@ a { color: inherit; text-decoration: none; }
 /* Branding imagery */
 .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 3rem; align-items: center; max-width: 1120px; }
 .hero-grid .hero-copy { min-width: 0; }
+.hero-art { position: relative; }
 .hero-art img { width: 100%; height: auto; display: block; }
+.hero-sparkle { position: absolute; top: -22px; right: -10px; width: 104px; opacity: 0.9; pointer-events: none; z-index: 1; }
 .trust-badges { display: block; width: 100%; max-width: 440px; height: auto; margin-top: 1.8rem; }
 .feature-strip { padding: 1.25rem 0 0.25rem; }
 .feature-strip img { width: 100%; height: auto; display: block; max-width: 940px; margin: 0 auto; }
@@ -811,6 +813,19 @@ a { color: inherit; text-decoration: none; }
 .sort-label select { padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font: inherit; color: var(--ink); }
 .loc-city { padding: 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font: inherit; color: var(--ink); width: 100%; max-width: 260px; }
 .loc-note { margin: 0.6rem 0 0; font-size: 0.86rem; }
+
+/* Searchable suburb picker (combo box + selected chips) */
+.loc-picker { margin-top: 0.7rem; }
+.combo { position: relative; max-width: 360px; }
+.combo-input { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); font: inherit; color: var(--ink); }
+.combo-input:focus { outline: none; border-color: var(--copper); }
+.combo-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 26px rgba(18, 59, 74, 0.14); max-height: 244px; overflow-y: auto; }
+.combo-opt { display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: 0; cursor: pointer; font: inherit; color: var(--ink); }
+.combo-opt:hover { background: var(--paper-2); }
+.area-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
+.area-chip { display: inline-flex; align-items: center; gap: 0.35rem; background: var(--paper-2); border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.4rem 0.3rem 0.8rem; font-size: 0.85rem; }
+.area-x { border: 0; background: none; cursor: pointer; font-size: 1.05rem; line-height: 1; color: var(--muted); padding: 0 0.15rem; }
+.area-x:hover { color: var(--ink); }
 
 /* Guided getting-started checklist */
 .getting-started { border: 1px solid var(--accent); background: linear-gradient(160deg, var(--paper-2), #fff); }

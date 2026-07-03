@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v27 — customer how-it-works timeline; accessible reveal; banner crop; intro move; get-started auto-hide (2026-07-03).
+// deploy: v28 — all suburbs + searchable picker; pets // deploy: v27 — customer how-it-works timeline; accessible reveal; banner crop; intro move; get-started auto-hide (2026-07-03). storeys; for-maids image; uncrop banner (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -311,7 +311,7 @@ app.get('/api/client-profile', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const { rows } = await query(
       `select u.full_name, u.email, cp.phone, cp.address_line, cp.notes,
-              cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.profile_photo_url,
+              cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.has_pets, cp.storeys, cp.profile_photo_url,
               s.name as suburb
          from users u
          left join client_profiles cp on cp.user_id = u.id
@@ -332,6 +332,8 @@ app.get('/api/client-profile', async (req, res) => {
       bathrooms: r.bathrooms || '1',
       homeType: r.home_type || 'House',
       stairs: !!r.has_stairs,
+      pets: !!r.has_pets,
+      storeys: r.storeys || 'Single storey',
       photo: r.profile_photo_url || '',
     });
   } catch (err) {
@@ -342,7 +344,7 @@ app.get('/api/client-profile', async (req, res) => {
 
 app.put('/api/client-profile', async (req, res) => {
   try {
-    const { userId, fullName, email, phone, suburb, address, notes, bedrooms, bathrooms, homeType, stairs, photo } = req.body ?? {};
+    const { userId, fullName, email, phone, suburb, address, notes, bedrooms, bathrooms, homeType, stairs, pets, storeys, photo } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     await ensureClientProfile(userId);
     await query(
@@ -356,10 +358,11 @@ app.put('/api/client-profile', async (req, res) => {
          default_suburb_id = coalesce($2, default_suburb_id),
          address_line = $3, notes = $4, phone = $5,
          bedrooms = $6, bathrooms = $7, home_type = $8, has_stairs = $9,
-         profile_photo_url = coalesce($10, profile_photo_url)
+         has_pets = $10, storeys = $11,
+         profile_photo_url = coalesce($12, profile_photo_url)
        where user_id = $1`,
       [userId, sub.rows[0]?.id ?? null, address ?? null, notes ?? null, phone ?? null,
-       bedrooms ?? null, bathrooms ?? null, homeType ?? null, !!stairs, photo || null]
+       bedrooms ?? null, bathrooms ?? null, homeType ?? null, !!stairs, !!pets, storeys ?? null, photo || null]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -675,7 +678,7 @@ app.get('/api/client-view', async (req, res) => {
     if (!enquiryId || !userId) return res.status(400).json({ error: 'enquiryId and userId are required.' });
     const { rows } = await query(
       `select u.full_name, u.email, cp.phone, cp.address_line, cp.notes,
-              cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.profile_photo_url,
+              cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.has_pets, cp.storeys, cp.profile_photo_url,
               s.name as suburb, cpf.user_id as cleaner_user_id
          from enquiries e
          join client_profiles cp on cp.id = e.client_id
@@ -699,6 +702,8 @@ app.get('/api/client-view', async (req, res) => {
       bathrooms: r.bathrooms || '',
       homeType: r.home_type || '',
       stairs: !!r.has_stairs,
+      pets: !!r.has_pets,
+      storeys: r.storeys || '',
       photo: r.profile_photo_url || '',
     });
   } catch (err) {

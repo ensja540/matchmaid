@@ -119,7 +119,7 @@ function initHowflow(panel) {
 
 const PROFILE_DEFAULTS = {
   photo: '', fullName: displayName, email: sessionUser?.email || '', phone: '',
-  suburb: 'Riccarton', address: '', bedrooms: '3', bathrooms: '1', stairs: false, homeType: 'House', notes: '',
+  suburb: 'Riccarton', address: '', bedrooms: '3', bathrooms: '1', stairs: false, pets: false, storeys: 'Single storey', homeType: 'House', notes: '',
 };
 let cprof = { ...PROFILE_DEFAULTS };
 
@@ -364,6 +364,7 @@ const PANELS = {
     const bedOpts = ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
     const bathOpts = ['1', '2', '3', '4+'].map((v) => opt(v, v, cprof.bathrooms)).join('');
     const typeOpts = ['House', 'Apartment', 'Townhouse', 'Unit'].map((v) => opt(v, v, cprof.homeType)).join('');
+    const storeyOpts = ['Single storey', 'Multi storey'].map((v) => opt(v, v, cprof.storeys)).join('');
     return `
       <h1>Your profile</h1>
       <form class="profile-form" id="profileForm">
@@ -387,7 +388,11 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="field"><span>Home type</span><select name="homeType">${typeOpts}</select></label>
-          <label class="check-inline" style="align-self:end"><input type="checkbox" name="stairs" ${cprof.stairs ? 'checked' : ''} /> Has stairs</label>
+          <label class="field"><span>Storeys</span><select name="storeys">${storeyOpts}</select></label>
+        </div>
+        <div class="field-row">
+          <label class="check-inline" style="align-self:center"><input type="checkbox" name="stairs" ${cprof.stairs ? 'checked' : ''} /> Has stairs</label>
+          <label class="check-inline" style="align-self:center"><input type="checkbox" name="pets" ${cprof.pets ? 'checked' : ''} /> Pets at home</label>
         </div>
         <label class="field"><span>Layout notes &amp; access</span><textarea name="notes" rows="3" placeholder="e.g. 3 bed 1 bath, stairs to the upper floor, park in the driveway, friendly dog.">${text(cprof.notes)}</textarea></label>
 
@@ -499,7 +504,8 @@ const WIRE = {
         fullName: f.fullName.value, email: f.email.value, phone: f.phone.value,
         suburb: f.suburb.value,
         bedrooms: f.bedrooms.value, bathrooms: f.bathrooms.value,
-        homeType: f.homeType.value, stairs: f.stairs.checked, notes: f.notes.value,
+        homeType: f.homeType.value, stairs: f.stairs.checked,
+        pets: f.pets.checked, storeys: f.storeys.value, notes: f.notes.value,
       });
       const el = panel.querySelector('#profMsg');
       if (!uid) {

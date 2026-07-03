@@ -731,7 +731,9 @@ function clientCardHTML(c) {
     c.bedrooms && `${c.bedrooms} bed`,
     c.bathrooms && `${c.bathrooms} bath`,
     c.homeType,
+    c.storeys,
     c.stairs ? 'stairs' : '',
+    c.pets ? 'pets' : '',
   ].filter(Boolean).join(' · ');
   const fact = (label, val) => (val ? `<div class="cv-fact"><dt>${label}</dt><dd>${escapeHtml(val)}</dd></div>` : '');
   const initial = escapeHtml((c.fullName || '?').slice(0, 1).toUpperCase());
@@ -786,27 +788,69 @@ function locSectionHTML() {
   const cityOpts = Object.keys(DEMO.towns)
     .map((c) => `<option value="${c}" ${c === mpCity ? 'selected' : ''}>${c}</option>`)
     .join('');
-  const chips = (DEMO.towns[mpCity] || [])
-    .map((s) => `<button type="button" class="chip select ${areas.has(s) ? 'on' : ''}" data-area="${s}">${s}</button>`)
-    .join('');
-  return `<div class="field" id="locField"><span>Where you work</span>
+  return `<div class="field" id="locField">
+    <span>Where you work</span>
     <select id="citySel" class="loc-city">${cityOpts}</select>
     <label class="check-inline" style="margin-top:0.7rem"><input type="checkbox" id="specificToggle" ${mpSpecific ? 'checked' : ''} /> I only want to work specific suburbs</label>
     <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${mpCity}-wide</strong> — clients anywhere in ${mpCity} can find you.</p>
-    <div class="loc-chips" id="locChips" ${mpSpecific ? '' : 'hidden'}>${chips}</div>
+    <div class="loc-picker" id="locPicker" ${mpSpecific ? '' : 'hidden'}>
+      <div class="combo">
+        <input type="text" id="subSearch" class="combo-input" placeholder="Search suburbs in ${mpCity}…" autocomplete="off" />
+        <div class="combo-list" id="subResults" hidden></div>
+      </div>
+      <div class="area-chips" id="selectedAreas"></div>
+    </div>
   </div>`;
+}
+function areaChipsHTML() {
+  const chosen = (DEMO.towns[mpCity] || []).filter((s) => areas.has(s));
+  if (!chosen.length) return '<span class="muted" style="font-size:0.85rem">No suburbs added yet — search above and add the ones you cover.</span>';
+  return chosen
+    .map((s) => `<span class="area-chip">${s}<button type="button" class="area-x" data-remove="${s}" aria-label="Remove ${s}">×</button></span>`)
+    .join('');
+}
+function renderAreaChips() {
+  const box = panel.querySelector('#selectedAreas');
+  if (!box) return;
+  box.innerHTML = areaChipsHTML();
+  box.querySelectorAll('[data-remove]').forEach((b) =>
+    b.addEventListener('click', () => { areas.delete(b.dataset.remove); renderAreaChips(); })
+  );
+}
+function renderSubResults(q) {
+  const box = panel.querySelector('#subResults');
+  if (!box) return;
+  const query = (q || '').trim().toLowerCase();
+  const matches = (DEMO.towns[mpCity] || [])
+    .filter((s) => !areas.has(s) && (!query || s.toLowerCase().includes(query)))
+    .slice(0, 8);
+  if (!matches.length) { box.hidden = true; box.innerHTML = ''; return; }
+  box.innerHTML = matches.map((s) => `<button type="button" class="combo-opt" data-add="${s}">${s}</button>`).join('');
+  box.hidden = false;
+  box.querySelectorAll('[data-add]').forEach((b) =>
+    b.addEventListener('click', () => {
+      areas.add(b.dataset.add);
+      const inp = panel.querySelector('#subSearch');
+      if (inp) { inp.value = ''; inp.focus(); }
+      box.hidden = true;
+      renderAreaChips();
+    })
+  );
 }
 function wireLocSection() {
   panel.querySelector('#citySel')?.addEventListener('change', (e) => { mpCity = e.target.value; rerenderLoc(); });
   panel.querySelector('#specificToggle')?.addEventListener('change', (e) => { mpSpecific = e.target.checked; rerenderLoc(); });
-  panel.querySelectorAll('#locChips [data-area]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const s = b.dataset.area;
-      if (areas.has(s)) areas.delete(s);
-      else areas.add(s);
-      b.classList.toggle('on', areas.has(s));
-    })
-  );
+  const inp = panel.querySelector('#subSearch');
+  if (inp) {
+    inp.addEventListener('input', () => renderSubResults(inp.value));
+    inp.addEventListener('focus', () => renderSubResults(inp.value));
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); const first = panel.querySelector('#subResults [data-add]'); if (first) first.click(); }
+    });
+    // Hide the dropdown shortly after leaving the field (delay lets a click land).
+    inp.addEventListener('blur', () => setTimeout(() => { const box = panel.querySelector('#subResults'); if (box) box.hidden = true; }, 150));
+  }
+  renderAreaChips();
 }
 function rerenderLoc() {
   const f = panel.querySelector('#locField');
