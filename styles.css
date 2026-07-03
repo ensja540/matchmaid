@@ -178,7 +178,7 @@ a { color: inherit; text-decoration: none; }
 .splash-banner { display: block; width: 100%; height: auto; margin: 0; border: 0; border-radius: 0; box-shadow: 0 6px 18px rgba(18, 59, 74, 0.12); }
 
 /* Two-column splash hero: choices left, editorial intro + art right */
-.splash-hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 3.2rem; align-items: center; }
+.splash-hero { max-width: 820px; margin: 0 auto; }
 .splash-right {
   position: relative;
   background: linear-gradient(160deg, var(--paper-2), #ffffff);
@@ -189,8 +189,8 @@ a { color: inherit; text-decoration: none; }
 }
 .splash-intro {
   font-family: var(--serif); font-style: italic; font-weight: 500;
-  font-size: clamp(1.55rem, 2.5vw, 2.3rem); line-height: 1.32; color: var(--ink);
-  margin: 0; position: relative; z-index: 1;
+  font-size: clamp(1.4rem, 2.4vw, 2.1rem); line-height: 1.32; color: var(--ink);
+  margin: 0 0 1.6rem; position: relative; z-index: 1;
 }
 .splash-sparkle { position: absolute; top: -14px; right: -12px; width: 132px; opacity: 0.95; pointer-events: none; }
 .splash-hero-art { display: block; width: 100%; max-width: 300px; margin: 1.8rem auto 0; }
@@ -360,21 +360,27 @@ a { color: inherit; text-decoration: none; }
 .howflow-track { position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; transform: translateX(-50%); background: var(--line); border-radius: 3px; overflow: hidden; z-index: 0; }
 .howflow-line-fill { display: block; position: absolute; inset: 0; transform: scaleY(0); transform-origin: top; background: linear-gradient(180deg, var(--copper), #7febdd); will-change: transform; }
 
-/* each step: card | node | card zigzag */
-.howstep { position: relative; display: grid; grid-template-columns: 1fr 96px 1fr; align-items: center; min-height: 210px; opacity: 0; transform: translateY(36px); transition: opacity 0.6s ease, transform 0.6s ease; }
-.howstep.in-view { opacity: 1; transform: none; }
+/* each step: card | node | card zigzag.
+   Default is fully VISIBLE (no-JS / JS-fails safe). JS adds `.js-anim` to the
+   section to opt in to the hidden start state, then `.in-view` reveals. */
+.howstep { position: relative; display: grid; grid-template-columns: 1fr 96px 1fr; align-items: center; min-height: 210px; transition: opacity 0.6s ease, transform 0.6s ease; }
 .howstep-node { grid-column: 2; display: grid; place-items: center; position: relative; z-index: 2; }
 .howstep-card { grid-column: 1; padding: 0 2.4rem; text-align: right; }
 .howstep[data-side='right'] .howstep-card { grid-column: 3; text-align: left; }
-.howstep-card h3 { margin: 0 0 0.5rem; font-size: clamp(1.2rem, 2vw, 1.55rem); color: var(--ink); opacity: 0; transform: translateY(12px); transition: opacity 0.5s ease, transform 0.5s ease; }
-.howstep-card p { margin: 0; color: var(--muted); line-height: 1.6; max-width: 42ch; opacity: 0; transform: translateY(12px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.howstep-card h3 { margin: 0 0 0.5rem; font-size: clamp(1.2rem, 2vw, 1.55rem); color: var(--ink); transition: opacity 0.5s ease, transform 0.5s ease; }
+.howstep-card p { margin: 0; color: var(--muted); line-height: 1.6; max-width: 42ch; transition: opacity 0.5s ease, transform 0.5s ease; }
 .howstep[data-side='left'] .howstep-card p { margin-left: auto; }
-.howstep.in-view .howstep-card h3 { opacity: 1; transform: none; transition-delay: 0.12s; }
-.howstep.in-view .howstep-card p { opacity: 1; transform: none; transition-delay: 0.22s; }
+
+/* hidden start state — only once JS has flagged the section */
+.howflow.js-anim .howstep { opacity: 0; transform: translateY(36px); }
+.howflow.js-anim .howstep-card h3, .howflow.js-anim .howstep-card p { opacity: 0; transform: translateY(12px); }
+.howflow.js-anim .howstep.in-view { opacity: 1; transform: none; }
+.howflow.js-anim .howstep.in-view .howstep-card h3 { opacity: 1; transform: none; transition-delay: 0.12s; }
+.howflow.js-anim .howstep.in-view .howstep-card p { opacity: 1; transform: none; transition-delay: 0.22s; }
 
 /* number badge with gold sparkle */
 .howbadge { position: relative; width: 76px; height: 76px; border-radius: 50%; background: var(--copper); color: #fff; font-family: var(--serif); font-weight: 700; font-size: 1.6rem; display: grid; place-items: center; border: 5px solid var(--paper); box-shadow: 0 8px 20px rgba(20, 184, 166, 0.35); transition: transform 0.5s ease, box-shadow 0.5s ease; }
-.howstep.in-view .howbadge { transform: scale(1.09); box-shadow: 0 10px 26px rgba(20, 184, 166, 0.45); }
+.howflow.js-anim .howstep.in-view .howbadge { transform: scale(1.09); box-shadow: 0 10px 26px rgba(20, 184, 166, 0.45); }
 .howspark { position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; display: grid; place-items: center; }
 .howspark::before { content: '✦'; color: var(--gold); font-size: 1rem; line-height: 1; text-shadow: 0 0 6px rgba(251, 191, 36, 0.6); }
 

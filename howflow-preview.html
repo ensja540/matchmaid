@@ -59,13 +59,13 @@
         var fill = section.querySelector('.howflow-line-fill');
         var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (reduce || typeof IntersectionObserver === 'undefined') {
-          steps.forEach(function (s) { s.classList.add('in-view'); });
           if (fill) fill.style.transform = 'scaleY(1)';
           return;
         }
+        section.classList.add('js-anim');
         var io = new IntersectionObserver(function (entries) {
           entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in-view'); io.unobserve(en.target); } });
-        }, { threshold: 0.3, rootMargin: '0px 0px -12% 0px' });
+        }, { threshold: 0.18 });
         steps.forEach(function (s) { io.observe(s); });
         function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
         var ticking = false;

@@ -42,6 +42,81 @@ let msgCache = {}; // conversationId -> messages[]
 let activeConvo = null;
 let myEnquiries = []; // enquiries this customer has sent
 
+// "How Match Maid works" — customer steps as a scroll-driven zigzag timeline
+// (same component as the maid side, customer copy).
+const HOWFLOW_STEPS = [
+  { n: '01', h: 'Search your area', b: `Choose your suburb and the type of clean to see local maids, <span class="hi">best match first</span>.` },
+  { n: '02', h: 'Compare openly', b: `Check each maid's rate, rating, reviews and verified badges. <span class="hi">Nothing hidden</span>.` },
+  { n: '03', h: 'Contact your pick', b: `Message the single cleaner you like — <span class="hi">no bidding wars</span>, no shared leads.` },
+  { n: '04', h: 'Arrange it directly', b: `Agree the day, time and price <span class="hi">between you</span>. Payment stays between you and your cleaner.` },
+  { n: '05', h: 'Review after the clean', b: `Rate cleanliness, value and punctuality to help <span class="hi">the next household</span> choose well.` },
+];
+
+function howflowHTML() {
+  return `<section class="howflow" id="howflow" aria-label="How Match Maid works">
+    <h2 class="howflow-title">How Match Maid works</h2>
+    <div class="howflow-body">
+      <div class="howflow-track" aria-hidden="true"><span class="howflow-line-fill"></span></div>
+      <ol class="howflow-steps">
+        ${HOWFLOW_STEPS.map((s, i) => `<li class="howstep" data-side="${i % 2 === 0 ? 'left' : 'right'}">
+          <div class="howstep-node"><span class="howbadge">${s.n}<i class="howspark" aria-hidden="true"></i></span></div>
+          <div class="howstep-card">
+            <h3>${s.h}</h3>
+            <p>${s.b}</p>
+          </div>
+        </li>`).join('')}
+      </ol>
+    </div>
+  </section>`;
+}
+
+// Scroll-driven reveal + centre-line growth. Default markup is fully visible;
+// JS opts in to the hidden start state via `.js-anim`, so no-JS users see all.
+let howObserver = null;
+let howScrollBound = false;
+function initHowflow(panel) {
+  const section = panel.querySelector('#howflow');
+  if (!section) return;
+  const steps = section.querySelectorAll('.howstep');
+  const fill = section.querySelector('.howflow-line-fill');
+  const prefersReduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReduce || typeof IntersectionObserver === 'undefined') {
+    if (fill && fill.style) fill.style.transform = 'scaleY(1)';
+    return;
+  }
+  section.classList.add('js-anim');
+  if (howObserver) howObserver.disconnect();
+  howObserver = new IntersectionObserver(
+    (entries) => entries.forEach((en) => {
+      if (en.isIntersecting) { en.target.classList.add('in-view'); howObserver.unobserve(en.target); }
+    }),
+    { threshold: 0.18 } // fire once each step is ~18% into view
+  );
+  steps.forEach((s) => howObserver.observe(s));
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const updateLine = () => {
+    const sec = document.getElementById('howflow');
+    const f = sec && sec.querySelector('.howflow-line-fill');
+    if (!f) return;
+    const rect = sec.getBoundingClientRect();
+    const vh = window.innerHeight || 800;
+    f.style.transform = `scaleY(${clamp((vh * 0.55 - rect.top) / rect.height, 0, 1)})`;
+  };
+  if (!howScrollBound && typeof window !== 'undefined' && window.addEventListener && typeof requestAnimationFrame !== 'undefined') {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => { updateLine(); ticking = false; });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    howScrollBound = true;
+  }
+  if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(updateLine);
+}
+
 const PROFILE_DEFAULTS = {
   photo: '', fullName: displayName, email: sessionUser?.email || '', phone: '',
   suburb: 'Riccarton', address: '', bedrooms: '3', bathrooms: '1', stairs: false, homeType: 'House', notes: '',
@@ -196,16 +271,7 @@ const PANELS = {
         <button class="btn solid" data-goto="find" type="button">Find a cleaner</button>
       </div>
 
-      <div class="panel-card">
-        <h2>How Match Maid works</h2>
-        <div class="vflow" id="vflow">
-          <div class="vstep"><span class="vnum">01</span><div class="vbody"><h3>Search your area</h3><p>Choose your suburb and the type of clean to see local maids, best match first.</p></div></div>
-          <div class="vstep"><span class="vnum">02</span><div class="vbody"><h3>Compare openly</h3><p>Check each maid's rate range, rating, reviews and verified badges. Nothing hidden.</p></div></div>
-          <div class="vstep"><span class="vnum">03</span><div class="vbody"><h3>Contact your pick</h3><p>Message the single cleaner you like — no bidding wars, no shared leads.</p></div></div>
-          <div class="vstep"><span class="vnum">04</span><div class="vbody"><h3>Arrange it directly</h3><p>Agree the day, time and price between you. Payment stays between you and your cleaner.</p></div></div>
-          <div class="vstep"><span class="vnum">05</span><div class="vbody"><h3>Review after the clean</h3><p>Rate cleanliness, value and punctuality to help the next household choose well.</p></div></div>
-        </div>
-      </div>
+      ${howflowHTML()}
 
       <div class="panel-card">
         <h2>Your enquiries</h2>
@@ -339,19 +405,7 @@ const WIRE = {
     panel.querySelectorAll('[data-open]').forEach((b) =>
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
-    // Reveal the flow-chart steps as they scroll into view.
-    const vf = panel.querySelector('#vflow');
-    if (vf && typeof IntersectionObserver !== 'undefined') {
-      const io = new IntersectionObserver(
-        (entries) => entries.forEach((en) => {
-          if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
-        }),
-        { threshold: 0.35 }
-      );
-      vf.querySelectorAll('.vstep').forEach((s) => io.observe(s));
-    } else if (vf) {
-      vf.querySelectorAll('.vstep').forEach((s) => s.classList.add('in'));
-    }
+    initHowflow(panel);
   },
   find() {
     const form = panel.querySelector('#findForm');

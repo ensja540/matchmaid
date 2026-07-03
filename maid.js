@@ -539,7 +539,7 @@ const HOWFLOW_STEPS = [
   { n: '01', h: 'Complete your profile', b: `Add your name, photo and a short bio so clients know who they're inviting in.` },
   { n: '02', h: 'Set your availability', b: `Update your weekly calendar with the mornings, middays and afternoons you can work; this is what matches you to clients.` },
   { n: '03', h: 'Set your price', b: `Add your hourly rate. You set it, and it's shown openly; no race to the bottom.` },
-  { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas like Christchurch.` },
+  { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas near you.` },
   { n: '05', h: `Get <span class="hi">exclusive</span> enquiries`, b: `Clients who want your services at your times reach out to <span class="hi">you alone</span>. Reply and arrange directly; <span class="hi">you keep 100%</span>.` },
   { n: '06', h: 'Free for your first 3 months', b: `Your first three months are free; after that it's a flat <span class="hi">$40/month</span> (or <span class="hi">$60 to be promoted</span>).` },
 ];
@@ -574,16 +574,19 @@ function initHowflow(panel) {
   const fill = section.querySelector('.howflow-line-fill');
   const prefersReduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (prefersReduce || typeof IntersectionObserver === 'undefined') {
-    steps.forEach((s) => s.classList.add('in-view'));
+    // Reduced motion or no observer support: leave everything visible (the
+    // default), just fill the line. Never add `js-anim`, so nothing hides.
     if (fill && fill.style) fill.style.transform = 'scaleY(1)';
     return;
   }
+  // Opt in to the hidden start state only now that JS is driving the reveal.
+  section.classList.add('js-anim');
   if (howObserver) howObserver.disconnect();
   howObserver = new IntersectionObserver(
     (entries) => entries.forEach((en) => {
       if (en.isIntersecting) { en.target.classList.add('in-view'); howObserver.unobserve(en.target); }
     }),
-    { threshold: 0.3, rootMargin: '0px 0px -12% 0px' }
+    { threshold: 0.18 } // fire once each step is ~18% into view
   );
   steps.forEach((s) => howObserver.observe(s));
 
@@ -612,14 +615,18 @@ function initHowflow(panel) {
 
 // Guided onboarding: do-this-first checklist, ticks off from real data.
 function gettingStartedHTML() {
+  const profileSet = !!(mp.businessName && mp.businessName.trim() && mp.rate != null && String(mp.rate) !== '');
+  const availSet = avail.length > 0;
   const steps = [
-    { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your hourly rate.', tab: 'profile', done: mp.rate != null && mp.rate !== '' },
-    { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work — this is what matches you to clients.', tab: 'availability', done: avail.length > 0 },
-    { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: mp.rate != null && mp.rate !== '' },
+    { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your hourly rate.', tab: 'profile', done: profileSet },
+    { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work — this is what matches you to clients.', tab: 'availability', done: availSet },
+    { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: profileSet },
     { n: 4, label: 'Get verified', desc: 'Upload ID, a police check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
   ];
+  // Once the profile itself is fully set up (details, availability and areas),
+  // retire the whole get-started card — verification is a separate optional nudge.
+  if (profileSet && availSet) return '';
   const doneCount = steps.filter((s) => s.done).length;
-  if (doneCount === steps.length) return '';
   return `<div class="panel-card getting-started">
     <div class="gs-head"><h2>Get started</h2><span class="gs-count">${doneCount} of ${steps.length} done</span></div>
     <div class="gs-steps">

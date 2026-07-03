@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v26 — show splash banner uncropped (natural aspect) (2026-07-03).
+// deploy: v27 — customer how-it-works timeline; accessible reveal; banner crop; intro move; get-started auto-hide (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
