@@ -4,6 +4,11 @@ const { DAYS, SLOTS } = DEMO;
 const profile = DEMO.maidProfile;
 let enquiries = []; // real enquiries load from the API when logged in
 
+// A logged-in maid always starts CLEAN and loads their own data from the API —
+// the demo profile is only a fallback for the standalone (not-logged-in) view.
+const sessionUser = Session.get();
+const loggedIn = !!sessionUser?.id;
+
 // Verification process state (demo: persisted in localStorage).
 const VERIF_KEY = 'mm_maid_verif';
 const VERIF_ITEMS = [
@@ -22,13 +27,14 @@ function loadVerif() {
     insurance: DEMO.maidProfile.badges.insurance ? 'verified' : 'none',
   };
 }
-let verif = loadVerif();
+let verif = loggedIn ? { id: 'none', police: 'none', insurance: 'none' } : loadVerif();
 let verifRead = {}; // OCR-extracted text per verification type (review aid)
 const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
 
-const sessionUser = Session.get();
 const displayName = sessionUser?.fullName || profile.fullName;
-document.getElementById('who').textContent = `Hi, ${displayName.split(' ')[0]} (maid)`;
+// Capitalise the first name for greetings (people often type it lower-case).
+const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpperCase());
+document.getElementById('who').textContent = `Hi, ${firstName} (maid)`;
 // Show the admin link only for the operator account.
 if (String(sessionUser?.email || '').toLowerCase() === 'ensor.jack@gmail.com') {
   const adminLink = document.getElementById('adminLink');
@@ -50,20 +56,22 @@ let current = 'overview';
 
 // Availability is real: load the logged-in maid's saved slots from the API,
 // and save changes back to the database. Falls back to demo when not logged in.
-let avail = profile.availability.map((s) => ({ ...s }));
-const areas = new Set(profile.areas); // specific suburbs (when narrowing)
+let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
+const areas = new Set(loggedIn ? [] : profile.areas); // specific suburbs (when narrowing)
 let mpCity = 'Christchurch'; // default city
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
-const svcSet = new Set(profile.services); // service slugs offered
-let mp = {
-  businessName: profile.businessName,
-  bio: profile.bio,
-  rate: profile.rate,
-  years: profile.yearsExperience,
-  listingStatus: profile.listingStatus,
-  avgRating: profile.rating,
-  reviews: profile.reviews,
-};
+const svcSet = new Set(loggedIn ? [] : profile.services); // service slugs offered
+let mp = loggedIn
+  ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0 }
+  : {
+      businessName: profile.businessName,
+      bio: profile.bio,
+      rate: profile.rate,
+      years: profile.yearsExperience,
+      listingStatus: profile.listingStatus,
+      avgRating: profile.rating,
+      reviews: profile.reviews,
+    };
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
   fetch(`/api/profile?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -71,11 +79,11 @@ if (sessionUser?.id) {
     .then((data) => {
       if (!data) return;
       mp = {
-        businessName: data.businessName ?? mp.businessName,
+        businessName: data.businessName ?? '',
         bio: data.bio ?? '',
-        rate: data.rateMin ?? data.rateMax ?? mp.rate,
+        rate: data.rateMin ?? data.rateMax ?? '',
         years: data.years ?? '',
-        listingStatus: data.listingStatus ?? mp.listingStatus,
+        listingStatus: data.listingStatus ?? 'draft',
         avgRating: data.avgRating ?? 0,
         reviews: data.reviews ?? 0,
       };
@@ -218,7 +226,7 @@ const PANELS = {
   overview() {
     const newCount = enquiries.filter((e) => e.status === 'new').length;
     return `
-      <h1>Welcome ${displayName.split(' ')[0]}!</h1>
+      <h1>Welcome ${firstName}!</h1>
       ${gettingStartedHTML()}
       <div class="trial-banner">
         <div class="trial-top">
