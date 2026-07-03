@@ -23,6 +23,7 @@ function loadVerif() {
   };
 }
 let verif = loadVerif();
+let verifRead = {}; // OCR-extracted text per verification type (review aid)
 const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
 
 const sessionUser = Session.get();
@@ -92,7 +93,12 @@ if (sessionUser?.id) {
   // Real verification statuses (document submissions + approvals).
   fetch(`/api/verifications?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((s) => { if (s) { verif = { ...verif, ...s }; render(); } })
+    .then((s) => {
+      if (!s) return;
+      verifRead = s.read || {};
+      ['id', 'police', 'insurance'].forEach((k) => { if (s[k]) verif[k] = s[k]; });
+      render();
+    })
     .catch(() => {});
 
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -467,14 +473,21 @@ const WIRE = {
         if (!file || !sessionUser?.id) return;
         const reader = new FileReader();
         reader.onload = async () => {
-          verif[inp.dataset.doc] = 'pending';
+          const doc = inp.dataset.doc;
+          verif[doc] = 'pending';
           render();
+          // Read the document in the browser (never on the server — a corrupt
+          // image can crash the OCR worker) so we can show what was scanned.
+          const scanned = await ocrDocument(reader.result, file.type);
+          if (scanned) { verifRead[doc] = scanned.slice(0, 160); render(); }
           try {
-            await fetch('/api/verification', {
+            const res = await fetch('/api/verification', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: sessionUser.id, type: inp.dataset.doc, documentDataUrl: reader.result }),
+              body: JSON.stringify({ userId: sessionUser.id, type: doc, documentDataUrl: reader.result, extractedText: scanned || '' }),
             });
+            const data = await res.json();
+            if (data && data.read) { verifRead[doc] = data.read; render(); }
           } catch {}
         };
         reader.readAsDataURL(file);
@@ -526,6 +539,22 @@ const WIRE = {
 };
 
 // ---------- Helpers ----------
+// Best-effort in-browser OCR (tesseract.js loaded from CDN). Runs client-side
+// on purpose: a corrupt image can crash the OCR worker, and we'd rather that
+// happen in one tab than take down the server. Returns null on anything but a
+// readable image, and never throws.
+async function ocrDocument(dataUrl, fileType) {
+  try {
+    if (typeof Tesseract === 'undefined') return null; // library not loaded
+    if (fileType && !/^image\//.test(fileType)) return null; // PDFs etc: skip
+    const { data } = await Tesseract.recognize(dataUrl, 'eng');
+    const text = (data && data.text ? data.text : '').replace(/[ \t]+\n/g, '\n').trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
 // Guided onboarding: do-this-first checklist, ticks off from real data.
 function gettingStartedHTML() {
   const steps = [
@@ -680,8 +709,12 @@ function verifRow(item) {
   const action = st === 'verified'
     ? ''
     : `<label class="btn outline sm doc-upload">${label}<input type="file" accept="image/*,application/pdf" data-doc="${item.key}" hidden /></label>`;
+  const readTxt = verifRead[item.key];
+  const readNote = readTxt && st === 'pending'
+    ? `<p class="verif-read muted">Scanned from your document: “${escapeHtml(readTxt)}”. If that looks wrong, upload a clearer photo.</p>`
+    : '';
   return `<div class="verif-item">
-    <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span></div>
+    <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span>${readNote}</div>
     <div class="verif-item-right">${pill}${action}</div>
   </div>`;
 }

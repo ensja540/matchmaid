@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v22 — add Window clean service (2026-07-03).
+// deploy: v23 — browser-side OCR to assist ID review (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -382,20 +382,23 @@ app.get('/api/verifications', async (req, res) => {
       'select id_verified, police_verified, insurance_verified from cleaner_profiles where id = $1',
       [cleanerId]
     );
-    const subs = await query(
-      `select distinct on (type) type, status from verifications where cleaner_id = $1 order by type, created_at desc`,
+    const subRows = await query(
+      `select distinct on (type) type, status, extracted_text from verifications where cleaner_id = $1 order by type, created_at desc`,
       [cleanerId]
     );
-    const submitted = Object.fromEntries(subs.rows.map((r) => [r.type, r.status]));
+    const submitted = Object.fromEntries(subRows.rows.map((r) => [r.type, r.status]));
+    const ocr = Object.fromEntries(subRows.rows.map((r) => [r.type, r.extracted_text]));
     const p = prof.rows[0] || {};
     const status = {};
+    const read = {};
     for (const t of VERIF_TYPES) {
       if (p[VERIF_COL[t]]) status[t] = 'verified';
       else if (submitted[t] === 'pending') status[t] = 'pending';
       else if (submitted[t] === 'failed') status[t] = 'failed';
       else status[t] = 'none';
+      if (ocr[t]) read[t] = String(ocr[t]).slice(0, 160);
     }
-    res.json(status);
+    res.json({ ...status, read });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load verifications.' });
@@ -404,19 +407,22 @@ app.get('/api/verifications', async (req, res) => {
 
 app.post('/api/verification', async (req, res) => {
   try {
-    const { userId, type, documentDataUrl } = req.body ?? {};
+    const { userId, type, documentDataUrl, extractedText } = req.body ?? {};
     if (!userId || !VERIF_TYPES.includes(type)) return res.status(400).json({ error: 'userId and a valid type are required.' });
     if (!documentDataUrl) return res.status(400).json({ error: 'Please attach a document.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+    // OCR text is scanned in the maid's browser (keeps this endpoint — and the
+    // server — safe from malformed-image decode crashes) and stored to aid review.
+    const text = typeof extractedText === 'string' ? extractedText.replace(/[ \t]+\n/g, '\n').trim().slice(0, 2000) || null : null;
     // One active submission per type: clear old, insert fresh as pending.
     await query('delete from verifications where cleaner_id = $1 and type = $2', [cleanerId, type]);
     await query(
-      `insert into verifications (cleaner_id, type, status, document_url, provider)
-       values ($1, $2, 'pending', $3, 'self-upload')`,
-      [cleanerId, type, documentDataUrl]
+      `insert into verifications (cleaner_id, type, status, document_url, provider, extracted_text)
+       values ($1, $2, 'pending', $3, 'self-upload', $4)`,
+      [cleanerId, type, documentDataUrl, text]
     );
-    res.json({ ok: true, status: 'pending' });
+    res.json({ ok: true, status: 'pending', read: text ? text.slice(0, 160) : '' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not submit document.' });
