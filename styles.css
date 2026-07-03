@@ -91,17 +91,18 @@ p { margin: 0 0 1rem; }
 .section-sm { padding: 4rem 0; }
 
 /* Full-bleed soft background bands behind centred (.container) sections.
-   Alternate down a page so adjacent sections never share a colour. */
-.band { position: relative; }
-.band::before {
+   Alternate down a page so adjacent sections never share a colour.
+   NB: named `.secbg*` — `.band` is already taken by the photography band. */
+.secbg { position: relative; }
+.secbg::before {
   content: ''; position: absolute; z-index: -1; top: 0; bottom: 0;
   left: 50%; width: 100vw; transform: translateX(-50%);
 }
-.band-white::before { background: var(--bg-white); }
-.band-mist::before { background: var(--bg-mist); }
-.band-tint::before { background: var(--bg-tint); }
-.band-cream::before { background: var(--bg-cream); }
-.band-pad { padding: 3.5rem 0; }
+.secbg-white::before { background: var(--bg-white); }
+.secbg-mist::before { background: var(--bg-mist); }
+.secbg-tint::before { background: var(--bg-tint); }
+.secbg-cream::before { background: var(--bg-cream); }
+.secbg-pad { padding: 3.5rem 0; }
 .rule { height: 1px; background: var(--line); border: none; margin: 0; }
 
 /* ---------- Links & center underline ---------- */
