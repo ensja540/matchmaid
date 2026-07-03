@@ -28,7 +28,7 @@
         if (sess) { location.replace(Session.homeFor(sess.role)); return; }
         var side = localStorage.getItem('mm_side');
         if (side === 'maid') location.replace('/for-maids');
-        else if (side === 'customer') location.replace('/browse');
+        else if (side === 'customer') location.replace('/for-customers');
       })();
     </script>
   </head>
@@ -55,7 +55,7 @@
               <span class="choice-t">Supplying</span>
               <span class="choice-s">List your services</span>
             </a>
-            <a class="choice customer" href="/browse">
+            <a class="choice customer" href="/for-customers">
               <span class="choice-k">02 — A hirer</span>
               <span class="choice-t">Hiring</span>
               <span class="choice-s">Browse local cleaners</span>
