@@ -331,7 +331,7 @@ const PANELS = {
             <li>Unlimited exclusive enquiries</li>
             <li>No commission on any job</li>
           </ul>
-          <button class="btn outline full" type="button" data-plan="standard">Choose Standard</button>
+          <button class="btn outline full" type="button" disabled>Coming soon</button>
         </div>
         <div class="plan featured">
           <p class="tag">Promoted</p>
@@ -341,7 +341,7 @@ const PANELS = {
             <li><strong>Top of the list</strong> in your suburbs</li>
             <li>Promoted badge on your profile</li>
           </ul>
-          <button class="btn solid full" type="button" data-plan="promoted">Choose Promoted</button>
+          <button class="btn solid full" type="button" disabled>Coming soon</button>
         </div>
       </div>
       <p class="save-msg" id="planMsg"></p>`;
@@ -512,12 +512,7 @@ const WIRE = {
     });
   },
   subscription() {
-    panel.querySelectorAll('[data-plan]').forEach((b) =>
-      b.addEventListener('click', () => {
-        const label = b.dataset.plan === 'promoted' ? 'Promoted ($60/mo)' : 'Standard ($40/mo)';
-        setMsg('planMsg', `Selected ${label} (demo). You'd be taken to secure checkout here.`, 'ok');
-      })
-    );
+    // Plans aren't purchasable yet — buttons show "Coming soon" (disabled).
   },
 };
 

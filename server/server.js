@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v33 — explainer flicker fix; msg name+business; admin link; badge align; drop stairs (2026-07-03).
+// deploy: v34 — plans coming soon; remove demo checkout msg (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
