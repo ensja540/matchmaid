@@ -319,10 +319,7 @@ a { color: inherit; text-decoration: none; }
   transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
 }
 .flow-step:last-child { margin-right: 0; }
-.flow-step:not(:last-child)::after {
-  content: '→'; position: absolute; right: -1.8rem; top: 50%; transform: translateY(-50%);
-  color: var(--line); font-size: 1.4rem; transition: color 0.3s ease;
-}
+.flow-step:not(:last-child)::after { content: none; }
 .flow-num {
   display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
   background: var(--surface); color: var(--accent); font-weight: 700; margin-bottom: 0.6rem;
@@ -336,7 +333,7 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 760px) {
   .flow { flex-direction: column; gap: 1.8rem; }
   .flow-step { margin-right: 0; }
-  .flow-step:not(:last-child)::after { content: '↓'; right: auto; left: 50%; top: auto; bottom: -1.5rem; transform: translateX(-50%); }
+  .flow-step:not(:last-child)::after { content: none; }
 }
 
 /* Vertical scroll-reveal flow (portal how-it-works) */
@@ -345,13 +342,59 @@ a { color: inherit; text-decoration: none; }
 .vstep:last-child { padding-bottom: 0; }
 .vstep.in { opacity: 1; transform: none; }
 .vstep:not(:last-child)::before { content: ''; position: absolute; left: 19px; top: 44px; bottom: -2px; width: 2px; background: var(--line); transition: background 0.4s ease; }
-.vstep:not(:last-child)::after { content: '▾'; position: absolute; left: 14px; bottom: -0.2rem; color: var(--line); font-size: 1rem; transition: color 0.4s ease; }
+.vstep:not(:last-child)::after { content: none; }
 .vstep.in:not(:last-child)::before { background: var(--accent); }
 .vstep.in:not(:last-child)::after { color: var(--accent); }
 .vnum { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--surface); color: var(--accent); font-weight: 700; display: grid; place-items: center; z-index: 1; transition: background 0.4s ease, color 0.4s ease, transform 0.4s ease; }
 .vstep.in .vnum { background: var(--accent); color: #fff; transform: scale(1.06); }
 .vbody h3 { margin: 0.4rem 0 0.3rem; font-size: 1.15rem; }
 .vbody p { margin: 0; color: var(--muted); }
+
+/* ---- How Match Maid works: scroll-driven zigzag timeline ------------------ */
+.howflow { position: relative; margin: 2.5rem 0 1rem; padding: 1rem 0 1.5rem; }
+.howflow-title { text-align: center; font-family: var(--serif); font-weight: 600; font-size: clamp(1.7rem, 3vw, 2.4rem); margin: 0 0 3rem; }
+.howflow-body { position: relative; }
+.howflow-steps { list-style: none; margin: 0; padding: 0; position: relative; }
+
+/* centre track + scroll-driven fill */
+.howflow-track { position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; transform: translateX(-50%); background: var(--line); border-radius: 3px; overflow: hidden; z-index: 0; }
+.howflow-line-fill { display: block; position: absolute; inset: 0; transform: scaleY(0); transform-origin: top; background: linear-gradient(180deg, var(--copper), #7febdd); will-change: transform; }
+
+/* each step: card | node | card zigzag */
+.howstep { position: relative; display: grid; grid-template-columns: 1fr 96px 1fr; align-items: center; min-height: 210px; opacity: 0; transform: translateY(36px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.howstep.in-view { opacity: 1; transform: none; }
+.howstep-node { grid-column: 2; display: grid; place-items: center; position: relative; z-index: 2; }
+.howstep-card { grid-column: 1; padding: 0 2.4rem; text-align: right; }
+.howstep[data-side='right'] .howstep-card { grid-column: 3; text-align: left; }
+.howstep-card h3 { margin: 0 0 0.5rem; font-size: clamp(1.2rem, 2vw, 1.55rem); color: var(--ink); opacity: 0; transform: translateY(12px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.howstep-card p { margin: 0; color: var(--muted); line-height: 1.6; max-width: 42ch; opacity: 0; transform: translateY(12px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.howstep[data-side='left'] .howstep-card p { margin-left: auto; }
+.howstep.in-view .howstep-card h3 { opacity: 1; transform: none; transition-delay: 0.12s; }
+.howstep.in-view .howstep-card p { opacity: 1; transform: none; transition-delay: 0.22s; }
+
+/* number badge with gold sparkle */
+.howbadge { position: relative; width: 76px; height: 76px; border-radius: 50%; background: var(--copper); color: #fff; font-family: var(--serif); font-weight: 700; font-size: 1.6rem; display: grid; place-items: center; border: 5px solid var(--paper); box-shadow: 0 8px 20px rgba(20, 184, 166, 0.35); transition: transform 0.5s ease, box-shadow 0.5s ease; }
+.howstep.in-view .howbadge { transform: scale(1.09); box-shadow: 0 10px 26px rgba(20, 184, 166, 0.45); }
+.howspark { position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; display: grid; place-items: center; }
+.howspark::before { content: '✦'; color: var(--gold); font-size: 1rem; line-height: 1; text-shadow: 0 0 6px rgba(251, 191, 36, 0.6); }
+
+.howstep .hi { color: var(--copper); font-weight: 700; }
+
+@media (max-width: 720px) {
+  .howflow-title { margin-bottom: 2rem; }
+  .howflow-track { left: 26px; }
+  .howstep { grid-template-columns: 52px 1fr; min-height: 0; margin-bottom: 2.4rem; column-gap: 1.1rem; }
+  .howstep-node { grid-column: 1; }
+  .howstep-card, .howstep[data-side='right'] .howstep-card { grid-column: 2; text-align: left; padding: 0; }
+  .howstep-card p, .howstep[data-side='left'] .howstep-card p { margin-left: 0; max-width: none; }
+  .howbadge { width: 52px; height: 52px; font-size: 1.15rem; border-width: 4px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .howstep, .howstep-card h3, .howstep-card p { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .howbadge { transform: none !important; transition: none !important; }
+  .howflow-line-fill { transform: scaleY(1) !important; }
+}
 .browse-meta { color: var(--muted); margin: 1.6rem 0 0.4rem; }
 
 .hook-card {

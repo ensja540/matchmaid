@@ -288,7 +288,7 @@ const PANELS = {
           ${
             convo
               ? threadHTML(convo, msgCache[convo.id] ?? null)
-              : '<div class="bubbles"><p class="muted" style="margin:auto">Start a chat with any cleaner →</p></div>'
+              : '<div class="bubbles"><p class="muted" style="margin:auto">Start a chat with any cleaner</p></div>'
           }
         </div>
       </div>`;

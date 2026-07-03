@@ -232,17 +232,7 @@ const PANELS = {
         <div class="stat-card"><span class="stat-num cap">${mp.listingStatus}</span><span class="stat-label">Listing status</span></div>
       </div>
 
-      <div class="panel-card">
-        <h2>How Match Maid works</h2>
-        <div class="vflow" id="vflow">
-          <div class="vstep"><span class="vnum">01</span><div class="vbody"><h3>Complete your profile</h3><p>Add your name, photo and a short bio so clients know who they're inviting in.</p></div></div>
-          <div class="vstep"><span class="vnum">02</span><div class="vbody"><h3>Set your availability</h3><p>Update your weekly calendar with the mornings, middays and afternoons you can work — this is what matches you to clients.</p></div></div>
-          <div class="vstep"><span class="vnum">03</span><div class="vbody"><h3>Set your price</h3><p>Add your hourly rate. You set it, and it's shown openly — no race to the bottom.</p></div></div>
-          <div class="vstep"><span class="vnum">04</span><div class="vbody"><h3>Add your locations</h3><p>Search a town and toggle the suburbs you cover — or wider areas like Christchurch.</p></div></div>
-          <div class="vstep"><span class="vnum">05</span><div class="vbody"><h3>Get exclusive enquiries</h3><p>Clients who want your services at your times reach out to you alone. Reply and arrange directly — you keep 100%.</p></div></div>
-          <div class="vstep"><span class="vnum">06</span><div class="vbody"><h3>Free for your first 3 months</h3><p>Your first three months are free; after that it's a flat $40/month (or $60 to be promoted).</p></div></div>
-        </div>
-      </div>
+      ${howflowHTML()}
 
       <div class="panel-card">
         <div class="panel-card-head">
@@ -371,19 +361,7 @@ const WIRE = {
     panel.querySelectorAll('[data-open-convo]').forEach((b) =>
       b.addEventListener('click', () => openEnquiryConvo(b.dataset.openConvo))
     );
-    // Reveal the flow-chart steps as they scroll into view.
-    const vf = panel.querySelector('#vflow');
-    if (vf && typeof IntersectionObserver !== 'undefined') {
-      const io = new IntersectionObserver(
-        (entries) => entries.forEach((en) => {
-          if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
-        }),
-        { threshold: 0.35 }
-      );
-      vf.querySelectorAll('.vstep').forEach((s) => io.observe(s));
-    } else if (vf) {
-      vf.querySelectorAll('.vstep').forEach((s) => s.classList.add('in'));
-    }
+    initHowflow(panel);
   },
   availability() {
     wireCalendar(panel.querySelector('#cal'), avail, () => {
@@ -553,6 +531,83 @@ async function ocrDocument(dataUrl, fileType) {
   } catch {
     return null;
   }
+}
+
+// "How Match Maid works" — six steps rendered as a scroll-driven zigzag
+// timeline. Copy is fixed; emphasis (.hi) on exclusivity and the prices.
+const HOWFLOW_STEPS = [
+  { n: '01', h: 'Complete your profile', b: `Add your name, photo and a short bio so clients know who they're inviting in.` },
+  { n: '02', h: 'Set your availability', b: `Update your weekly calendar with the mornings, middays and afternoons you can work; this is what matches you to clients.` },
+  { n: '03', h: 'Set your price', b: `Add your hourly rate. You set it, and it's shown openly; no race to the bottom.` },
+  { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas like Christchurch.` },
+  { n: '05', h: `Get <span class="hi">exclusive</span> enquiries`, b: `Clients who want your services at your times reach out to <span class="hi">you alone</span>. Reply and arrange directly; <span class="hi">you keep 100%</span>.` },
+  { n: '06', h: 'Free for your first 3 months', b: `Your first three months are free; after that it's a flat <span class="hi">$40/month</span> (or <span class="hi">$60 to be promoted</span>).` },
+];
+
+function howflowHTML() {
+  return `<section class="howflow" id="howflow" aria-label="How Match Maid works">
+    <h2 class="howflow-title">How Match Maid works</h2>
+    <div class="howflow-body">
+      <div class="howflow-track" aria-hidden="true"><span class="howflow-line-fill"></span></div>
+      <ol class="howflow-steps">
+        ${HOWFLOW_STEPS.map((s, i) => `<li class="howstep" data-side="${i % 2 === 0 ? 'left' : 'right'}">
+          <div class="howstep-node"><span class="howbadge">${s.n}<i class="howspark" aria-hidden="true"></i></span></div>
+          <div class="howstep-card">
+            <h3>${s.h}</h3>
+            <p>${s.b}</p>
+          </div>
+        </li>`).join('')}
+      </ol>
+    </div>
+  </section>`;
+}
+
+// Scroll-driven motion for the flow: reveal each step on entry, grow the
+// centre line with scroll. Guarded so the plain-DOM test harness (no
+// IntersectionObserver / rAF / matchMedia) and reduced-motion both no-op safely.
+let howObserver = null;
+let howScrollBound = false;
+function initHowflow(panel) {
+  const section = panel.querySelector('#howflow');
+  if (!section) return;
+  const steps = section.querySelectorAll('.howstep');
+  const fill = section.querySelector('.howflow-line-fill');
+  const prefersReduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReduce || typeof IntersectionObserver === 'undefined') {
+    steps.forEach((s) => s.classList.add('in-view'));
+    if (fill && fill.style) fill.style.transform = 'scaleY(1)';
+    return;
+  }
+  if (howObserver) howObserver.disconnect();
+  howObserver = new IntersectionObserver(
+    (entries) => entries.forEach((en) => {
+      if (en.isIntersecting) { en.target.classList.add('in-view'); howObserver.unobserve(en.target); }
+    }),
+    { threshold: 0.3, rootMargin: '0px 0px -12% 0px' }
+  );
+  steps.forEach((s) => howObserver.observe(s));
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const updateLine = () => {
+    const sec = document.getElementById('howflow');
+    const f = sec && sec.querySelector('.howflow-line-fill');
+    if (!f) return;
+    const rect = sec.getBoundingClientRect();
+    const vh = window.innerHeight || 800;
+    f.style.transform = `scaleY(${clamp((vh * 0.55 - rect.top) / rect.height, 0, 1)})`;
+  };
+  if (!howScrollBound && typeof window !== 'undefined' && window.addEventListener && typeof requestAnimationFrame !== 'undefined') {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => { updateLine(); ticking = false; });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    howScrollBound = true;
+  }
+  if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(updateLine);
 }
 
 // Guided onboarding: do-this-first checklist, ticks off from real data.
