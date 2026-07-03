@@ -237,17 +237,7 @@ const PANELS = {
         <div class="stat-card"><span class="stat-num cap">${mp.listingStatus}</span><span class="stat-label">Listing status</span></div>
       </div>
 
-      ${howflowHTML()}
-
-      <div class="panel-card">
-        <div class="panel-card-head">
-          <h2>Latest enquiries</h2>
-          <button class="btn outline sm" data-goto="enquiries" type="button">View all</button>
-        </div>
-        ${enquiries.length
-          ? enquiries.slice(0, 2).map(enquiryRow).join('')
-          : '<p class="muted">No enquiries yet — complete your profile and availability so clients can find and message you.</p>'}
-      </div>`;
+      ${howflowHTML()}`;
   },
 
   availability() {

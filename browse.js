@@ -49,7 +49,7 @@ function parseLoc(val) {
   return { label: val, suburbs: val ? [val] : [] };
 }
 suburbSel.innerHTML = locationOptions('town:Christchurch');
-runSearch();
+showSearchPrompt();
 
 extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
@@ -75,6 +75,15 @@ function currentPrefs() {
     budgetMax: Number(budgetMaxEl.value) || 999,
     slots,
   };
+}
+
+// Nothing shows until the visitor actually searches — no results before prefs.
+function showSearchPrompt() {
+  meta.textContent = 'Choose your area and what you need, then search.';
+  const sw = document.getElementById('sortWrap');
+  if (sw) sw.hidden = true;
+  results.innerHTML =
+    '<img class="empty-art" src="assets/brand/empty_state.svg" alt="" /><p class="browse-prompt">Pick your suburb and the type of clean above, then <strong>search</strong> to see local cleaners.</p>';
 }
 
 async function runSearch() {
