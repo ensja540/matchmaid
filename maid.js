@@ -35,11 +35,8 @@ const displayName = sessionUser?.fullName || profile.fullName;
 // Capitalise the first name for greetings (people often type it lower-case).
 const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpperCase());
 document.getElementById('who').textContent = `Hi, ${firstName}`;
-// Show the admin link only for the operator account.
-if (String(sessionUser?.email || '').toLowerCase() === 'ensor.jack@gmail.com') {
-  const adminLink = document.getElementById('adminLink');
-  if (adminLink) adminLink.hidden = false;
-}
+// Admin dashboard is reached directly at /admin (server-gated to the operator's
+// email) — no header button, to keep the portal chrome clean.
 document.getElementById('logout').addEventListener('click', () => {
   Session.clear();
   location.href = '/';
@@ -60,7 +57,8 @@ let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
 const areas = new Set(loggedIn ? [] : profile.areas); // specific suburbs (when narrowing)
 let mpCity = 'Christchurch'; // default city
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
-const svcSet = new Set(loggedIn ? [] : profile.services); // service slugs offered
+const svcSet = new Set(loggedIn ? [] : profile.services); // base service slugs offered
+let mpAddons = loggedIn ? [] : (profile.addons || []); // priced extras [{slug, price}]
 let mp = loggedIn
   ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0 }
   : {
@@ -99,6 +97,7 @@ if (sessionUser?.id) {
       mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
       svcSet.clear();
       (data.services || []).forEach((s) => svcSet.add(s));
+      mpAddons = Array.isArray(data.addons) ? data.addons : [];
       render();
     })
     .catch(() => {});
@@ -291,7 +290,18 @@ const PANELS = {
 
   profile() {
     const svcChips = DEMO.services
+      .filter((s) => DEMO.baseServiceSlugs.includes(s.slug))
       .map((s) => `<button type="button" class="chip select ${svcSet.has(s.slug) ? 'on' : ''}" data-svc="${s.slug}">${s.name}</button>`)
+      .join('');
+    const addonRows = DEMO.extraServices
+      .map((x) => {
+        const cur = mpAddons.find((a) => a.slug === x.slug);
+        const on = !!cur;
+        return `<div class="addon-row ${on ? 'on' : ''}" data-addon="${x.slug}">
+            <label class="check-inline"><input type="checkbox" class="addon-toggle" ${on ? 'checked' : ''} /> ${x.name}</label>
+            <span class="addon-price"><span class="addon-dollar">$</span><input type="number" class="addon-input" min="0" step="1" value="${cur ? cur.price : ''}" placeholder="0" ${on ? '' : 'disabled'} /></span>
+          </div>`;
+      })
       .join('');
     return `
       <h1>Your profile</h1>
@@ -301,7 +311,11 @@ const PANELS = {
         <label class="field"><span>Your desired hourly rate ($/hr)</span><input name="rate" type="number" value="${mp.rate ?? ''}" /></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
         ${locSectionHTML()}
-        <div class="field"><span>Services you offer</span><div class="chip-select">${svcChips}</div></div>
+        <div class="field"><span>Type of clean you offer</span><div class="chip-select">${svcChips}</div></div>
+        <div class="field"><span>Extras &amp; add-ons</span>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a price — it's added on top of your hourly rate at checkout.</p>
+          <div class="addon-list">${addonRows}</div>
+        </div>
         <div class="field"><span>Verification</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below — we review and approve it.</p>
           <div class="verif-list">${VERIF_ITEMS.map(verifRow).join('')}</div>
@@ -447,6 +461,28 @@ const WIRE = {
         c.classList.toggle('on', svcSet.has(slug));
       })
     );
+    // Priced extras: ticking one enables its price box; both keep mpAddons in sync.
+    panel.querySelectorAll('[data-addon]').forEach((row) => {
+      const slug = row.dataset.addon;
+      const toggle = row.querySelector('.addon-toggle');
+      const price = row.querySelector('.addon-input');
+      const sync = () => {
+        if (toggle.checked) {
+          price.disabled = false;
+          const p = Math.max(0, Math.round(Number(price.value) || 0));
+          const cur = mpAddons.find((a) => a.slug === slug);
+          if (cur) cur.price = p;
+          else mpAddons.push({ slug, price: p });
+          row.classList.add('on');
+        } else {
+          price.disabled = true;
+          mpAddons = mpAddons.filter((a) => a.slug !== slug);
+          row.classList.remove('on');
+        }
+      };
+      toggle.addEventListener('change', sync);
+      price.addEventListener('input', () => { if (toggle.checked) sync(); });
+    });
     wireLocSection();
     panel.querySelectorAll('[data-doc]').forEach((inp) =>
       inp.addEventListener('change', () => {
@@ -497,6 +533,7 @@ const WIRE = {
             years: mp.years,
             rate: mp.rate,
             services: [...svcSet],
+            addons: mpAddons,
             areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
             listingStatus: 'active',
           }),
@@ -642,7 +679,7 @@ function gettingStartedHTML() {
           (s) => `<div class="gs-step ${s.done ? 'done' : ''}">
             <span class="gs-num">${s.done ? '✓' : s.n}</span>
             <div class="gs-body"><strong>${s.label}</strong><span class="muted">${s.desc}</span></div>
-            ${s.done ? '<span class="status status-accepted">Done</span>' : `<button class="btn solid sm" data-start="${s.tab}" type="button">Complete</button>`}
+            ${s.done ? '<span class="status status-accepted">Done</span>' : `<button class="btn solid sm" data-start="${s.tab}" type="button">Start</button>`}
           </div>`
         )
         .join('')}

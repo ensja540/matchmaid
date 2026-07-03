@@ -22,7 +22,7 @@ const tabs = document.getElementById('tabs');
 let current = 'overview';
 
 // ---- Working state (all loaded from the API) ----
-const find = { loc: 'town:Christchurch', locLabel: 'Christchurch (all)', service: 'regular', desiredRate: 35, slots: [], ran: false, results: [], sort: 'relevance' };
+const find = { loc: 'town:Christchurch', locLabel: 'Christchurch (all)', service: 'regular', extras: [], desiredRate: 35, slots: [], ran: false, results: [], sort: 'relevance' };
 function locationOptions(sel) {
   return Object.entries(DEMO.towns)
     .map(([town, subs]) =>
@@ -319,9 +319,14 @@ const PANELS = {
           <label class="field"><span>Location</span>
             <select name="loc">${locationOptions(find.loc)}</select>
           </label>
-          <label class="field"><span>Service</span>
-            <select name="service">${DEMO.services.map((s) => opt(s.slug, s.name, find.service)).join('')}</select>
+          <label class="field"><span>Type of clean</span>
+            <select name="service">${DEMO.services.filter((s) => DEMO.baseServiceSlugs.includes(s.slug)).map((s) => opt(s.slug, s.name, find.service)).join('')}</select>
           </label>
+        </div>
+        <div class="field"><span>Add-on extras (optional)</span>
+          <div class="chip-select" id="findExtras">${DEMO.extraServices
+            .map((x) => `<button type="button" class="chip select ${find.extras.includes(x.slug) ? 'on' : ''}" data-extra="${x.slug}">${escapeHtml(x.name)}</button>`)
+            .join('')}</div>
         </div>
         <label class="field"><span>Ideal hourly rate: <strong id="rateOut">$${find.desiredRate}/hr</strong></span>
           <input type="range" id="rate" min="20" max="80" value="${find.desiredRate}" />
@@ -435,6 +440,14 @@ const WIRE = {
       rateOut.textContent = `$${find.desiredRate}/hr`;
     });
     wireCalendar(panel.querySelector('#cal'), find.slots);
+    panel.querySelectorAll('[data-extra]').forEach((c) =>
+      c.addEventListener('click', () => {
+        const slug = c.dataset.extra;
+        if (find.extras.includes(slug)) find.extras = find.extras.filter((s) => s !== slug);
+        else find.extras.push(slug);
+        c.classList.toggle('on', find.extras.includes(slug));
+      })
+    );
     if (find.ran) wireResults(panel.querySelector('#findResults'));
     panel.querySelector('#sortBy')?.addEventListener('change', (e) => {
       find.sort = e.target.value;
@@ -454,7 +467,7 @@ const WIRE = {
       try {
         const data = await postJSON('/api/match', {
           suburbs: parsed.suburbs,
-          services: [find.service],
+          services: [find.service, ...find.extras],
           budgetMin: Math.max(0, find.desiredRate - 10),
           budgetMax: find.desiredRate + 10,
           verif: [],
@@ -580,6 +593,24 @@ function wireResults(box) {
   bindCleanerLinks(box);
 }
 
+// A plain-language price breakdown: the base clean rate plus any extras the
+// customer selected that this cleaner actually offers (e.g. "Regular $30/hr · Oven +$5").
+function priceBreakdown(r) {
+  const base = r.fair ?? r.rateMin ?? r.rateMax;
+  const addonMap = new Map((r.addons || []).map((a) => [a.slug, a.price]));
+  const lines = [];
+  if (base != null) lines.push(`${DEMO.serviceName(find.service)} $${base}/hr`);
+  (find.extras || []).forEach((slug) => {
+    if (addonMap.has(slug)) lines.push(`${DEMO.serviceName(slug)} +$${addonMap.get(slug)}`);
+  });
+  return lines;
+}
+function breakdownHTML(r) {
+  const lines = priceBreakdown(r);
+  if (!lines.length) return '';
+  return `<p class="price-breakdown">${lines.map((l) => `<span>${escapeHtml(l)}</span>`).join('')}</p>`;
+}
+
 function resultCard(r) {
   const tierLabel = r.tier === 'great' ? 'Strong match' : r.tier === 'good' ? 'Good match' : 'Also available';
   const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured'].filter(Boolean);
@@ -596,6 +627,7 @@ function resultCard(r) {
         <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
+    ${breakdownHTML(r)}
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${reqSlots && (r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
     ${reqSlots && !(r.matched || []).length ? `<p class="no-overlap">Not free at your chosen times — ask about other slots.</p>` : ''}
@@ -707,6 +739,11 @@ function cleanerCardHTML(c) {
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
+    ${c.addons && c.addons.length
+      ? `<div class="cv-section"><h4>Extras &amp; add-ons</h4><ul class="addon-menu">${c.addons
+          .map((a) => `<li><span>${escapeHtml(DEMO.serviceName(a.slug))}</span><span class="addon-cost">+$${Math.max(0, Math.round(Number(a.price) || 0))}</span></li>`)
+          .join('')}</ul></div>`
+      : ''}
     <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${attr(c.id)}">Message ${first}</button></div>`;

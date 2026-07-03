@@ -199,6 +199,21 @@ const DEMO = {
   ],
 };
 
+// The type of clean a customer books (they pick ONE). Everything else in the
+// service catalogue is a priced "extra" a maid can offer on top of their rate.
+DEMO.baseServiceSlugs = ['regular', 'one-off', 'deep', 'end-of-tenancy'];
+DEMO.extraServices = [
+  { slug: 'oven', name: 'Oven clean' },
+  { slug: 'windows', name: 'Interior windows' },
+  { slug: 'fridge', name: 'Inside fridge' },
+  { slug: 'carpet', name: 'Carpet clean' },
+  { slug: 'cupboards', name: 'Inside cupboards' },
+  { slug: 'walls', name: 'Wall wash' },
+];
+// slug -> friendly name across base + extras (used for breakdowns and chips).
+DEMO.serviceName = (slug) =>
+  (DEMO.services.find((s) => s.slug === slug) || DEMO.extraServices.find((s) => s.slug === slug) || { name: slug }).name;
+
 // Relevance scoring shared by the customer "find a cleaner" demo (mirrors the
 // server: availability overlap 50%, price closeness 30%, rating 20%).
 DEMO.scoreCleaner = function (cleaner, { suburb, service, desiredRate, slots }) {

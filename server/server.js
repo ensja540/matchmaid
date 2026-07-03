@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v40 clean customer forms; green create btns; getting-started labels; header bracket (2026-07-03).
+// deploy: v41 priced add-ons + breakdown; base services; disclaimer; drop admin btn; cache-bust css/demo (2026-07-03).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -198,7 +198,7 @@ app.get('/api/profile', async (req, res) => {
     const { rows } = await query(
       `select cp.id, cp.business_name, cp.bio, cp.years_experience, cp.listing_status,
               cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
-              cp.avg_rating, cp.review_count,
+              cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
@@ -226,6 +226,7 @@ app.get('/api/profile', async (req, res) => {
       reviews: cp.review_count || 0,
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
       services: svc.rows.map((r) => r.slug),
+      addons: Array.isArray(cp.addons) ? cp.addons : [],
       areas: areas.rows.map((r) => r.name),
       fullName: cp.full_name,
       email: cp.email,
@@ -238,10 +239,18 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, areas, badges, listingStatus } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    // Priced extras: keep only well-formed { slug, price } rows with a sane price.
+    const cleanAddons = Array.isArray(addons)
+      ? addons
+          .filter((a) => a && typeof a.slug === 'string' && a.slug)
+          .map((a) => ({ slug: a.slug, price: Math.max(0, Math.round(Number(a.price) || 0)) }))
+          .slice(0, 30)
+      : null;
 
     // Maids now set a single hourly rate; we mirror it into min/max/mid so the
     // match + display keep working (and legacy min/max are still accepted).
@@ -256,11 +265,13 @@ app.put('/api/profile', async (req, res) => {
       `update cleaner_profiles set
          business_name = $2, bio = $3, years_experience = $4,
          hourly_rate_min = $5, hourly_rate_max = $6, hourly_rate = $7,
-         listing_status = coalesce($8, listing_status), updated_at = now()
+         listing_status = coalesce($8, listing_status),
+         addons = coalesce($9, addons), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
         min, max, mid, listingStatus ?? null,
+        cleanAddons != null ? JSON.stringify(cleanAddons) : null,
       ]
     );
 
@@ -524,7 +535,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'id is required.' });
     const { rows } = await query(
       `select cp.id, coalesce(cp.business_name, u.full_name) as name, cp.bio, cp.years_experience,
-              cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count,
+              cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified, cp.profile_photo_url
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.id = $1`,
@@ -556,6 +567,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
       photo: cp.profile_photo_url || '',
       services: svc.rows.map((r) => r.name),
+      addons: Array.isArray(cp.addons) ? cp.addons : [],
       areas: areas.rows.map((r) => r.name),
       availability: av.rows.map((r) => ({ day: r.day_of_week, slot: START_TO_SLOT[r.start] })).filter((x) => x.slot),
     });
@@ -822,7 +834,7 @@ app.post('/api/match', async (req, res) => {
         cp.id,
         coalesce(cp.business_name, u.full_name) as name,
         cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
-        cp.avg_rating, cp.review_count,
+        cp.avg_rating, cp.review_count, cp.addons,
         cp.id_verified, cp.police_verified, cp.insurance_verified,
         (cp.featured_until is not null and cp.featured_until > now()) as is_featured,
         coalesce(array_agg(distinct st.slug) filter (where st.slug is not null), array[]::text[]) as services,
@@ -852,7 +864,9 @@ app.post('/api/match', async (req, res) => {
         const badges = { id: r.id_verified, police: r.police_verified, insurance: r.insurance_verified };
         if (reqVerif.some((b) => !badges[b])) return null; // must hold requested verifications
 
-        const offered = (r.services || []).filter(Boolean);
+        // A cleaner "offers" both their base services and their priced extras.
+        const addonSlugs = (Array.isArray(r.addons) ? r.addons : []).map((a) => a.slug);
+        const offered = [...new Set([...(r.services || []).filter(Boolean), ...addonSlugs])];
         const offeredReq = reqServices.filter((s) => offered.includes(s));
         const serviceScore = reqServices.length ? offeredReq.length / reqServices.length : 0.6;
 
@@ -881,6 +895,7 @@ app.post('/api/match', async (req, res) => {
           reviews: r.review_count,
           badges, featured: r.is_featured,
           services: offered,
+          addons: Array.isArray(r.addons) ? r.addons : [],
           offered: offeredReq,
           missing: reqServices.filter((s) => !offered.includes(s)),
           matched,

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Match Maid | Maid portal</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=41" />
   </head>
   <body class="app-body">
     <div class="notice-bar">
@@ -15,7 +15,6 @@
       <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
       <div class="app-bar-right">
         <span id="who" class="who"></span>
-        <a class="switch-side" id="adminLink" href="/admin" hidden>Admin</a>
         <a class="switch-side" href="/customer" id="switchSide">Customer portal</a>
         <button class="btn ghost" id="logout" type="button">Log out</button>
       </div>
@@ -51,13 +50,15 @@
         </nav>
         <span class="pf-copy">© <span class="pf-year"></span> Match Maid · Christchurch, NZ</span>
       </div>
+      <p class="footer-disclaimer">Match Maid is a directory service only. We do not accept liability for cleaning issues or disputes. Please do thorough due diligence and pay for services directly to the cleaner upon job completion.</p>
+
     </footer>
     <script>document.querySelector('.pf-year').textContent = new Date().getFullYear();</script>
 
     <script src="session.js"></script>
-    <script src="demo.js"></script>
+    <script src="demo.js?v=41"></script>
     <!-- Optional: in-browser OCR to read uploaded ID docs (loads on demand). -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
-    <script src="maid.js?v=40"></script>
+    <script src="maid.js?v=41"></script>
   </body>
 </html>
