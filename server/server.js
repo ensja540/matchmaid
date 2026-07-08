@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v41 priced add-ons + breakdown; base services; disclaimer; drop admin btn; cache-bust css/demo (2026-07-03).
+// deploy: v42 single prices only (no ranges); scrollable cleaner modal (2026-07-08).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';

@@ -163,7 +163,7 @@ function resultCard(r, p) {
     .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');
   const rateStr = rateLabel(r.rateMin, r.rateMax);
-  const fairStr = r.fair != null && r.rateMin !== r.rateMax ? ` · <strong>fair ~$${r.fair}/hr</strong>` : '';
+  const fairStr = '';
   const costStr = r.estCost != null ? ` · ~$${r.estCost} for ${p.hours}h` : '';
   const first = r.name.split(/['\s]/)[0];
   return `<article class="result ${r.featured ? 'featured' : ''}">
@@ -220,8 +220,9 @@ async function openCleanerModal(id) {
   }
 }
 function rateLabel(min, max) {
-  if (min == null || max == null) return 'rate on enquiry';
-  return min === max ? `$${min}/hr` : `$${min}–$${max}/hr`;
+  // Single price only — never a range.
+  const r = min ?? max;
+  return r == null ? 'rate on enquiry' : `$${r}/hr`;
 }
 function escapeHtml(s) {
   return String(s ?? '')

@@ -618,7 +618,7 @@ function resultCard(r) {
     .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');
   const rateStr = rateLabel(r.rateMin, r.rateMax);
-  const fairStr = r.fair != null && r.rateMin !== r.rateMax ? ` · fair ~$${r.fair}/hr` : '';
+  const fairStr = '';
   const reqSlots = find.slots.length;
   const first = escapeHtml(r.name.split(/['\s]/)[0]);
   return `<article class="result ${r.featured ? 'featured' : ''}">
@@ -716,8 +716,9 @@ function openEnquiryModal(cleanerId, cleanerName) {
 }
 
 function rateLabel(min, max) {
-  if (min == null || max == null) return 'rate on enquiry';
-  return min === max ? `$${min}/hr` : `$${min}–$${max}/hr`;
+  // Single price only — never a range.
+  const r = min ?? max;
+  return r == null ? 'rate on enquiry' : `$${r}/hr`;
 }
 function cleanerCardHTML(c) {
   const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured'].filter(Boolean);
