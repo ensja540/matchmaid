@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v42 single prices only (no ranges); scrollable cleaner modal (2026-07-08).
+// deploy: v43 starred cleaners on customer portal (2026-07-08).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -574,6 +574,60 @@ app.get('/api/cleaner-profile', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load profile.' });
+  }
+});
+
+// --- Starred cleaners (a customer's saved / previous cleaners) --------------
+app.get('/api/favourites', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query(
+      `select cp.id, coalesce(cp.business_name, u.full_name) as name,
+              cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count,
+              cp.id_verified, cp.police_verified, cp.insurance_verified, cp.profile_photo_url
+         from client_favourites f
+         join cleaner_profiles cp on cp.id = f.cleaner_id
+         join users u on u.id = cp.user_id
+        where f.client_user_id = $1
+        order by f.created_at desc`,
+      [userId]
+    );
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        rateMin: r.hourly_rate_min != null ? Number(r.hourly_rate_min) : null,
+        rateMax: r.hourly_rate_max != null ? Number(r.hourly_rate_max) : null,
+        rating: Number(r.avg_rating) || 0,
+        reviews: r.review_count,
+        badges: { id: r.id_verified, police: r.police_verified, insurance: r.insurance_verified },
+        photo: r.profile_photo_url || '',
+      }))
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load starred cleaners.' });
+  }
+});
+
+app.post('/api/favourites', async (req, res) => {
+  try {
+    const { userId, cleanerId, starred } = req.body ?? {};
+    if (!userId || !cleanerId) return res.status(400).json({ error: 'userId and cleanerId are required.' });
+    if (starred === false) {
+      await query('delete from client_favourites where client_user_id = $1 and cleaner_id = $2', [userId, cleanerId]);
+    } else {
+      await query(
+        `insert into client_favourites (client_user_id, cleaner_id) values ($1, $2)
+         on conflict (client_user_id, cleaner_id) do nothing`,
+        [userId, cleanerId]
+      );
+    }
+    res.json({ ok: true, starred: starred !== false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not update your starred cleaners.' });
   }
 });
 

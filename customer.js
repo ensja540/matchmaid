@@ -42,6 +42,8 @@ let convos = []; // this user's conversations
 let msgCache = {}; // conversationId -> messages[]
 let activeConvo = null;
 let myEnquiries = []; // enquiries this customer has sent
+let starredIds = new Set(); // cleaner ids this customer has starred
+let starredList = []; // starred cleaners with details (for the overview)
 
 // "How Match Maid works" — customer steps as a scroll-driven zigzag timeline
 // (same component as the maid side, customer copy).
@@ -165,6 +167,31 @@ function loadEnquiries() {
     .then((list) => { myEnquiries = list.filter((e) => e.role === 'client'); reRenderIf('overview'); })
     .catch(() => {});
 }
+function loadFavourites() {
+  getJSON(`/api/favourites?userId=${encodeURIComponent(uid)}`)
+    .then((list) => {
+      starredList = Array.isArray(list) ? list : [];
+      starredIds = new Set(starredList.map((c) => c.id));
+      reRenderIf('overview', 'find');
+    })
+    .catch(() => {});
+}
+// Star / unstar a cleaner, then keep the overview + any star buttons in sync.
+function toggleStar(cleanerId, name) {
+  if (!uid || !cleanerId) return;
+  const wasStarred = starredIds.has(cleanerId);
+  if (wasStarred) {
+    starredIds.delete(cleanerId);
+    starredList = starredList.filter((c) => c.id !== cleanerId);
+  } else {
+    starredIds.add(cleanerId);
+    if (name && !starredList.some((c) => c.id === cleanerId)) starredList.unshift({ id: cleanerId, name });
+  }
+  render();
+  postJSON('/api/favourites', { userId: uid, cleanerId, starred: !wasStarred })
+    .then(() => loadFavourites())
+    .catch(() => {});
+}
 function refreshConvos() {
   return getJSON(`/api/conversations?userId=${encodeURIComponent(uid)}`)
     .then((list) => { convos = list; })
@@ -245,6 +272,7 @@ if (uid) {
   loadDirectory();
   loadProfile();
   loadEnquiries();
+  loadFavourites();
   initMessages();
 } else {
   loadSuburbs();
@@ -276,13 +304,20 @@ function render() {
 const PANELS = {
   overview() {
     return `
-      <h1>Welcome, ${escapeHtml(displayName.split(' ')[0])}.</h1>
+      <h1>Welcome, ${escapeHtml(firstName)}.</h1>
       <div class="cta-card">
         <div>
           <h2>Need a clean?</h2>
           <p class="muted">Search local maids, compare rates openly, and contact just the one you choose.</p>
         </div>
         <button class="btn solid" data-goto="find" type="button">Find a cleaner</button>
+      </div>
+
+      <div class="panel-card">
+        <h2>Your starred cleaners</h2>
+        ${starredList.length
+          ? `<div class="starred-grid">${starredList.map(starredCard).join('')}</div>`
+          : '<p class="muted">Tap the ☆ on any cleaner to save them here — handy for finding a cleaner you liked again.</p>'}
       </div>
 
       ${howflowHTML()}
@@ -429,6 +464,10 @@ const WIRE = {
     panel.querySelectorAll('[data-open]').forEach((b) =>
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
+    // Starred cleaner cards: open profile, message, or unstar.
+    wireStars(panel);
+    wireContact(panel);
+    bindCleanerLinks(panel);
     initHowflow(panel);
   },
   find() {
@@ -591,6 +630,7 @@ function wireResults(box) {
   if (!box) return;
   wireContact(box);
   bindCleanerLinks(box);
+  wireStars(box);
 }
 
 // A plain-language price breakdown: the base clean rate plus any extras the
@@ -625,7 +665,10 @@ function resultCard(r) {
     <div class="result-head">
       <div><h3><button class="linklike" type="button" data-cleaner="${attr(r.id)}">${escapeHtml(r.name)}</button> ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
         <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}</p></div>
-      <span class="tier tier-${r.tier}">${tierLabel}</span>
+      <div class="result-head-right">
+        ${starBtn(r.id, r.name)}
+        <span class="tier tier-${r.tier}">${tierLabel}</span>
+      </div>
     </div>
     ${breakdownHTML(r)}
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
@@ -633,6 +676,35 @@ function resultCard(r) {
     ${reqSlots && !(r.matched || []).length ? `<p class="no-overlap">Not free at your chosen times — ask about other slots.</p>` : ''}
     <div class="result-actions"><button class="btn solid sm" type="button" data-contact="${attr(r.name)}" data-cid="${attr(r.id)}">Contact ${first}</button></div>
   </article>`;
+}
+
+// A star toggle for saving a cleaner (☆ / ★).
+function starBtn(id, name) {
+  const on = starredIds.has(id);
+  return `<button class="star-btn ${on ? 'on' : ''}" type="button" data-star="${attr(id)}" data-starname="${attr(name)}" aria-pressed="${on}" title="${on ? 'Saved' : 'Save this cleaner'}" aria-label="${on ? 'Remove from saved' : 'Save this cleaner'}">${on ? '★' : '☆'}</button>`;
+}
+function wireStars(box) {
+  if (!box) return;
+  box.querySelectorAll('[data-star]').forEach((b) =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(b.dataset.star, b.dataset.starname); })
+  );
+}
+// Compact card for a starred cleaner on the overview.
+function starredCard(c) {
+  const rate = rateLabel(c.rateMin, c.rateMax);
+  const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
+  const meta = `${c.rating ? `★ ${Number(c.rating).toFixed(1)} (${c.reviews || 0}) · ` : ''}${rate}`;
+  return `<div class="starred-card">
+    <div class="starred-top">
+      <button class="linklike" type="button" data-cleaner="${attr(c.id)}">${escapeHtml(c.name)}</button>
+      ${starBtn(c.id, c.name)}
+    </div>
+    <p class="result-meta">${meta}</p>
+    <div class="starred-actions">
+      <button class="btn outline sm" type="button" data-cleaner="${attr(c.id)}">View</button>
+      <button class="btn solid sm" type="button" data-contact="${attr(c.name)}" data-cid="${attr(c.id)}">Message ${first}</button>
+    </div>
+  </div>`;
 }
 
 // Contact from a result: start (or reuse) a real conversation, then open it.
@@ -660,6 +732,7 @@ async function openCleanerModal(id) {
   try {
     const c = await getJSON(`/api/cleaner-profile?id=${encodeURIComponent(id)}`);
     cleanerModalBody.innerHTML = cleanerCardHTML(c);
+    wireStars(cleanerModalBody);
     const btn = cleanerModalBody.querySelector('[data-cpcontact]');
     btn?.addEventListener('click', () => {
       cleanerModal.hidden = true;
@@ -732,10 +805,11 @@ function cleanerCardHTML(c) {
   return `
     <div class="cv-head">
       <div class="avatar lg">${c.photo ? `<img src="${escapeHtml(c.photo)}" alt="" />` : `<span>${initial}</span>`}</div>
-      <div>
+      <div class="cv-head-main">
         <h2>${escapeHtml(c.name)}</h2>
         <p class="muted" style="margin:0">★ ${Number(c.rating).toFixed(1)} (${c.reviews}) · ${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
       </div>
+      ${starBtn(c.id, c.name)}
     </div>
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}

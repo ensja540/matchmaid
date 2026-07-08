@@ -861,7 +861,21 @@ a { color: inherit; text-decoration: none; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 .avatar.lg { width: 60px; height: 60px; font-size: 1.4rem; }
 .cv-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.2rem; }
+.cv-head-main { flex: 1; min-width: 0; }
 .cv-head h2 { font-size: 1.5rem; margin: 0; }
+
+/* Star / save a cleaner */
+.star-btn { background: none; border: none; font-size: 1.35rem; line-height: 1; cursor: pointer; color: var(--muted); padding: 0.1rem 0.25rem; transition: color 0.12s, transform 0.12s; }
+.star-btn:hover { color: var(--gold); transform: scale(1.12); }
+.star-btn.on { color: var(--gold); }
+.result-head-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+
+/* Starred cleaners on the customer overview */
+.starred-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.8rem; }
+.starred-card { border: 1px solid var(--line); border-radius: 12px; padding: 0.9rem 1rem; }
+.starred-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.starred-top .linklike { font-weight: 700; text-align: left; }
+.starred-actions { display: flex; gap: 0.5rem; margin-top: 0.7rem; flex-wrap: wrap; }
 .cv-facts { margin: 0; }
 .cv-fact { display: grid; grid-template-columns: 130px 1fr; gap: 0.6rem; padding: 0.6rem 0; border-top: 1px solid var(--line); }
 .cv-fact dt { color: var(--muted); font-size: 0.82rem; }
