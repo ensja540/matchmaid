@@ -11,10 +11,40 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+const feedbackBody = document.getElementById('feedbackBody');
+
 if (!sessionUser) {
   body.innerHTML = '<div class="panel-card"><p class="muted">Please <a href="/login">log in</a> with the admin account to review documents.</p></div>';
 } else {
   load();
+  loadFeedback();
+}
+
+async function loadFeedback() {
+  if (!feedbackBody) return;
+  feedbackBody.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const res = await fetch(`/api/admin/feedback?userId=${encodeURIComponent(sessionUser.id)}`);
+    if (res.status === 403) { feedbackBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>'; return; }
+    const list = await res.json();
+    if (!Array.isArray(list) || !list.length) {
+      feedbackBody.innerHTML = '<div class="panel-card"><p class="muted">No feedback yet.</p></div>';
+      return;
+    }
+    feedbackBody.innerHTML = list.map(feedbackHTML).join('');
+  } catch {
+    feedbackBody.innerHTML = '<div class="panel-card"><p class="muted">Could not load feedback.</p></div>';
+  }
+}
+
+function feedbackHTML(f) {
+  const when = f.created_at ? new Date(f.created_at).toLocaleString('en-NZ') : '';
+  const from = [f.full_name, f.email].filter(Boolean).map(esc).join(' · ') || 'Anonymous';
+  const role = f.role ? ` (${esc(f.role === 'cleaner' ? 'maid' : 'customer')})` : '';
+  return `<div class="panel-card admin-fb">
+    <p class="admin-fb-msg">${esc(f.message)}</p>
+    <p class="muted admin-fb-meta">${from}${role} · ${esc(f.page || '')} · ${esc(when)}</p>
+  </div>`;
 }
 
 async function load() {

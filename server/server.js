@@ -1,7 +1,7 @@
 // Match Maid mock server: serves the static landing page and a small API
 // backed by the real Postgres database (maid/customer signup + login, and
 // the core cleaner search).
-// deploy: v43 starred cleaners on customer portal (2026-07-08).
+// deploy: v44 site feedback widget -> /admin (2026-07-08).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -450,6 +450,40 @@ async function isAdmin(userId) {
   const { rows } = await query('select email from users where id = $1', [userId]);
   return !!rows[0] && String(rows[0].email).toLowerCase() === ADMIN_EMAIL;
 }
+
+// --- Feedback / suggestions (from the site-wide widget) --------------------
+app.post('/api/feedback', async (req, res) => {
+  try {
+    const { userId, email, page, message } = req.body ?? {};
+    const text = String(message || '').trim();
+    if (!text) return res.status(400).json({ error: 'A message is required.' });
+    await query(
+      `insert into feedback (user_id, email, page, message)
+       values ($1, $2, $3, $4)`,
+      [userId || null, (email || '').slice(0, 200) || null, (page || '').slice(0, 300) || null, text.slice(0, 4000)]
+    );
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not send your feedback. Please try again.' });
+  }
+});
+
+app.get('/api/admin/feedback', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const { rows } = await query(
+      `select f.id, f.message, f.page, f.created_at,
+              coalesce(u.email, f.email) as email, u.full_name, u.role
+         from feedback f left join users u on u.id = f.user_id
+        order by f.created_at desc limit 200`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load feedback.' });
+  }
+});
 
 app.get('/api/admin/verifications', async (req, res) => {
   try {
