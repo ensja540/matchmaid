@@ -255,8 +255,16 @@ a { color: inherit; text-decoration: none; }
 
 .mh-inner { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; }
 
-.mh-brand { display: inline-flex; align-items: center; gap: 0.7rem; text-decoration: none; }
-.mh-mark { width: 54px; height: 54px; display: block; }
+/* The lockup is centred, but the mark sits left of the type, so the WORDS land
+   right of the page axis. Pull the lockup back by half the mark's footprint:
+   the wordmark then reads as centred and the mark overhangs into the margin. */
+.mh-brand {
+  --mh-mark: 54px;
+  --mh-gap: 0.7rem;
+  display: inline-flex; align-items: center; gap: var(--mh-gap); text-decoration: none;
+  transform: translateX(calc((var(--mh-mark) + var(--mh-gap)) / -2));
+}
+.mh-mark { width: var(--mh-mark); height: var(--mh-mark); display: block; }
 .mh-word {
   font-family: var(--sans); font-weight: 800; font-size: 2.1rem;
   letter-spacing: -0.02em; color: var(--paper);
@@ -298,7 +306,7 @@ a { color: inherit; text-decoration: none; }
 
 @media (max-width: 640px) {
   .masthead { padding: 2.4rem 1.2rem 2.2rem; }
-  .mh-mark { width: 42px; height: 42px; }
+  .mh-brand { --mh-mark: 42px; } /* keeps the offset in step with the mark */
   .mh-word { font-size: 1.6rem; }
   .mh-spark { display: none; }
 }
