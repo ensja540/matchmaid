@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Match Maid | Sign in</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
-    <link rel="stylesheet" href="styles.css?v=61" />
+    <link rel="stylesheet" href="styles.css?v=62" />
   </head>
   <body class="auth-body">
     <div class="auth-wrap">
@@ -50,18 +50,19 @@
       <a class="back" href="/">Back to home</a>
     </div>
 
-    <!-- Your OAuth Web Client ID from console.cloud.google.com. Until it is set,
-         auth.js renders a disabled "Continue with Google" button instead. -->
+    <!-- The OAuth Web Client ID. Public by design — it ships to every visitor.
+         The server checks the token's `aud` against GOOGLE_CLIENT_ID in its own
+         environment; that check, not this line, is what keeps sign-in honest. -->
     <script>
-      window.MM_GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
+      window.MM_GOOGLE_CLIENT_ID = '855738513392-oearkirn5kqjga0oq7q8emti7p7m8id8.apps.googleusercontent.com';
     </script>
     <!-- defer, not async: initGoogle() runs on window.load and needs `google`
          to already be defined. An async script may execute after load. -->
     <script src="https://accounts.google.com/gsi/client" defer></script>
 
-    <script src="session.js?v=61"></script>
-    <script src="auth.js?v=61"></script>
-    <script src="feedback.js?v=61"></script>
+    <script src="session.js?v=62"></script>
+    <script src="auth.js?v=62"></script>
+    <script src="feedback.js?v=62"></script>
 
   </body>
 </html>

@@ -15,3 +15,8 @@ services:
         value: "20"
       - key: DATABASE_URL
         sync: false # set this in the Render dashboard (your Neon connection string)
+      # Not a secret, but it MUST be set: server.js only checks that a Google
+      # token was issued for THIS app when this is present. Unset, it accepts a
+      # valid token minted for any other Google OAuth client.
+      - key: GOOGLE_CLIENT_ID
+        value: "855738513392-oearkirn5kqjga0oq7q8emti7p7m8id8.apps.googleusercontent.com"
