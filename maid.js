@@ -43,11 +43,6 @@ document.getElementById('logout').addEventListener('click', (e) => {
   Session.clear();
   location.href = '/';
 });
-// Same account, other side: flip the session role and head to the hirer portal.
-document.getElementById('switchSide')?.addEventListener('click', () => {
-  const u = Session.get();
-  if (u) { u.role = 'client'; Session.set(u); }
-});
 
 const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');

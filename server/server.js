@@ -29,6 +29,8 @@ app.use(
 
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
+// How each side is named to the person reading the error.
+const SIDE_NAME = { cleaner: 'maid', client: 'hirer' };
 
 // The clean types a customer picks exactly one of. Everything else in the
 // catalogue is a flat-priced "extra". Must match DEMO.baseServiceSlugs.
@@ -150,9 +152,11 @@ app.post('/api/register', async (req, res) => {
 
     res.status(201).json({ user: publicUser(user) });
   } catch (err) {
+    // Unique is on (email, role), so this only fires for the side they asked
+    // for. The same address is still free to register on the other side.
     if (err.code === '23505')
       return res.status(409).json({
-        error: 'That email already has a Match Maid account. Just log in, and you can use both the maid and hirer sides.',
+        error: `That email already has a ${SIDE_NAME[ROLE_MAP[req.body?.role]] || 'Match Maid'} account. Log in instead.`,
       });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });
@@ -160,10 +164,13 @@ app.post('/api/register', async (req, res) => {
 });
 
 // --- Auth: login ------------------------------------------------------------
-// One account (one email + password) can use BOTH sides. We authenticate on
-// email + password, then make sure the profile for whichever side they're
-// logging into exists — so the same login reaches the maid portal and the
-// hirer portal, while the two portals themselves stay separate.
+// The two sides are separate accounts. An account is an (email, role) pair, so
+// we authenticate on email + role + password: a maid login never reaches the
+// hirer portal, even from the same address. The same person may hold both, but
+// they are two accounts with two passwords and two sets of data.
+//
+// A safety net for rows predating the split; registration already makes the
+// profile. It only ever provisions the account's OWN side.
 async function ensureProfile(userId, dbRole) {
   const table = dbRole === 'cleaner' ? 'cleaner_profiles' : 'client_profiles';
   const { rows } = await query(`select 1 from ${table} where user_id = $1`, [userId]);
@@ -179,19 +186,21 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required.' });
 
     const { rows } = await query(
-      'select id, role, full_name, email, password_hash, status from users where email = $1',
-      [email.toLowerCase().trim()]
+      'select id, role, full_name, email, password_hash, status from users where email = $1 and role = $2',
+      [email.toLowerCase().trim(), dbRole]
     );
     const user = rows[0];
     const ok = user && user.password_hash && (await bcrypt.compare(password, user.password_hash));
+    // Deliberately the same message whether the address is unknown, the password
+    // is wrong, or the account exists only on the other side: naming which would
+    // tell a stranger that this person cleans for a living.
     if (!ok) return res.status(401).json({ error: 'Wrong email or password.' });
 
     const gate = await gateRemoved(user, reactivate);
     if (gate) return res.status(403).json(gate);
 
-    // Provision the side they're logging into; the same account can be both.
-    await ensureProfile(user.id, dbRole);
-    res.json({ user: publicUser({ ...user, role: dbRole }) });
+    await ensureProfile(user.id, user.role);
+    res.json({ user: publicUser(user) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });
@@ -200,7 +209,9 @@ app.post('/api/login', async (req, res) => {
 
 // --- Auth: Sign in with Google ---------------------------------------------
 // The client sends the Google ID-token ("credential"); we verify it with
-// Google's tokeninfo endpoint, then find-or-create the user by email.
+// Google's tokeninfo endpoint, then find-or-create the user by email AND role.
+// Matching on email alone would hand a maid's account to whoever signed in from
+// the hirer page with the same address.
 // Requires GOOGLE_CLIENT_ID in the environment to be enforced (recommended).
 app.post('/api/auth/google', async (req, res) => {
   try {
@@ -218,9 +229,14 @@ app.post('/api/auth/google', async (req, res) => {
       return res.status(401).json({ error: 'This Google sign-in is not configured for Match Maid.' });
 
     const email = String(info.email).toLowerCase().trim();
-    let { rows } = await query('select id, role, full_name, email, status from users where email = $1', [email]);
+    let { rows } = await query(
+      'select id, role, full_name, email, status from users where email = $1 and role = $2',
+      [email, dbRole]
+    );
     let user = rows[0];
     if (!user) {
+      // No account on THIS side yet. One on the other side is irrelevant: the
+      // unique index is on (email, role), so this insert stands on its own.
       // No password login for Google accounts — store an unusable random hash.
       const hash = await bcrypt.hash('google-' + credential.slice(0, 24) + Date.now(), 10);
       ({ rows } = await query(
@@ -233,8 +249,8 @@ app.post('/api/auth/google', async (req, res) => {
       const gate = await gateRemoved(user, reactivate);
       if (gate) return res.status(403).json(gate);
     }
-    await ensureProfile(user.id, dbRole);
-    res.json({ user: publicUser({ ...user, role: dbRole }) });
+    await ensureProfile(user.id, user.role);
+    res.json({ user: publicUser(user) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Google sign-in failed. Please try again.' });

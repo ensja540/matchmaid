@@ -15,9 +15,12 @@ create type payment_status       as enum ('pending','held','released','refunded'
 create type review_status        as enum ('published','flagged','removed');
 
 -- Identity
+-- An account is an (email, role) pair: the same person may hold a cleaner
+-- account and a customer account on one address, but they are separate accounts
+-- with separate passwords and separate data. See migrate-separate-accounts.mjs.
 create table users (
   id              uuid primary key default gen_random_uuid(),
-  email           text not null unique,
+  email           text not null,
   phone           text,
   password_hash   text,
   role            user_role not null,
@@ -28,6 +31,7 @@ create table users (
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
+create unique index users_email_role_key on users (lower(email), role);
 
 -- Geography and catalogue
 create table suburbs (
