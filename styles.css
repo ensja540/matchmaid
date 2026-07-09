@@ -140,6 +140,7 @@ a { color: inherit; text-decoration: none; }
 .cross-link::after { background: var(--accent); transform: scaleX(1); }
 .cross-link:hover { color: var(--accent); }
 /* Portal cross-side pill */
+/* Solid teal in both portals, so "Maid portal" and "Customer portal" match. */
 .switch-side { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.26rem 0.66rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.74rem; font-weight: 500; color: var(--muted); background: transparent; white-space: nowrap; transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
 .switch-side:hover { color: var(--accent); border-color: var(--accent); background: var(--surface); }
 
@@ -748,6 +749,14 @@ a { color: inherit; text-decoration: none; }
 .bubble.review-prompt .rp-cta { display: block; margin-top: 0.35rem; font-weight: 700; color: var(--copper); }
 .bubble.review-done { background: var(--bg-mist); border: 1px solid var(--line); }
 
+.enq-right { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+
+/* ---------- Specialist-clean surcharge rows (maid profile) ---------- */
+.surcharge-name em { font-style: normal; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.surcharge-input { width: 4.5rem; padding: 0.35rem 0.4rem; border: 1px solid var(--line); border-radius: 8px; font-family: var(--sans); text-align: right; }
+.surcharge-input:disabled { opacity: 0.45; cursor: not-allowed; }
+.addon-per { color: var(--muted); font-size: 0.82rem; }
+
 /* ---------- Pause listing (maid profile tab) ----------
    Sits above the danger zone as the reversible middle ground. */
 .pause-card { margin-top: 2.4rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-mist); }
@@ -980,8 +989,9 @@ a { color: inherit; text-decoration: none; }
 .cv-head h2 { font-size: 1.5rem; margin: 0; }
 
 /* Star / save a cleaner */
-.star-btn { background: none; border: none; font-size: 1.35rem; line-height: 1; cursor: pointer; color: var(--muted); padding: 0.1rem 0.25rem; transition: color 0.12s, transform 0.12s; }
-.star-btn:hover { color: var(--gold); transform: scale(1.12); }
+/* Always gold: the hollow ☆ reads as an outline, the solid ★ as favourited. */
+.star-btn { background: none; border: none; font-size: 1.35rem; line-height: 1; cursor: pointer; color: var(--gold); padding: 0.1rem 0.25rem; transition: transform 0.12s, filter 0.12s; }
+.star-btn:hover { transform: scale(1.12); filter: brightness(0.92); }
 .star-btn.on { color: var(--gold); }
 .result-head-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 

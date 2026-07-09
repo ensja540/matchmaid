@@ -60,6 +60,10 @@ let mpCity = 'Christchurch'; // default city
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
 const svcSet = new Set(loggedIn ? [] : profile.services); // base service slugs offered
 let mpAddons = loggedIn ? [] : (profile.addons || []); // priced extras [{slug, price}]
+// Optional per-HOUR surcharge on specialist cleans [{slug, extra}]. A regular
+// clean is the advertised rate, so it never carries one.
+let mpSurcharges = loggedIn ? [] : (profile.serviceSurcharges || []);
+const SURCHARGEABLE = DEMO.baseServiceSlugs.filter((s) => s !== 'regular');
 let mp = loggedIn
   ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0, bringsProducts: true, photo: '' }
   : {
@@ -102,6 +106,7 @@ if (sessionUser?.id) {
       svcSet.clear();
       (data.services || []).forEach((s) => svcSet.add(s));
       mpAddons = Array.isArray(data.addons) ? data.addons : [];
+      mpSurcharges = Array.isArray(data.serviceSurcharges) ? data.serviceSurcharges : [];
       render();
     })
     .catch(() => {});
@@ -330,6 +335,12 @@ const PANELS = {
             products and equipment — customers who need them supplied won't see you.</p>
         </div>
         <div class="field"><span>Type of clean you offer</span><div class="chip-select">${svcChips}</div></div>
+        <div class="field"><span>Specialist clean surcharge (optional)</span>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Deep cleans and end-of-lease jobs are harder work.
+            If you charge more per hour for them, set it here — it's added to your hourly rate and shown
+            openly. Leave blank to charge your normal rate.</p>
+          <div class="addon-list">${surchargeRows()}</div>
+        </div>
         <div class="field"><span>Extras &amp; add-ons</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a price — it's added on top of your hourly rate at checkout.</p>
           <div class="addon-list">${addonRows}</div>
@@ -541,6 +552,16 @@ const WIRE = {
       toggle.addEventListener('change', sync);
       price.addEventListener('input', () => { if (toggle.checked) sync(); });
     });
+    // Specialist-clean surcharges: a blank or zero box means "normal rate".
+    panel.querySelectorAll('[data-surcharge]').forEach((row) => {
+      const slug = row.dataset.surcharge;
+      const input = row.querySelector('.surcharge-input');
+      input.addEventListener('input', () => {
+        const v = Math.max(0, Math.round(Number(input.value) || 0));
+        mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug);
+        if (v > 0) mpSurcharges.push({ slug, extra: v });
+      });
+    });
     wireLocSection();
     panel.querySelectorAll('[data-doc]').forEach((inp) =>
       inp.addEventListener('change', () => {
@@ -592,6 +613,7 @@ const WIRE = {
             years: mp.years,
             bringsProducts: mp.bringsProducts,
             photo: mp.photo || null,
+            serviceSurcharges: mpSurcharges,
             rate: mp.rate,
             services: [...svcSet],
             addons: mpAddons,
@@ -765,6 +787,26 @@ function enquiryRow(e) {
     <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.when}</span></div>
     <span class="status status-${e.status}">${e.status}</span>
   </div>`;
+}
+
+// One row per specialist clean type, each with an optional "+$X/hr". Only the
+// clean types the maid actually offers can be priced.
+function surchargeRows() {
+  return SURCHARGEABLE.map((slug) => {
+    const offers = svcSet.has(slug);
+    const cur = mpSurcharges.find((s) => s.slug === slug);
+    return `<div class="addon-row" data-surcharge="${slug}">
+      <span class="surcharge-name${offers ? '' : ' muted'}">${escapeHtml(DEMO.serviceName(slug))}${
+        offers ? '' : ' <em>(not offered)</em>'
+      }</span>
+      <span class="addon-price">
+        <span class="addon-dollar">+$</span>
+        <input type="number" class="surcharge-input" min="0" step="1" value="${cur ? cur.extra : ''}"
+               placeholder="0" ${offers ? '' : 'disabled'} />
+        <span class="addon-per">/hr</span>
+      </span>
+    </div>`;
+  }).join('');
 }
 
 // Pausing hides the listing from browse, search and matches. Nothing else

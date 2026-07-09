@@ -70,6 +70,7 @@ function currentPrefs() {
   return {
     locLabel: parsed.label,
     suburbs: parsed.suburbs,
+    baseService: serviceSel.value,
     services: [...new Set([serviceSel.value, ...extras])],
     verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
     products: !!productsBox?.querySelector('.chip.select.on'),
@@ -104,6 +105,7 @@ async function runSearch() {
         budgetMax: p.budgetMax,
         verif: p.verif,
         products: p.products,
+        baseService: p.baseService,
         durationHours: p.hours,
         slots: p.slots,
       }),
@@ -252,6 +254,11 @@ function cleanerCardHTML(c) {
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
+    ${c.serviceSurcharges && c.serviceSurcharges.length
+      ? `<div class="cv-section"><h4>Specialist cleans</h4><ul class="addon-menu">${c.serviceSurcharges
+          .map((s) => `<li><span>${escapeHtml(SVC_NAME[s.slug] || s.slug)}</span><span class="addon-cost">+$${Math.max(0, Math.round(Number(s.extra) || 0))}/hr</span></li>`)
+          .join('')}</ul></div>`
+      : ''}
     <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
     ${Review.barsHTML(c.breakdown)}

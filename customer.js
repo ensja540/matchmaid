@@ -45,6 +45,7 @@ let convos = []; // this user's conversations
 let msgCache = {}; // conversationId -> messages[]
 let reviewCache = {}; // conversationId -> review | null (undefined = not loaded)
 let activeConvo = null;
+let myEnquiries = []; // enquiries this customer has sent (My enquiries tab)
 let starredIds = new Set(); // cleaner ids this customer has starred
 let starredList = []; // starred cleaners with details (for the My cleaners tab)
 
@@ -165,6 +166,11 @@ function loadProfile() {
     .then((data) => { cprof = { ...PROFILE_DEFAULTS, ...data }; reRenderIf('profile', 'find'); })
     .catch(() => {});
 }
+function loadEnquiries() {
+  getJSON(`/api/enquiries?userId=${encodeURIComponent(uid)}`)
+    .then((list) => { myEnquiries = list.filter((e) => e.role === 'client'); reRenderIf('enquiries'); })
+    .catch(() => {});
+}
 function loadFavourites() {
   getJSON(`/api/favourites?userId=${encodeURIComponent(uid)}`)
     .then((list) => {
@@ -269,6 +275,7 @@ if (uid) {
   loadSuburbs();
   loadDirectory();
   loadProfile();
+  loadEnquiries();
   loadFavourites();
   initMessages();
 } else {
@@ -325,6 +332,32 @@ const PANELS = {
           ? `<div class="starred-grid">${starredList.map(starredCard).join('')}</div>`
           : `<p class="muted">No cleaners yet. Tap the ☆ on any cleaner — in search results or on
                their profile — and they'll be saved here so you can find them again.</p>
+             <button class="btn solid" data-goto="find" type="button" style="margin-top:1rem">Find a cleaner</button>`}
+      </div>`;
+  },
+
+  // Enquiries this customer has sent, newest first, with the cleaner's response.
+  enquiries() {
+    return `
+      <h1>My enquiries</h1>
+      <p class="wizard-lede">Every enquiry you've sent, and where it got to.</p>
+      <div class="panel-card">
+        ${myEnquiries.length
+          ? myEnquiries
+              .map(
+                (e) => `<div class="enquiry-row">
+                  <div>
+                    <strong>${escapeHtml(e.cleaner)}</strong> · ${escapeHtml(e.service)}
+                    <br /><span class="muted">${escapeHtml(e.suburb ? `${e.suburb} · ` : '')}${escapeHtml(e.when)}</span>
+                  </div>
+                  <div class="enq-right">
+                    <span class="status status-${escapeHtml(e.status)}">${escapeHtml(e.status)}</span>
+                    ${e.conversationId ? `<button class="btn outline sm" type="button" data-open="${attr(e.conversationId)}">Message</button>` : ''}
+                  </div>
+                </div>`
+              )
+              .join('')
+          : `<p class="muted">You haven't sent any enquiries yet. Find a cleaner and say hello.</p>
              <button class="btn solid" data-goto="find" type="button" style="margin-top:1rem">Find a cleaner</button>`}
       </div>`;
   },
@@ -459,6 +492,12 @@ const WIRE = {
     wireContact(panel);
     bindCleanerLinks(panel);
   },
+  enquiries() {
+    panel.querySelector('[data-goto]')?.addEventListener('click', () => goTo('find'));
+    panel.querySelectorAll('[data-open]').forEach((b) =>
+      b.addEventListener('click', () => openConvo(b.dataset.open, true))
+    );
+  },
   find() {
     const form = panel.querySelector('#findForm');
     const rate = panel.querySelector('#rate');
@@ -503,6 +542,7 @@ const WIRE = {
           budgetMax: find.desiredRate + 10,
           verif: [],
           products: needsProducts(),
+          baseService: find.service,
           durationHours: 2,
           slots: find.slots,
         });
@@ -640,13 +680,17 @@ function wireResults(box) {
   wireStars(box);
 }
 
-// A plain-language price breakdown: the base clean rate plus any extras the
-// customer selected that this cleaner actually offers (e.g. "Regular $30/hr · Oven +$5").
+// A plain-language price breakdown: the cleaner's rate, any per-hour surcharge
+// for a specialist clean, then flat extras the customer picked and this cleaner
+// offers. e.g. "Deep clean $30/hr · Deep clean +$8/hr · Oven +$5".
 function priceBreakdown(r) {
-  const base = r.fair ?? r.rateMin ?? r.rateMax;
   const addonMap = new Map((r.addons || []).map((a) => [a.slug, a.price]));
   const lines = [];
+  const surcharge = Number(r.surcharge) || 0;
+  // rateMin/fair already include the surcharge, so show the base rate separately.
+  const base = surcharge > 0 ? r.baseRate : r.fair ?? r.rateMin ?? r.rateMax;
   if (base != null) lines.push(`${DEMO.serviceName(find.service)} $${base}/hr`);
+  if (surcharge > 0) lines.push(`Specialist rate +$${surcharge}/hr`);
   (find.extras || []).forEach((slug) => {
     if (addonMap.has(slug)) lines.push(`${DEMO.serviceName(slug)} +$${addonMap.get(slug)}`);
   });
@@ -788,6 +832,7 @@ function openEnquiryModal(cleanerId, cleanerName) {
       enquiryModal.hidden = true;
       await refreshConvos();
       await loadMsgs(activeConvo);
+      loadEnquiries();
       goTo('messages');
     } catch {
       if (btn) { btn.disabled = false; btn.textContent = 'Send enquiry'; }
@@ -873,6 +918,11 @@ function cleanerCardHTML(c) {
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
+    ${c.serviceSurcharges && c.serviceSurcharges.length
+      ? `<div class="cv-section"><h4>Specialist cleans</h4><ul class="addon-menu">${c.serviceSurcharges
+          .map((s) => `<li><span>${escapeHtml(DEMO.serviceName(s.slug))}</span><span class="addon-cost">+$${Math.max(0, Math.round(Number(s.extra) || 0))}/hr</span></li>`)
+          .join('')}</ul></div>`
+      : ''}
     ${c.addons && c.addons.length
       ? `<div class="cv-section"><h4>Extras &amp; add-ons</h4><ul class="addon-menu">${c.addons
           .map((a) => `<li><span>${escapeHtml(DEMO.serviceName(a.slug))}</span><span class="addon-cost">+$${Math.max(0, Math.round(Number(a.price) || 0))}</span></li>`)

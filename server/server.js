@@ -30,6 +30,10 @@ app.use(
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
 
+// The clean types a customer picks exactly one of. Everything else in the
+// catalogue is a flat-priced "extra". Must match DEMO.baseServiceSlugs.
+const BASE_SERVICE_SLUGS = ['regular', 'one-off', 'deep', 'end-of-tenancy'];
+
 // --- Referrals --------------------------------------------------------------
 // A cleaner earns $10 of credit toward future payments for every cleaner they
 // refer who goes on to become FULLY verified (ID + police + insurance). The
@@ -419,7 +423,7 @@ app.get('/api/profile', async (req, res) => {
               cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
               cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified,
-              cp.brings_products, cp.profile_photo_url,
+              cp.brings_products, cp.profile_photo_url, cp.service_surcharges,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.user_id = $1`,
@@ -447,6 +451,7 @@ app.get('/api/profile', async (req, res) => {
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
       bringsProducts: !!cp.brings_products,
       photo: cp.profile_photo_url || '',
+      serviceSurcharges: Array.isArray(cp.service_surcharges) ? cp.service_surcharges : [],
       services: svc.rows.map((r) => r.slug),
       addons: Array.isArray(cp.addons) ? cp.addons : [],
       areas: areas.rows.map((r) => r.name),
@@ -461,7 +466,7 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
@@ -474,6 +479,17 @@ app.put('/api/profile', async (req, res) => {
           .slice(0, 30)
       : null;
 
+    // Per-hour surcharge on specialist cleans. Only the base clean types can
+    // carry one, and a zero is the same as not charging — drop it rather than
+    // storing a noisy "+$0/hr" the customer would see.
+    const cleanSurcharges = Array.isArray(serviceSurcharges)
+      ? serviceSurcharges
+          .filter((s) => s && BASE_SERVICE_SLUGS.includes(s.slug))
+          .map((s) => ({ slug: s.slug, extra: Math.max(0, Math.round(Number(s.extra) || 0)) }))
+          .filter((s) => s.extra > 0)
+          .slice(0, BASE_SERVICE_SLUGS.length)
+      : null;
+
     // Maids now set a single hourly rate; we mirror it into min/max/mid so the
     // match + display keep working (and legacy min/max are still accepted).
     const single = rate != null && rate !== '' ? Number(rate) : null;
@@ -483,14 +499,18 @@ app.put('/api/profile', async (req, res) => {
 
     // Note: verified badges are NOT set here — they're earned by submitting a
     // document (see /api/verification) and being approved, not self-claimed.
+    // coalesce the rate: a partial save that doesn't resend it must not wipe it.
     await query(
       `update cleaner_profiles set
          business_name = $2, bio = $3, years_experience = $4,
-         hourly_rate_min = $5, hourly_rate_max = $6, hourly_rate = $7,
+         hourly_rate_min = coalesce($5, hourly_rate_min),
+         hourly_rate_max = coalesce($6, hourly_rate_max),
+         hourly_rate     = coalesce($7, hourly_rate),
          listing_status = coalesce($8, listing_status),
          addons = coalesce($9, addons),
          brings_products = coalesce($10, brings_products),
-         profile_photo_url = coalesce($11, profile_photo_url), updated_at = now()
+         profile_photo_url = coalesce($11, profile_photo_url),
+         service_surcharges = coalesce($12, service_surcharges), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
@@ -498,6 +518,7 @@ app.put('/api/profile', async (req, res) => {
         cleanAddons != null ? JSON.stringify(cleanAddons) : null,
         typeof bringsProducts === 'boolean' ? bringsProducts : null,
         photo || null,
+        cleanSurcharges != null ? JSON.stringify(cleanSurcharges) : null,
       ]
     );
 
@@ -803,7 +824,8 @@ app.get('/api/cleaner-profile', async (req, res) => {
     const { rows } = await query(
       `select cp.id, coalesce(cp.business_name, u.full_name) as name, cp.bio, cp.years_experience,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count, cp.addons,
-              cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products, cp.profile_photo_url
+              cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
+              cp.service_surcharges, cp.profile_photo_url
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.id = $1 and u.status = 'active'`,
       [id]
@@ -833,6 +855,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
       reviews: cp.review_count,
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
       bringsProducts: !!cp.brings_products,
+      serviceSurcharges: Array.isArray(cp.service_surcharges) ? cp.service_surcharges : [],
       breakdown: await reviewBreakdown(cp.id),
       photo: cp.profile_photo_url || '',
       services: svc.rows.map((r) => r.name),
@@ -1307,12 +1330,17 @@ async function reviewBreakdown(cleanerId) {
 // requested verification badges). Best-first, relevance falls away gradually.
 app.post('/api/match', async (req, res) => {
   try {
-    const { suburb, suburbs, services, budgetMin, budgetMax, verif, durationHours, slots, products } = req.body ?? {};
+    const { suburb, suburbs, services, budgetMin, budgetMax, verif, durationHours, slots, products, baseService } = req.body ?? {};
     // Accept a single suburb or a list (a whole-city search sends all its suburbs).
     const subList = Array.isArray(suburbs) && suburbs.length ? suburbs : suburb ? [suburb] : [];
     if (!subList.length) return res.status(400).json({ error: 'A suburb is required.' });
 
     const reqServices = Array.isArray(services) ? services.filter(Boolean) : [];
+    // The one clean type being booked. Callers send it explicitly; older ones
+    // put it first in `services`.
+    const wantedBase = BASE_SERVICE_SLUGS.includes(baseService)
+      ? baseService
+      : reqServices.find((s) => BASE_SERVICE_SLUGS.includes(s)) ?? null;
     const reqVerif = Array.isArray(verif) ? verif.filter(Boolean) : [];
     const sel = (Array.isArray(slots) ? slots : []).filter(
       (s) => SLOT_START[s?.slot] != null && s.day >= 0 && s.day <= 6
@@ -1330,6 +1358,7 @@ app.post('/api/match', async (req, res) => {
         cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
         cp.avg_rating, cp.review_count, cp.addons,
         cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
+        cp.service_surcharges,
         (cp.featured_until is not null and cp.featured_until > now()) as is_featured,
         coalesce(array_agg(distinct st.slug) filter (where st.slug is not null), array[]::text[]) as services,
         coalesce(
@@ -1372,8 +1401,17 @@ app.post('/api/match', async (req, res) => {
           .filter((x) => x.slot);
         const availScore = sel.length ? matched.length / sel.length : 0.6;
 
-        const cMin = r.hourly_rate_min != null ? Number(r.hourly_rate_min) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
-        const cMax = r.hourly_rate_max != null ? Number(r.hourly_rate_max) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
+        // A specialist clean can carry a per-hour surcharge. Fold it into the
+        // rate BEFORE scoring, otherwise a cleaner with a big deep-clean
+        // surcharge would rank as though they were cheap.
+        const surcharges = Array.isArray(r.service_surcharges) ? r.service_surcharges : [];
+        const surcharge = wantedBase
+          ? Number(surcharges.find((s) => s.slug === wantedBase)?.extra) || 0
+          : 0;
+        const rawMin = r.hourly_rate_min != null ? Number(r.hourly_rate_min) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
+        const rawMax = r.hourly_rate_max != null ? Number(r.hourly_rate_max) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
+        const cMin = rawMin != null ? rawMin + surcharge : null;
+        const cMax = rawMax != null ? rawMax + surcharge : null;
         let fair = null, priceScore = 0.5;
         if (cMin != null && cMax != null) {
           const lo = Math.max(cMin, bMin), hi = Math.min(cMax, bMax);
@@ -1392,6 +1430,12 @@ app.post('/api/match', async (req, res) => {
           reviews: r.review_count,
           badges, featured: r.is_featured,
           bringsProducts: !!r.brings_products,
+          // baseRate is the advertised hourly; surcharge is what this clean type
+          // adds on top. rateMin/rateMax/fair already include it.
+          baseRate: rawMin,
+          surcharge,
+          surchargeService: surcharge > 0 ? wantedBase : null,
+          serviceSurcharges: surcharges,
           services: offered,
           addons: Array.isArray(r.addons) ? r.addons : [],
           offered: offeredReq,

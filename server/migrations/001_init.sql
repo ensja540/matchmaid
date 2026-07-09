@@ -76,6 +76,9 @@ create table cleaner_profiles (
   insurance_verified  boolean not null default false,
   -- Cleaners bring their own products and equipment unless they say otherwise.
   brings_products     boolean not null default true,
+  -- Optional per-HOUR surcharge on specialist cleans: [{ slug, extra }].
+  -- Distinct from `addons`, which are flat one-off amounts.
+  service_surcharges  jsonb not null default '[]'::jsonb,
   -- Short code others enter at signup to credit this cleaner with a referral.
   referral_code       text unique,
   featured_until      timestamptz,
