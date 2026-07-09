@@ -212,20 +212,26 @@ a { color: inherit; text-decoration: none; }
   width: min(1100px, calc(100% - 3rem)); margin: 0 auto; padding: 5rem 0 6rem; }
 .splash-ask { margin: 0 0 3rem; text-align: center; }
 
-/* The splash reveals on scroll: the question, then the two cards, then the line
-   that explains who pays. Default markup is fully visible; JS opts in to the
-   hidden start state by adding `.js-anim`, so a failed script leaves the
-   content on screen rather than blanking it. (Same contract as `.howflow`.)
-   The transition sits on the containers, never on `.choice` itself — a
-   transform there would freeze out the hover lift. */
-.splash.js-anim .reveal { opacity: 0; transform: translateY(20px); }
-.splash .reveal { transition: opacity 0.5s ease-out, transform 0.5s ease-out; }
-.splash .reveal.in-view { opacity: 1; transform: none; }
-.splash .reveal:nth-child(2) { transition-delay: 0.08s; }
-.splash .reveal:nth-child(3) { transition-delay: 0.16s; }
+/* ---------- Scroll reveal (sitewide; see reveal.js) ----------
+   Default markup is fully visible; reveal.js opts in to the hidden start state
+   by putting `.js-anim` on <html>, so a failed script leaves the content on
+   screen rather than blanking it. (Same contract as `.howflow`.)
+
+   Reveal containers, not `.choice` or other hover-lifted cards — a transform
+   left on those would freeze out the hover. A `.stagger` parent cascades its
+   revealed children so a row or grid arrives in reading order. */
+.reveal { transition: opacity 0.5s ease-out, transform 0.5s ease-out; }
+.js-anim .reveal { opacity: 0; transform: translateY(20px); }
+.js-anim .reveal.in-view { opacity: 1; transform: none; }
+
+.stagger > .reveal:nth-child(2) { transition-delay: 0.08s; }
+.stagger > .reveal:nth-child(3) { transition-delay: 0.16s; }
+.stagger > .reveal:nth-child(4) { transition-delay: 0.24s; }
+.stagger > .reveal:nth-child(5) { transition-delay: 0.32s; }
+.stagger > .reveal:nth-child(6) { transition-delay: 0.40s; }
 
 @media (prefers-reduced-motion: reduce) {
-  .splash .reveal { transition: none; }
+  .reveal { transition: none; }
 }
 
 /* ---------- Masthead ----------

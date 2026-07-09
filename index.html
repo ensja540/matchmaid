@@ -18,8 +18,8 @@
     <meta name="twitter:title" content="Match Maid" />
     <meta name="twitter:description" content="Independent local cleaners, rates up front. Free for households." />
     <meta name="twitter:image" content="https://matchmaid.co.nz/og-image.png" />
-    <link rel="stylesheet" href="styles.css?v=57" />
-    <script src="session.js?v=57"></script>
+    <link rel="stylesheet" href="styles.css?v=58" />
+    <script src="session.js?v=58"></script>
     <script>
       // The role gateway is a first-visit thing. If we already know who you are,
       // or which side you chose last time, skip straight in.
@@ -58,7 +58,7 @@
       <span class="mh-spark mh-spark-2" aria-hidden="true">✦</span>
     </header>
 
-    <main class="splash">
+    <main class="splash stagger">
       <h2 class="splash-ask reveal">Are you…</h2>
       <div class="splash-choices reveal">
         <a class="choice maid" href="/for-maids">
@@ -93,34 +93,9 @@
       var c = document.querySelector('.choice.customer');
       if (m) m.addEventListener('click', function () { localStorage.setItem('mm_side', 'maid'); });
       if (c) c.addEventListener('click', function () { localStorage.setItem('mm_side', 'customer'); });
-
-      // Reveal the splash on scroll. The hidden start state lives behind
-      // `.js-anim`, added here — no script, no hiding. Reduced motion and old
-      // browsers skip straight to the visible state.
-      (function () {
-        var splash = document.querySelector('.splash');
-        var items = [].slice.call(document.querySelectorAll('.splash .reveal'));
-        if (!splash || !items.length) return;
-        var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-        if (reduce || typeof IntersectionObserver === 'undefined') {
-          items.forEach(function (el) { el.classList.add('in-view'); });
-          return;
-        }
-        splash.classList.add('js-anim');
-        var io = new IntersectionObserver(
-          function (entries) {
-            entries.forEach(function (en) {
-              if (!en.isIntersecting) return;
-              en.target.classList.add('in-view'); // once: never re-hidden
-              io.unobserve(en.target);
-            });
-          },
-          { threshold: 0.18 }
-        );
-        items.forEach(function (el) { io.observe(el); });
-      })();
     </script>
-    <script src="feedback.js?v=57"></script>
+    <script src="reveal.js?v=58"></script>
+    <script src="feedback.js?v=58"></script>
 
   </body>
 </html>
