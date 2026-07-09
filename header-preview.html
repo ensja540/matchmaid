@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Match Maid | Header preview</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
+    <link rel="stylesheet" href="styles.css?v=51" />
+    <style>
+      /* Preview chrome only — not shipped to any real page. */
+      body { margin: 0; background: var(--bg-mist); font-family: var(--sans); }
+      .hp-wrap { max-width: 1180px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+      .hp-note { color: var(--muted); font-size: 0.9rem; max-width: 70ch; line-height: 1.6; }
+      .hp-case { margin-top: 2.5rem; }
+      .hp-label {
+        font-size: 0.7rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--muted); margin-bottom: 0.6rem;
+      }
+      .hp-frame { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--paper); }
+      /* The portal header is a full-width bar; give each one its own row so the
+         two can be compared straight down the page at the same width. */
+    </style>
+  </head>
+  <body>
+    <div class="hp-wrap">
+      <h1 style="font-size:2rem">Portal header — customer vs maid</h1>
+      <p class="hp-note">
+        Both headers below are the exact markup from <code>customer.html</code> and
+        <code>maid.html</code>, styled by the shared <code>.app-bar</code> rules in
+        <code>styles.css</code>. Only the labels and link targets differ. If these two
+        ever look different in treatment, the shared block has been broken.
+      </p>
+
+      <div class="hp-case">
+        <div class="hp-label">customer.html — “Are you a maid?” · Maid portal</div>
+        <div class="hp-frame">
+          <header class="app-bar">
+            <a class="brand" href="/for-customers"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+            <div class="app-bar-right">
+              <span class="who">Hi, Jack</span>
+              <a class="ulink cross-link" href="/for-maids">Are you a maid?</a>
+              <a class="ulink" href="/for-customers">Home</a>
+              <a class="ulink" href="#">Log out</a>
+              <a class="switch-side" href="/maid">Maid portal</a>
+            </div>
+          </header>
+        </div>
+      </div>
+
+      <div class="hp-case">
+        <div class="hp-label">maid.html — “Need a clean?” · Customer portal</div>
+        <div class="hp-frame">
+          <header class="app-bar">
+            <a class="brand" href="/for-maids"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+            <div class="app-bar-right">
+              <span class="who">Hi, Jack</span>
+              <a class="ulink cross-link" href="/for-customers">Need a clean?</a>
+              <a class="ulink" href="/for-maids">Home</a>
+              <a class="ulink" href="#">Log out</a>
+              <a class="switch-side" href="/customer">Customer portal</a>
+            </div>
+          </header>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

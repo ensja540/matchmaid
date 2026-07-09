@@ -7,7 +7,8 @@ const uid = sessionUser?.id && sessionUser.id !== 'demo' ? sessionUser.id : null
 const displayName = sessionUser?.fullName || 'there';
 const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpperCase());
 document.getElementById('who').textContent = `Hi, ${firstName}`;
-document.getElementById('logout').addEventListener('click', () => {
+document.getElementById('logout').addEventListener('click', (e) => {
+  e.preventDefault();
   Session.clear();
   location.href = '/';
 });

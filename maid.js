@@ -38,7 +38,8 @@ const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpp
 document.getElementById('who').textContent = `Hi, ${firstName}`;
 // Admin dashboard is reached directly at /admin (server-gated to the operator's
 // email) — no header button, to keep the portal chrome clean.
-document.getElementById('logout').addEventListener('click', () => {
+document.getElementById('logout').addEventListener('click', (e) => {
+  e.preventDefault();
   Session.clear();
   location.href = '/';
 });

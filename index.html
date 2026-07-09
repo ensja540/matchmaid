@@ -18,8 +18,8 @@
     <meta name="twitter:title" content="Match Maid — the local cleaning marketplace" />
     <meta name="twitter:description" content="Independent local cleaners, rates up front. Free for households." />
     <meta name="twitter:image" content="https://matchmaid.co.nz/og-image.png" />
-    <link rel="stylesheet" href="styles.css?v=49" />
-    <script src="session.js?v=49"></script>
+    <link rel="stylesheet" href="styles.css?v=51" />
+    <script src="session.js?v=51"></script>
     <script>
       // The role gateway is a first-visit thing. If we already know who you are,
       // or which side you chose last time, skip straight in.
@@ -37,57 +37,55 @@
       🧽 We're building our database, more cleaners and homes to clean are coming soon. In the meantime enjoy the service for free
     </div>
 
-    <header class="splash-top">
-      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
-      <span class="splash-tag">The local cleaning marketplace</span>
+    <!-- Typeset masthead rather than a flat image: it stays sharp at any width,
+         the copy is selectable and indexable, and it recolours with the tokens. -->
+    <header class="masthead">
+      <div class="mh-inner">
+        <a class="mh-brand" href="/">
+          <img class="mh-mark" src="assets/logo-mark.svg" alt="" aria-hidden="true" />
+          <span class="mh-word">Match<em>Maid</em></span>
+        </a>
+
+        <h1 class="mh-title">
+          Find a <em>trusted</em> local cleaner<br />
+          in your neighbourhood.
+        </h1>
+
+        <ul class="mh-badges">
+          <li>Verified</li>
+          <li>Police checked</li>
+          <li>Insured</li>
+        </ul>
+      </div>
+
+      <span class="mh-spark mh-spark-1" aria-hidden="true">✦</span>
+      <span class="mh-spark mh-spark-2" aria-hidden="true">✦</span>
     </header>
 
-    <img class="splash-banner" src="assets/brand/cropped-banner.png?v=1" width="1200" height="455" alt="Match Maid — find a trusted local cleaner in your neighbourhood" />
-
     <main class="splash">
-      <div class="splash-hero">
-        <div class="splash-left">
-          <p class="eyebrow">Two sides, one marketplace</p>
-          <h1>Are you…</h1>
-          <div class="splash-choices">
-            <a class="choice maid" href="/for-maids">
-              <span class="choice-k">01 — A maid</span>
-              <span class="choice-t">Supplying</span>
-              <span class="choice-s">List your services</span>
-            </a>
-            <a class="choice customer" href="/for-customers">
-              <span class="choice-k">02 — A hirer</span>
-              <span class="choice-t">Hiring</span>
-              <span class="choice-s">Browse local cleaners</span>
-            </a>
-          </div>
-          <p class="mission">
-            We're on a mission to build <em>New Zealand's biggest network of cleaners</em>
-            — and make it affordable for busy people to have a clean home.
-          </p>
-          <p class="splash-note">
-            Our maids pay a small monthly fee to use the directory — which keeps
-            Match Maid completely free for everyone needing a clean.
-          </p>
-        </div>
-
-        <aside class="splash-right">
-          <img class="splash-sparkle" src="assets/brand/sparkles_accent.svg" alt="" aria-hidden="true" />
-          <p class="splash-intro">
-            Match Maid connects independent cleaners with the households nearby
-            who need them. Choose your side to get started.
-          </p>
-          <p class="tagline">
-            We're making the simplest and most affordable directory of cleaners in NZ.
-          </p>
-        </aside>
+      <h2 class="splash-ask">Are you…</h2>
+      <div class="splash-choices">
+        <a class="choice maid" href="/for-maids">
+          <span class="choice-k">01</span>
+          <span class="choice-t">A maid</span>
+          <span class="choice-s">List your services</span>
+        </a>
+        <a class="choice customer" href="/for-customers">
+          <span class="choice-k">02</span>
+          <span class="choice-t">A hirer</span>
+          <span class="choice-s">Browse local cleaners</span>
+        </a>
       </div>
+      <p class="splash-kicker">
+        <em>We're making the simplest and most affordable directory of cleaners in NZ.</em>
+        Maids pay a small monthly fee to use it — which keeps Match Maid completely
+        free for everyone needing a clean.
+      </p>
     </main>
 
     <footer class="splash-footer">
       <div class="sf-inner">
         <span class="sf-brand">Match Maid</span>
-        <span class="sf-mid">Independent cleaners · They set their own rates · You choose who</span>
         <span class="sf-copy">© <span id="sf-year"></span> · Christchurch, NZ</span>
       </div>
       <p class="footer-disclaimer">Match Maid is a directory service only. We do not accept liability for cleaning issues or disputes. Please do thorough due diligence and pay for services directly to the cleaner upon job completion.</p>
@@ -102,7 +100,7 @@
       if (m) m.addEventListener('click', function () { localStorage.setItem('mm_side', 'maid'); });
       if (c) c.addEventListener('click', function () { localStorage.setItem('mm_side', 'customer'); });
     </script>
-    <script src="feedback.js?v=49"></script>
+    <script src="feedback.js?v=51"></script>
 
   </body>
 </html>
