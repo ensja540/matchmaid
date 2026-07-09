@@ -22,7 +22,10 @@ const tabs = document.getElementById('tabs');
 let current = 'overview';
 
 // ---- Working state (all loaded from the API) ----
-const find = { loc: 'town:Christchurch', locLabel: 'Christchurch (all)', service: 'regular', extras: [], desiredRate: 35, slots: [], ran: false, results: [], sort: 'relevance' };
+// products: null = follow the saved profile preference; true/false = the
+// customer overrode it on the find form this session.
+const find = { loc: 'town:Christchurch', locLabel: 'Christchurch (all)', service: 'regular', extras: [], desiredRate: 35, slots: [], products: null, ran: false, results: [], sort: 'relevance' };
+const needsProducts = () => (find.products == null ? !!cprof.needsProducts : find.products);
 function locationOptions(sel) {
   return Object.entries(DEMO.towns)
     .map(([town, subs]) =>
@@ -40,6 +43,7 @@ let suburbList = DEMO.suburbs.slice();
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
 let msgCache = {}; // conversationId -> messages[]
+let reviewCache = {}; // conversationId -> review | null (undefined = not loaded)
 let activeConvo = null;
 let myEnquiries = []; // enquiries this customer has sent
 let starredIds = new Set(); // cleaner ids this customer has starred
@@ -134,7 +138,7 @@ function initHowflow(panel) {
 // are pre-filled; everything about their home is blank until they set it.
 const PROFILE_DEFAULTS = {
   photo: '', fullName: sessionUser?.fullName || '', email: sessionUser?.email || '', phone: '',
-  suburb: '', address: '', bedrooms: '', bathrooms: '', stairs: false, pets: false, storeys: '', homeType: '', notes: '',
+  suburb: '', address: '', bedrooms: '', bathrooms: '', stairs: false, pets: false, needsProducts: false, storeys: '', homeType: '', notes: '',
 };
 let cprof = { ...PROFILE_DEFAULTS };
 
@@ -155,7 +159,7 @@ function loadSuburbs() {
     .catch(() => {});
 }
 function loadDirectory() {
-  getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages'); }).catch(() => {});
+  getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages', 'overview'); }).catch(() => {});
 }
 function loadProfile() {
   getJSON(`/api/client-profile?userId=${encodeURIComponent(uid)}`)
@@ -337,9 +341,9 @@ const PANELS = {
       </div>
 
       <div class="panel-card">
-        <h2>Cleaners you've contacted</h2>
+        <h2>My cleaners</h2>
         ${convos.length
-          ? `<div class="results">${convos.map(contactedRow).join('')}</div>`
+          ? `<div class="mycleaners">${convos.map(myCleanerRow).join('')}</div>`
           : '<p class="muted">No one yet — the cleaners you message will appear here.</p>'}
       </div>`;
   },
@@ -365,8 +369,11 @@ const PANELS = {
         </div>
         <label class="field"><span>Ideal hourly rate: <strong id="rateOut">$${find.desiredRate}/hr</strong></span>
           <input type="range" id="rate" min="20" max="80" value="${find.desiredRate}" />
-          <span class="muted" style="font-size:0.82rem">We find a fair value within each cleaner's rate range near this.</span>
+          <span class="muted" style="font-size:0.82rem">We'll show you cleaners within a similar price range.</span>
         </label>
+        <div class="field"><span>Cleaning products</span>
+          <label class="check-inline"><input type="checkbox" id="needProducts" ${needsProducts() ? 'checked' : ''} /> The cleaner must bring cleaning products</label>
+        </div>
         <div class="field"><span>When suits you? (optional)</span>
           <div class="cal" id="cal">${calendarHTML(find.slots)}</div>
         </div>
@@ -447,6 +454,7 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="check-inline" style="align-self:center"><input type="checkbox" name="pets" ${cprof.pets ? 'checked' : ''} /> Pets at home</label>
+          <label class="check-inline" style="align-self:center"><input type="checkbox" name="needsProducts" ${cprof.needsProducts ? 'checked' : ''} /> I need the cleaner to bring cleaning products</label>
         </div>
         <label class="field"><span>Layout notes &amp; access</span><textarea name="notes" rows="3" placeholder="e.g. 3 bed 1 bath, stairs to the upper floor, park in the driveway, friendly dog.">${text(cprof.notes)}</textarea></label>
 
@@ -454,7 +462,8 @@ const PANELS = {
           <button class="btn solid" type="submit">Save profile</button>
           <span class="save-msg" id="profMsg"></span>
         </div>
-      </form>`;
+      </form>
+      ${uid ? RemoveProfile.html() : ''}`;
   },
 };
 
@@ -477,6 +486,9 @@ const WIRE = {
     rate.addEventListener('input', () => {
       find.desiredRate = Number(rate.value);
       rateOut.textContent = `$${find.desiredRate}/hr`;
+    });
+    panel.querySelector('#needProducts')?.addEventListener('change', (e) => {
+      find.products = e.target.checked;
     });
     wireCalendar(panel.querySelector('#cal'), find.slots);
     panel.querySelectorAll('[data-extra]').forEach((c) =>
@@ -510,6 +522,7 @@ const WIRE = {
           budgetMin: Math.max(0, find.desiredRate - 10),
           budgetMax: find.desiredRate + 10,
           verif: [],
+          products: needsProducts(),
           durationHours: 2,
           slots: find.slots,
         });
@@ -549,8 +562,12 @@ const WIRE = {
       const bubbles = panel.querySelector('#bubbles');
       if (bubbles) bubbles.scrollTop = bubbles.scrollHeight;
     });
+    panel.querySelectorAll('[data-review]').forEach((b) =>
+      b.addEventListener('click', () => openReviewModal(activeConvo))
+    );
   },
   profile() {
+    if (uid) RemoveProfile.bind(uid);
     const avatar = panel.querySelector('#avatar');
     panel.querySelector('#photoInput').addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -570,7 +587,7 @@ const WIRE = {
         suburb: f.suburb.value,
         bedrooms: f.bedrooms.value, bathrooms: f.bathrooms.value,
         homeType: f.homeType.value,
-        pets: f.pets.checked, storeys: f.storeys.value, notes: f.notes.value,
+        pets: f.pets.checked, needsProducts: f.needsProducts.checked, storeys: f.storeys.value, notes: f.notes.value,
       });
       const el = panel.querySelector('#profMsg');
       if (!uid) {
@@ -604,8 +621,18 @@ function putClientProfile(body) {
 async function openConvo(id, jump) {
   activeConvo = id;
   if (msgCache[id] === undefined) await loadMsgs(id);
+  // Only fetch the review once the thread actually contains a prompt.
+  if (reviewCache[id] === undefined && (msgCache[id] || []).some((m) => m.kind === 'review_request')) {
+    await loadReview(id);
+  }
   if (jump) goTo('messages');
   else render();
+}
+
+function loadReview(id) {
+  return getJSON(`/api/review?conversationId=${encodeURIComponent(id)}&userId=${encodeURIComponent(uid)}`)
+    .then((d) => { reviewCache[id] = d.review; })
+    .catch(() => { reviewCache[id] = null; });
 }
 
 // ---------- Results (from the real /api/match) ----------
@@ -653,7 +680,7 @@ function breakdownHTML(r) {
 
 function resultCard(r) {
   const tierLabel = r.tier === 'great' ? 'Strong match' : r.tier === 'good' ? 'Good match' : 'Also available';
-  const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured'].filter(Boolean);
+  const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured', r.bringsProducts && 'Brings products'].filter(Boolean);
   const slotChips = (r.matched || [])
     .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');
@@ -663,8 +690,8 @@ function resultCard(r) {
   const first = escapeHtml(r.name.split(/['\s]/)[0]);
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
-      <div><h3><button class="linklike" type="button" data-cleaner="${attr(r.id)}">${escapeHtml(r.name)}</button> ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
-        <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}</p></div>
+      <div><h3><button class="linklike" type="button" data-cleaner="${attr(r.id)}">${escapeHtml(r.name)}</button>${Rating.badge(r.rating, r.reviews)} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
+        <p class="result-meta">${rateStr}${fairStr}</p></div>
       <div class="result-head-right">
         ${starBtn(r.id, r.name)}
         <span class="tier tier-${r.tier}">${tierLabel}</span>
@@ -693,13 +720,12 @@ function wireStars(box) {
 function starredCard(c) {
   const rate = rateLabel(c.rateMin, c.rateMax);
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
-  const meta = `${c.rating ? `★ ${Number(c.rating).toFixed(1)} (${c.reviews || 0}) · ` : ''}${rate}`;
   return `<div class="starred-card">
     <div class="starred-top">
-      <button class="linklike" type="button" data-cleaner="${attr(c.id)}">${escapeHtml(c.name)}</button>
+      <button class="linklike" type="button" data-cleaner="${attr(c.id)}">${escapeHtml(c.name)}</button>${Rating.badge(c.rating, c.reviews)}
       ${starBtn(c.id, c.name)}
     </div>
-    <p class="result-meta">${meta}</p>
+    <p class="result-meta">${rate}</p>
     <div class="starred-actions">
       <button class="btn outline sm" type="button" data-cleaner="${attr(c.id)}">View</button>
       <button class="btn solid sm" type="button" data-contact="${attr(c.name)}" data-cid="${attr(c.id)}">Message ${first}</button>
@@ -788,13 +814,65 @@ function openEnquiryModal(cleanerId, cleanerName) {
   });
 }
 
+// ---- Review modal (opened from the review prompt in a chat thread) ---------
+const reviewModal = document.getElementById('reviewModal');
+const reviewModalBody = document.getElementById('reviewModalBody');
+document.getElementById('reviewModalClose')?.addEventListener('click', () => { if (reviewModal) reviewModal.hidden = true; });
+reviewModal?.addEventListener('click', (e) => { if (e.target === reviewModal) reviewModal.hidden = true; });
+
+function openReviewModal(conversationId) {
+  if (!reviewModal || !conversationId || !uid) return;
+  const convo = convos.find((c) => c.id === conversationId);
+  const who = convo ? convo.withBusiness || convo.with : 'your cleaner';
+  const existing = reviewCache[conversationId] || null;
+
+  reviewModalBody.innerHTML = `
+    <h2 style="margin-top:0">Review ${escapeHtml(who)}</h2>
+    <p class="muted">Drag across the stars — you can land on any decimal. Your overall
+      rating is the average of these five.</p>
+    <form id="reviewForm">
+      ${Review.formHTML(existing)}
+      <div class="cp-actions"><button class="btn solid full" type="submit">${existing ? 'Update review' : 'Submit review'}</button></div>
+      <p class="save-msg" id="reviewMsg"></p>
+    </form>`;
+  reviewModal.hidden = false;
+
+  const form = reviewModalBody.querySelector('#reviewForm');
+  const read = Review.wire(form);
+  const msg = reviewModalBody.querySelector('#reviewMsg');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = read();
+    if (typeof data.wouldUseAgain !== 'boolean') {
+      msg.textContent = 'Please say whether you would use them again.';
+      msg.className = 'save-msg err';
+      return;
+    }
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    msg.textContent = 'Saving…';
+    msg.className = 'save-msg pending';
+    try {
+      const res = await postJSON('/api/review', { conversationId, userId: uid, ...data });
+      reviewCache[conversationId] = { ...data, overall: res.overall };
+      reviewModal.hidden = true;
+      render();
+    } catch {
+      btn.disabled = false;
+      msg.textContent = 'Could not save your review. Please try again.';
+      msg.className = 'save-msg err';
+    }
+  });
+}
+
 function rateLabel(min, max) {
   // Single price only — never a range.
   const r = min ?? max;
   return r == null ? 'rate on enquiry' : `$${r}/hr`;
 }
 function cleanerCardHTML(c) {
-  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured'].filter(Boolean);
+  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured', c.bringsProducts && 'Brings products'].filter(Boolean);
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
   const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
@@ -806,8 +884,8 @@ function cleanerCardHTML(c) {
     <div class="cv-head">
       <div class="avatar lg">${c.photo ? `<img src="${escapeHtml(c.photo)}" alt="" />` : `<span>${initial}</span>`}</div>
       <div class="cv-head-main">
-        <h2>${escapeHtml(c.name)}</h2>
-        <p class="muted" style="margin:0">★ ${Number(c.rating).toFixed(1)} (${c.reviews}) · ${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
+        <h2>${escapeHtml(c.name)}${Rating.badge(c.rating, c.reviews)}</h2>
+        <p class="muted" style="margin:0">${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
       </div>
       ${starBtn(c.id, c.name)}
     </div>
@@ -821,14 +899,24 @@ function cleanerCardHTML(c) {
       : ''}
     <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
+    ${Review.barsHTML(c.breakdown)}
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${attr(c.id)}">Message ${first}</button></div>`;
 }
 
-function contactedRow(c) {
-  return `<article class="result">
-    <div class="result-head">
-      <div><h3>${withLabel(c)}</h3><p class="result-meta">${escapeHtml((c.lastBody || '').slice(0, 48))}</p></div>
-      <button class="btn outline sm" type="button" data-open="${c.id}">Message</button>
+// A cleaner the customer has an open thread with. Conversations don't carry
+// rates or ratings, so we enrich from the directory when it's loaded.
+function myCleanerRow(c) {
+  const d = directory.find((x) => x.id === c.cleanerId);
+  const rate = d ? rateLabel(d.rateMin, d.rateMax) : '';
+  const last = escapeHtml((c.lastBody || '').slice(0, 48));
+  return `<article class="mycleaner">
+    <div class="mycleaner-main">
+      <h3>${withLabel(c)}${d ? Rating.badge(d.rating, d.reviews) : ''}</h3>
+      <p class="result-meta">${rate ? `${escapeHtml(rate)} · ` : ''}${last}</p>
+    </div>
+    <div class="mycleaner-actions">
+      <button class="btn outline sm" type="button" data-cleaner="${attr(c.cleanerId)}">View profile</button>
+      <button class="btn solid sm" type="button" data-open="${c.id}">Message</button>
     </div>
   </article>`;
 }
@@ -843,16 +931,27 @@ function escapeHtml(s) {
 }
 const attr = escapeHtml;
 const text = escapeHtml;
-function bubblesHTML(msgs) {
-  return msgs == null
-    ? '<p class="muted" style="margin:auto">Loading…</p>'
-    : msgs.length
-    ? msgs.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
-    : '<p class="muted" style="margin:auto">Say hi 👋</p>';
+// A 'review_request' message is the tappable prompt the cleaner posts when they
+// mark the clean complete. Once reviewed, it settles into a plain confirmation.
+function bubblesHTML(msgs, review) {
+  if (msgs == null) return '<p class="muted" style="margin:auto">Loading…</p>';
+  if (!msgs.length) return '<p class="muted" style="margin:auto">Say hi 👋</p>';
+  return msgs
+    .map((m) => {
+      if (m.kind === 'review_request') {
+        return review
+          ? `<div class="bubble them review-done"><p>Thanks — you rated this clean ${Number(review.overall).toFixed(1)}/5.</p>
+               <span class="rp-cta" data-review="1">Edit your review</span><span>${m.at}</span></div>`
+          : `<button type="button" class="bubble them review-prompt" data-review="1">
+               <p>${escapeHtml(m.body)}</p><span class="rp-cta">Leave a review →</span><span>${m.at}</span></button>`;
+      }
+      return `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`;
+    })
+    .join('');
 }
 function threadHTML(c, msgs) {
   return `<div class="thread-head"><strong>${withLabel(c)}</strong></div>
-    <div class="bubbles" id="bubbles">${bubblesHTML(msgs)}</div>
+    <div class="bubbles" id="bubbles">${bubblesHTML(msgs, reviewCache[c.id])}</div>
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
       <button class="btn solid" type="submit">Send</button>

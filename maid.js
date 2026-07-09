@@ -60,7 +60,7 @@ let mpSpecific = false; // false = whole-city ("Christchurch-wide")
 const svcSet = new Set(loggedIn ? [] : profile.services); // base service slugs offered
 let mpAddons = loggedIn ? [] : (profile.addons || []); // priced extras [{slug, price}]
 let mp = loggedIn
-  ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0 }
+  ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0, bringsProducts: false }
   : {
       businessName: profile.businessName,
       bio: profile.bio,
@@ -69,6 +69,7 @@ let mp = loggedIn
       listingStatus: profile.listingStatus,
       avgRating: profile.rating,
       reviews: profile.reviews,
+      bringsProducts: !!profile.bringsProducts,
     };
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
@@ -84,6 +85,7 @@ if (sessionUser?.id) {
         listingStatus: data.listingStatus ?? 'draft',
         avgRating: data.avgRating ?? 0,
         reviews: data.reviews ?? 0,
+        bringsProducts: !!data.bringsProducts,
       };
       areas.clear();
       (data.areas || []).forEach((a) => areas.add(a));
@@ -229,11 +231,10 @@ const PANELS = {
       ${gettingStartedHTML()}
       <div class="trial-banner">
         <div class="trial-top">
-          <strong>Free trial</strong>
-          <span>Free for your first 3 months</span>
+          <strong>Free access</strong>
+          <span>Free while we build out our user base</span>
         </div>
-        <div class="progress-bar"><div class="progress-fill" style="width:33%"></div></div>
-        <p class="muted">Full access with no fees for your first 3 months. After that it's a flat
+        <p class="muted">Full access with no fees while we build out our user base. After that it's a flat
           $40/month (or $60/month to be promoted to the top of results).</p>
       </div>
 
@@ -311,6 +312,10 @@ const PANELS = {
         <label class="field"><span>Your desired hourly rate ($/hr)</span><input name="rate" type="number" value="${mp.rate ?? ''}" /></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
         ${locSectionHTML()}
+        <div class="field"><span>Cleaning products</span>
+          <label class="check-inline"><input type="checkbox" name="products" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own cleaning products</label>
+          <p class="muted" style="margin:0.4rem 0 0">Customers who need products supplied will only see cleaners who bring their own.</p>
+        </div>
         <div class="field"><span>Type of clean you offer</span><div class="chip-select">${svcChips}</div></div>
         <div class="field"><span>Extras &amp; add-ons</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a price — it's added on top of your hourly rate at checkout.</p>
@@ -324,15 +329,16 @@ const PANELS = {
           <button class="btn solid" type="submit">Save profile</button>
           <span class="save-msg" id="profMsg"></span>
         </div>
-      </form>`;
+      </form>
+      ${loggedIn ? RemoveProfile.html() : ''}`;
   },
 
   subscription() {
     return `
       <h1>Subscription</h1>
       <div class="trial-banner">
-        <strong>You're on the free trial</strong>
-        <p class="muted">Listed free for your first 3 months — full access, no fees yet.</p>
+        <strong>You're listed for free</strong>
+        <p class="muted">Listed free while we build out our user base — full access, no fees yet.</p>
       </div>
       <div class="plan-cards">
         <div class="plan">
@@ -409,7 +415,9 @@ const WIRE = {
       b.addEventListener('click', async () => {
         const enq = enquiries.find((e) => e.id === b.dataset.id);
         if (!enq) return;
-        const status = b.dataset.act === 'accept' ? 'accepted' : 'declined';
+        const ACT = { accept: 'accepted', decline: 'declined', complete: 'completed' };
+        const status = ACT[b.dataset.act];
+        if (!status) return;
         if (sessionUser?.id) {
           try {
             await fetch('/api/enquiry-status', {
@@ -453,6 +461,7 @@ const WIRE = {
     });
   },
   profile() {
+    if (loggedIn) RemoveProfile.bind(sessionUser.id);
     panel.querySelectorAll('[data-svc]').forEach((c) =>
       c.addEventListener('click', () => {
         const slug = c.dataset.svc;
@@ -517,6 +526,7 @@ const WIRE = {
       mp.bio = f.bio.value;
       mp.rate = f.rate.value;
       mp.years = f.years.value;
+      mp.bringsProducts = f.products.checked;
       if (!sessionUser?.id) {
         setMsg('profMsg', 'Saved (demo — log in as a maid to save for real).', 'ok');
         return;
@@ -531,6 +541,7 @@ const WIRE = {
             businessName: mp.businessName,
             bio: mp.bio,
             years: mp.years,
+            bringsProducts: mp.bringsProducts,
             rate: mp.rate,
             services: [...svcSet],
             addons: mpAddons,
@@ -576,7 +587,7 @@ const HOWFLOW_STEPS = [
   { n: '03', h: 'Set your price', b: `Add your hourly rate. You set it, and it's shown openly; no race to the bottom.` },
   { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas near you.` },
   { n: '05', h: `Get <span class="hi">exclusive</span> enquiries`, b: `Clients who want your services at your times reach out to <span class="hi">you alone</span>. Reply and arrange directly; <span class="hi">you keep 100%</span>.` },
-  { n: '06', h: 'Free for your first 3 months', b: `Your first three months are free; after that it's a flat <span class="hi">$40/month</span> (or <span class="hi">$60 to be promoted</span>).` },
+  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$40/month</span> (or <span class="hi">$60 to be promoted</span>).` },
 ];
 
 function howflowHTML() {
@@ -695,11 +706,15 @@ function enquiryRow(e) {
 }
 
 function enquiryCard(e) {
+  // Once accepted, the maid marks the clean done — that posts a review prompt
+  // into the customer's chat thread.
   const actions =
     e.status === 'new'
       ? `<button class="btn solid sm" data-act="accept" data-id="${e.id}" type="button">Accept</button>
          <button class="btn outline sm" data-act="decline" data-id="${e.id}" type="button">Decline</button>`
-      : `<span class="status status-${e.status}">${e.status}</span>`;
+      : e.status === 'accepted'
+        ? `<button class="btn solid sm" data-act="complete" data-id="${e.id}" type="button">Mark clean complete</button>`
+        : `<span class="status status-${e.status}">${e.status}</span>`;
   return `<article class="enquiry">
     <div class="enquiry-head">
       <div><h3>${e.customer}</h3><p class="muted">${e.service} · ${e.suburb} · ${e.when}</p></div>

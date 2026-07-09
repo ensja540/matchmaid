@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Match Maid | Customer portal</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
-    <link rel="stylesheet" href="styles.css?v=44" />
+    <link rel="stylesheet" href="styles.css?v=46" />
   </head>
   <body class="app-body">
     <div class="notice-bar">
@@ -45,6 +45,13 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="reviewModal" hidden>
+      <div class="modal">
+        <button class="modal-close" id="reviewModalClose" aria-label="Close">×</button>
+        <div id="reviewModalBody"></div>
+      </div>
+    </div>
+
     <footer class="portal-footer">
       <div class="pf-inner">
         <span class="pf-brand">Match Maid</span>
@@ -61,9 +68,12 @@
     <script>document.querySelector('.pf-year').textContent = new Date().getFullYear();</script>
 
     <script src="session.js"></script>
-    <script src="demo.js?v=44"></script>
-    <script src="customer.js?v=44"></script>
-    <script src="feedback.js?v=44"></script>
+    <script src="demo.js?v=46"></script>
+    <script src="rating.js?v=46"></script>
+    <script src="review.js?v=46"></script>
+    <script src="remove-profile.js?v=46"></script>
+    <script src="customer.js?v=46"></script>
+    <script src="feedback.js?v=46"></script>
 
   </body>
 </html>

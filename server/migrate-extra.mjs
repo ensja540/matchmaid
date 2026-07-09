@@ -18,8 +18,8 @@ for (const sql of stmts) {
 const subs = [
   ['Merivale', 'Christchurch City'], ['Ilam', 'Christchurch City'], ['Addington', 'Christchurch City'],
   ['St Albans', 'Christchurch City'], ['Sydenham', 'Christchurch City'], ['Cashmere', 'Christchurch City'],
-  ['Hornby', 'Christchurch City'], ['Prebbleton', 'Selwyn District'], ['West Melton', 'Selwyn District'],
-  ['Woodend', 'Waimakariri District'], ['Pegasus', 'Waimakariri District'],
+  ['Hornby', 'Christchurch City'], ['Prebbleton', 'Christchurch City'], ['West Melton', 'Christchurch City'],
+  ['Woodend', 'Christchurch City'], ['Pegasus', 'Christchurch City'],
 ];
 for (const [name, ta] of subs) {
   await query(

@@ -19,6 +19,7 @@ join suburbs s                on s.id = csa.suburb_id
 join cleaner_services cs       on cs.cleaner_id = cp.id
 join service_types st          on st.id = cs.service_type_id
 where cp.listing_status = 'active'
+  and u.status = 'active'   -- removed accounts keep their data but leave the directory
   and s.name  = :suburb
   and st.slug = :service
 order by is_featured desc, cp.avg_rating desc, cp.review_count desc;

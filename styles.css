@@ -82,6 +82,17 @@ p { margin: 0 0 1rem; }
 }
 .muted { color: var(--muted); }
 .lede { font-size: 1.2rem; color: var(--ink-soft); font-weight: 500; }
+/* Shared mission statement — set as a quiet editorial aside, not a headline. */
+.mission {
+  font-family: var(--serif); font-size: clamp(1.1rem, 1.7vw, 1.35rem); line-height: 1.45;
+  color: var(--ink); max-width: 48ch; margin: 1.8rem 0 0; padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+.mission em { font-style: italic; color: var(--copper); }
+.tagline {
+  font-family: var(--serif); font-style: italic; font-size: clamp(1.05rem, 1.5vw, 1.25rem);
+  line-height: 1.4; color: var(--copper-dark); max-width: 34ch; margin: 1.2rem 0 0;
+}
 
 /* ---------- Layout ---------- */
 .container { width: min(1240px, calc(100% - 3rem)); margin: 0 auto; }
@@ -677,6 +688,76 @@ a { color: inherit; text-decoration: none; }
 .auth-msg.error { color: #a3402f; }
 .auth-msg.ok { color: var(--green); }
 .auth-switch { text-align: center; font-size: 0.9rem; color: var(--muted); margin: 1.1rem 0 0; display: flex; flex-direction: column; gap: 0.3rem; align-items: center; }
+.auth-divider { display: flex; align-items: center; gap: 0.9rem; margin: 1.3rem 0; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.google-btn { display: grid; justify-items: center; gap: 0.5rem; }
+.google-btn > button { width: 100%; }
+.google-btn > button:disabled { opacity: 0.55; cursor: not-allowed; }
+.auth-hint { margin: 0; font-size: 0.8rem; color: var(--muted); text-align: center; }
+.reactivate { margin-top: 0.9rem; }
+
+/* ---------- Rating badge (beside a cleaner's name, only once reviewed) ------
+   One grey star row with a gold row clipped over it, so 4.3 renders as 4.3
+   stars of gold rather than snapping to a whole star. */
+.rating-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem; vertical-align: middle;
+  margin-left: 0.5rem; padding: 0.12rem 0.5rem 0.12rem 0.4rem;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--paper);
+  font-family: var(--sans); font-size: 0.78rem; font-weight: 600; line-height: 1.5;
+  white-space: nowrap;
+}
+.rating-stars { position: relative; display: inline-block; color: var(--line); font-size: 0.8rem; letter-spacing: 0.5px; }
+.rating-stars::before { content: '★★★★★'; }
+.rating-stars > i { position: absolute; top: 0; left: 0; bottom: 0; overflow: hidden; color: var(--gold); }
+.rating-stars > i::before { content: '★★★★★'; }
+.rating-num { color: var(--ink); }
+.rating-out { color: var(--muted); font-weight: 400; }
+.rating-count { color: var(--muted); font-weight: 400; }
+
+/* ---------- Review: draggable star inputs ---------- */
+.rating-stars.lg { font-size: 1.7rem; letter-spacing: 2px; }
+.star-input { display: flex; align-items: center; gap: 0.7rem; }
+.star-input .rating-stars { cursor: pointer; touch-action: none; user-select: none; }
+.star-input:focus-visible { outline: 2px solid var(--copper); outline-offset: 3px; border-radius: 4px; }
+.star-val { font-family: var(--sans); font-weight: 700; font-size: 0.95rem; min-width: 2.2rem; }
+.review-dims { display: flex; flex-direction: column; gap: 1.3rem; margin-bottom: 1.6rem; }
+.review-dim-head { display: flex; flex-direction: column; margin-bottom: 0.35rem; }
+.review-dim-head .muted { font-size: 0.84rem; }
+.review-again { margin-bottom: 1.4rem; }
+.review-again strong { display: block; margin-bottom: 0.5rem; }
+
+/* ---------- Review breakdown bars (cleaner profile) ---------- */
+.review-breakdown { margin-top: 1.6rem; padding-top: 1.2rem; border-top: 1px solid var(--line); }
+.rv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.9rem; }
+.rv-head h3 { margin: 0; }
+.rv-row { display: grid; grid-template-columns: 11rem 1fr 2.4rem; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem; }
+.rv-label { font-size: 0.86rem; color: var(--muted); }
+.rv-track { height: 7px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.rv-fill { display: block; height: 100%; background: var(--gold); }
+.rv-val { font-family: var(--sans); font-weight: 700; font-size: 0.86rem; text-align: right; }
+.rv-again { margin: 1rem 0 0; font-size: 0.92rem; color: var(--ink); }
+.rv-again strong { color: var(--green); }
+@media (max-width: 520px) {
+  .rv-row { grid-template-columns: 1fr 2.4rem; }
+  .rv-label { grid-column: 1 / -1; margin-bottom: -0.2rem; }
+}
+
+/* ---------- Review prompt bubble in chat ---------- */
+.bubble.review-prompt { background: var(--bg-cream); border: 1px solid var(--gold); cursor: pointer; text-align: left; width: 100%; font: inherit; }
+.bubble.review-prompt:hover { background: #fdf2dc; }
+.bubble.review-prompt .rp-cta { display: block; margin-top: 0.35rem; font-weight: 700; color: var(--copper); }
+.bubble.review-done { background: var(--bg-mist); border: 1px solid var(--line); }
+
+/* ---------- My cleaners (customer overview) ---------- */
+.mycleaners { display: flex; flex-direction: column; gap: 0.7rem; }
+.mycleaner {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem 1.1rem; background: var(--paper);
+}
+.mycleaner-main { min-width: 0; }
+.mycleaner-main h3 { margin: 0 0 0.15rem; font-size: 1.15rem; }
+.mycleaner-main .result-meta { margin: 0; }
+.mycleaner-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
 .browse-prompt { text-align: center; max-width: 34ch; margin: 0.6rem auto 0; color: var(--muted); }
 .linklike { border: none; background: none; color: var(--copper); font-weight: 600; cursor: pointer; font-size: inherit; padding: 0; }
 .back { color: var(--muted); font-size: 0.82rem; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -751,6 +832,14 @@ a { color: inherit; text-decoration: none; }
 .save-msg.pending { color: var(--gold); }
 .save-msg.ok { color: var(--green); }
 .save-msg.err { color: #c0392b; }
+/* Danger zone: set apart from the profile form so it can't be hit in passing. */
+.danger-zone { margin-top: 3rem; padding: 1.6rem; border: 1px solid #e2b8b1; border-radius: var(--radius); background: #fdf6f4; }
+.danger-zone h2 { margin: 0 0 0.4rem; font-size: 1.4rem; color: #a3402f; }
+.danger-zone .muted { margin: 0 0 1.2rem; max-width: 60ch; }
+.danger-zone .field { max-width: 22rem; }
+.btn.danger { background: #a3402f; border-color: #a3402f; color: var(--paper); }
+.btn.danger:hover:not(:disabled) { background: #8a3527; border-color: #8a3527; }
+.btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }
 .loc-search { width: 100%; padding: 0.65rem 0.8rem; border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--sans); margin-bottom: 0.9rem; }
 .loc-groups { display: flex; flex-direction: column; gap: 1rem; max-height: 340px; overflow-y: auto; }
 .loc-town { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
@@ -784,8 +873,13 @@ a { color: inherit; text-decoration: none; }
 .dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin: 1.4rem 0; }
 .stat-card { padding: 1.3rem; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 0.25rem; }
 .stat-card:last-child { border-right: none; }
-.stat-num { font-family: var(--serif); font-size: 1.9rem; line-height: 1; }
-.stat-num.cap { text-transform: capitalize; font-size: 1.3rem; color: var(--copper-dark); }
+/* Sans, not the serif: Cormorant's old-style figures render "1" as a stunted
+   glyph. Lining + tabular numerals keep the digits full-height and aligned. */
+.stat-num {
+  font-family: var(--sans); font-weight: 700; font-size: 1.75rem; line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums; letter-spacing: -0.01em;
+}
+.stat-num.cap { text-transform: capitalize; font-size: 1.25rem; font-weight: 600; color: var(--copper-dark); }
 .stat-label { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .trial-banner { background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.4rem; margin: 1rem 0 1.6rem; }
 .trial-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.6rem; }

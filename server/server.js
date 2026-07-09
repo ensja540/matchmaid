@@ -29,6 +29,25 @@ app.use(
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
 
+// A removed account keeps every row it owns — enquiries, threads, reviews all
+// stay put for the other party — but cannot be used until the owner reactivates.
+// users.status is the single source of truth; the public directory filters on it.
+const REMOVED = 'removed';
+
+// Call only once credentials are verified, so we never leak account state to a
+// stranger. Returns an error body to send, or null to let the sign-in proceed.
+async function gateRemoved(user, reactivate) {
+  if (user.status !== REMOVED) return null;
+  if (!reactivate)
+    return {
+      error: 'This profile was removed. Reactivate it to get your account and data back.',
+      deactivated: true,
+    };
+  await query("update users set status = 'active', updated_at = now() where id = $1", [user.id]);
+  user.status = 'active';
+  return null;
+}
+
 // Shared slot model (must match the front end).
 // Days: 0=Mon … 6=Sun. Three slots per day.
 const SLOT_START = { morning: '08:00', afternoon: '12:00', evening: '17:00' };
@@ -85,19 +104,22 @@ async function ensureProfile(userId, dbRole) {
 
 app.post('/api/login', async (req, res) => {
   try {
-    const { role, email, password } = req.body ?? {};
+    const { role, email, password, reactivate } = req.body ?? {};
     const dbRole = ROLE_MAP[role];
     if (!dbRole) return res.status(400).json({ error: 'Choose maid or customer.' });
     if (!email || !password)
       return res.status(400).json({ error: 'Email and password are required.' });
 
     const { rows } = await query(
-      'select id, role, full_name, email, password_hash from users where email = $1',
+      'select id, role, full_name, email, password_hash, status from users where email = $1',
       [email.toLowerCase().trim()]
     );
     const user = rows[0];
     const ok = user && user.password_hash && (await bcrypt.compare(password, user.password_hash));
     if (!ok) return res.status(401).json({ error: 'Wrong email or password.' });
+
+    const gate = await gateRemoved(user, reactivate);
+    if (gate) return res.status(403).json(gate);
 
     // Provision the side they're logging into; the same account can be both.
     await ensureProfile(user.id, dbRole);
@@ -105,6 +127,70 @@ app.post('/api/login', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });
+  }
+});
+
+// --- Auth: Sign in with Google ---------------------------------------------
+// The client sends the Google ID-token ("credential"); we verify it with
+// Google's tokeninfo endpoint, then find-or-create the user by email.
+// Requires GOOGLE_CLIENT_ID in the environment to be enforced (recommended).
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { credential, role, reactivate } = req.body ?? {};
+    const dbRole = ROLE_MAP[role] || 'client';
+    if (!credential) return res.status(400).json({ error: 'Missing Google credential.' });
+
+    const info = await fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential)
+    ).then((r) => (r.ok ? r.json() : null));
+
+    if (!info || !info.email || info.email_verified !== 'true')
+      return res.status(401).json({ error: 'Google sign-in could not be verified.' });
+    if (process.env.GOOGLE_CLIENT_ID && info.aud !== process.env.GOOGLE_CLIENT_ID)
+      return res.status(401).json({ error: 'This Google sign-in is not configured for Match Maid.' });
+
+    const email = String(info.email).toLowerCase().trim();
+    let { rows } = await query('select id, role, full_name, email, status from users where email = $1', [email]);
+    let user = rows[0];
+    if (!user) {
+      // No password login for Google accounts — store an unusable random hash.
+      const hash = await bcrypt.hash('google-' + credential.slice(0, 24) + Date.now(), 10);
+      ({ rows } = await query(
+        `insert into users (email, role, full_name, password_hash)
+         values ($1, $2, $3, $4) returning id, role, full_name, email`,
+        [email, dbRole, info.name || email.split('@')[0], hash]
+      ));
+      user = rows[0];
+    } else {
+      const gate = await gateRemoved(user, reactivate);
+      if (gate) return res.status(403).json(gate);
+    }
+    await ensureProfile(user.id, dbRole);
+    res.json({ user: publicUser({ ...user, role: dbRole }) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Google sign-in failed. Please try again.' });
+  }
+});
+
+// --- Account: remove profile (soft) -----------------------------------------
+// Never a hard delete: enquiries, conversations, messages, bookings and reviews
+// all reference the profile, and the other party should keep their history.
+// Flipping users.status pulls the listing out of the directory immediately;
+// signing back in with { reactivate: true } restores the account untouched.
+app.post('/api/profile/remove', async (req, res) => {
+  try {
+    const { userId } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rowCount } = await query(
+      `update users set status = $2, updated_at = now() where id = $1 and status <> $2`,
+      [userId, REMOVED]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'No active account for that user.' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not remove the profile.' });
   }
 });
 
@@ -200,6 +286,7 @@ app.get('/api/profile', async (req, res) => {
               cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
               cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified,
+              cp.brings_products,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.user_id = $1`,
@@ -225,6 +312,7 @@ app.get('/api/profile', async (req, res) => {
       avgRating: Number(cp.avg_rating) || 0,
       reviews: cp.review_count || 0,
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
+      bringsProducts: !!cp.brings_products,
       services: svc.rows.map((r) => r.slug),
       addons: Array.isArray(cp.addons) ? cp.addons : [],
       areas: areas.rows.map((r) => r.name),
@@ -239,7 +327,7 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
@@ -266,12 +354,14 @@ app.put('/api/profile', async (req, res) => {
          business_name = $2, bio = $3, years_experience = $4,
          hourly_rate_min = $5, hourly_rate_max = $6, hourly_rate = $7,
          listing_status = coalesce($8, listing_status),
-         addons = coalesce($9, addons), updated_at = now()
+         addons = coalesce($9, addons),
+         brings_products = coalesce($10, brings_products), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
         min, max, mid, listingStatus ?? null,
         cleanAddons != null ? JSON.stringify(cleanAddons) : null,
+        typeof bringsProducts === 'boolean' ? bringsProducts : null,
       ]
     );
 
@@ -323,6 +413,7 @@ app.get('/api/client-profile', async (req, res) => {
     const { rows } = await query(
       `select u.full_name, u.email, cp.phone, cp.address_line, cp.notes,
               cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.has_pets, cp.storeys, cp.profile_photo_url,
+              cp.needs_products,
               s.name as suburb
          from users u
          left join client_profiles cp on cp.user_id = u.id
@@ -344,6 +435,7 @@ app.get('/api/client-profile', async (req, res) => {
       homeType: r.home_type || 'House',
       stairs: !!r.has_stairs,
       pets: !!r.has_pets,
+      needsProducts: !!r.needs_products,
       storeys: r.storeys || 'Single storey',
       photo: r.profile_photo_url || '',
     });
@@ -355,7 +447,7 @@ app.get('/api/client-profile', async (req, res) => {
 
 app.put('/api/client-profile', async (req, res) => {
   try {
-    const { userId, fullName, email, phone, suburb, address, notes, bedrooms, bathrooms, homeType, stairs, pets, storeys, photo } = req.body ?? {};
+    const { userId, fullName, email, phone, suburb, address, notes, bedrooms, bathrooms, homeType, stairs, pets, needsProducts, storeys, photo } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     await ensureClientProfile(userId);
     await query(
@@ -370,10 +462,12 @@ app.put('/api/client-profile', async (req, res) => {
          address_line = $3, notes = $4, phone = $5,
          bedrooms = $6, bathrooms = $7, home_type = $8, has_stairs = $9,
          has_pets = $10, storeys = $11,
-         profile_photo_url = coalesce($12, profile_photo_url)
+         profile_photo_url = coalesce($12, profile_photo_url),
+         needs_products = $13
        where user_id = $1`,
       [userId, sub.rows[0]?.id ?? null, address ?? null, notes ?? null, phone ?? null,
-       bedrooms ?? null, bathrooms ?? null, homeType ?? null, !!stairs, !!pets, storeys ?? null, photo || null]
+       bedrooms ?? null, bathrooms ?? null, homeType ?? null, !!stairs, !!pets, storeys ?? null, photo || null,
+       !!needsProducts]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -536,13 +630,13 @@ app.get('/api/directory', async (_req, res) => {
     const { rows } = await query(
       `select cp.id, coalesce(cp.business_name, u.full_name) as name,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count,
-              cp.id_verified, cp.police_verified, cp.insurance_verified,
+              cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
               coalesce(array_agg(distinct s.name) filter (where s.name is not null), array[]::text[]) as areas
          from cleaner_profiles cp
          join users u on u.id = cp.user_id
          left join cleaner_service_areas csa on csa.cleaner_id = cp.id
          left join suburbs s on s.id = csa.suburb_id
-        where cp.listing_status = 'active'
+        where cp.listing_status = 'active' and u.status = 'active'
         group by cp.id, u.id
         order by cp.avg_rating desc`
     );
@@ -554,6 +648,7 @@ app.get('/api/directory', async (_req, res) => {
       rating: Number(r.avg_rating) || 0,
       reviews: r.review_count,
       badges: { id: r.id_verified, police: r.police_verified, insurance: r.insurance_verified },
+      bringsProducts: !!r.brings_products,
       areas: r.areas,
     })));
   } catch (err) {
@@ -570,9 +665,9 @@ app.get('/api/cleaner-profile', async (req, res) => {
     const { rows } = await query(
       `select cp.id, coalesce(cp.business_name, u.full_name) as name, cp.bio, cp.years_experience,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count, cp.addons,
-              cp.id_verified, cp.police_verified, cp.insurance_verified, cp.profile_photo_url
+              cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products, cp.profile_photo_url
          from cleaner_profiles cp join users u on u.id = cp.user_id
-        where cp.id = $1`,
+        where cp.id = $1 and u.status = 'active'`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'No such cleaner.' });
@@ -599,6 +694,8 @@ app.get('/api/cleaner-profile', async (req, res) => {
       rating: Number(cp.avg_rating) || 0,
       reviews: cp.review_count,
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
+      bringsProducts: !!cp.brings_products,
+      breakdown: await reviewBreakdown(cp.id),
       photo: cp.profile_photo_url || '',
       services: svc.rows.map((r) => r.name),
       addons: Array.isArray(cp.addons) ? cp.addons : [],
@@ -623,7 +720,7 @@ app.get('/api/favourites', async (req, res) => {
          from client_favourites f
          join cleaner_profiles cp on cp.id = f.cleaner_id
          join users u on u.id = cp.user_id
-        where f.client_user_id = $1
+        where f.client_user_id = $1 and u.status = 'active'
         order by f.created_at desc`,
       [userId]
     );
@@ -761,11 +858,18 @@ app.get('/api/messages', async (req, res) => {
     if (!conversationId || !userId) return res.status(400).json({ error: 'conversationId and userId are required.' });
     if (!(await isParticipant(conversationId, userId))) return res.status(403).json({ error: 'Not your conversation.' });
     const { rows } = await query(
-      `select sender_user_id, body, to_char(sent_at, 'Dy HH24:MI') as at
+      `select sender_user_id, body, kind, to_char(sent_at, 'Dy HH24:MI') as at
          from messages where conversation_id = $1 order by sent_at`,
       [conversationId]
     );
-    res.json({ messages: rows.map((m) => ({ from: m.sender_user_id === userId ? 'me' : 'them', body: m.body, at: m.at })) });
+    res.json({
+      messages: rows.map((m) => ({
+        from: m.sender_user_id === userId ? 'me' : 'them',
+        body: m.body,
+        kind: m.kind || 'text',
+        at: m.at,
+      })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load messages.' });
@@ -872,7 +976,7 @@ app.get('/api/client-view', async (req, res) => {
 app.post('/api/enquiry-status', async (req, res) => {
   try {
     const { enquiryId, userId, status } = req.body ?? {};
-    const allowed = ['new', 'responded', 'accepted', 'declined', 'closed'];
+    const allowed = ['new', 'responded', 'accepted', 'declined', 'closed', 'completed'];
     if (!enquiryId || !userId || !allowed.includes(status))
       return res.status(400).json({ error: 'enquiryId, userId and a valid status are required.' });
     const auth = await query(
@@ -887,12 +991,176 @@ app.post('/api/enquiry-status', async (req, res) => {
         where id = $1`,
       [enquiryId, status]
     );
+
+    // Marking the clean done drops a tappable review prompt into the thread.
+    if (status === 'completed') await postReviewRequest(enquiryId);
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not update enquiry.' });
   }
 });
+
+// --- Reviews ---------------------------------------------------------------
+// Five categories, each out of 5 to one decimal. Their mean is the overall
+// rating. "Would use again" is a yes/no deliberately kept out of that mean and
+// reported separately as a percentage.
+const REVIEW_DIMS = ['quality', 'value', 'timeliness', 'punctuality', 'communication'];
+const DIM_COL = {
+  quality: 'quality',
+  value: 'value_for_money',
+  timeliness: 'timeliness',
+  punctuality: 'punctuality',
+  communication: 'communication',
+};
+
+// Posts the system message the customer taps to review. Idempotent: marking a
+// clean complete twice must not spam the thread.
+async function postReviewRequest(enquiryId) {
+  const { rows } = await query(
+    `select c.id, cpf.user_id as cleaner_user_id
+       from conversations c join cleaner_profiles cpf on cpf.id = c.cleaner_id
+      where c.enquiry_id = $1`,
+    [enquiryId]
+  );
+  if (!rows.length) return;
+  const { id: convId, cleaner_user_id } = rows[0];
+  const dupe = await query("select 1 from messages where conversation_id = $1 and kind = 'review_request'", [convId]);
+  if (dupe.rows.length) return;
+  await query(
+    `insert into messages (conversation_id, sender_user_id, body, kind)
+     values ($1, $2, $3, 'review_request')`,
+    [convId, cleaner_user_id, 'Your clean is complete. How did it go? Tap here to leave a review.']
+  );
+  await query('update conversations set last_message_at = now() where id = $1', [convId]);
+}
+
+// Recompute the cleaner's headline numbers from their published reviews.
+async function refreshCleanerRating(cleanerId) {
+  await query(
+    `update cleaner_profiles cp set
+       avg_rating   = coalesce((select avg(overall) from reviews r where r.cleaner_id = cp.id and r.status = 'published'), 0),
+       review_count = (select count(*) from reviews r where r.cleaner_id = cp.id and r.status = 'published'),
+       updated_at   = now()
+     where cp.id = $1`,
+    [cleanerId]
+  );
+}
+
+// The reviewer must be the client on that conversation.
+async function clientOnConversation(conversationId, userId) {
+  const { rows } = await query(
+    `select c.id, c.cleaner_id, c.client_id
+       from conversations c join client_profiles clp on clp.id = c.client_id
+      where c.id = $1 and clp.user_id = $2`,
+    [conversationId, userId]
+  );
+  return rows[0] ?? null;
+}
+
+app.get('/api/review', async (req, res) => {
+  try {
+    const { conversationId, userId } = req.query;
+    if (!conversationId || !userId) return res.status(400).json({ error: 'conversationId and userId are required.' });
+    if (!(await isParticipant(conversationId, userId))) return res.status(403).json({ error: 'Not your conversation.' });
+    const { rows } = await query(
+      `select quality, value_for_money, timeliness, punctuality, communication,
+              would_use_again, overall, comment
+         from reviews where conversation_id = $1`,
+      [conversationId]
+    );
+    if (!rows.length) return res.json({ review: null });
+    const r = rows[0];
+    res.json({
+      review: {
+        quality: Number(r.quality),
+        value: Number(r.value_for_money),
+        timeliness: Number(r.timeliness),
+        punctuality: Number(r.punctuality),
+        communication: Number(r.communication),
+        wouldUseAgain: r.would_use_again,
+        overall: Number(r.overall),
+        comment: r.comment || '',
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load the review.' });
+  }
+});
+
+app.post('/api/review', async (req, res) => {
+  try {
+    const { conversationId, userId, wouldUseAgain, comment } = req.body ?? {};
+    if (!conversationId || !userId) return res.status(400).json({ error: 'conversationId and userId are required.' });
+
+    const conv = await clientOnConversation(conversationId, userId);
+    if (!conv) return res.status(403).json({ error: 'Only the customer on this thread can review it.' });
+
+    // Every category is required, 1–5, rounded to one decimal.
+    const scores = {};
+    for (const d of REVIEW_DIMS) {
+      const n = Number(req.body?.[d]);
+      if (!Number.isFinite(n) || n < 1 || n > 5)
+        return res.status(400).json({ error: `Please rate ${d} between 1 and 5.` });
+      scores[d] = Math.round(n * 10) / 10;
+    }
+    if (typeof wouldUseAgain !== 'boolean')
+      return res.status(400).json({ error: 'Please say whether you would use them again.' });
+
+    const overall = REVIEW_DIMS.reduce((a, d) => a + scores[d], 0) / REVIEW_DIMS.length;
+    // Legacy NOT NULL smallint column, constrained to 1..5.
+    const legacy = Math.min(5, Math.max(1, Math.round(overall)));
+    const text = typeof comment === 'string' ? comment.trim().slice(0, 2000) || null : null;
+
+    await query(
+      `insert into reviews (conversation_id, cleaner_id, client_id, rating, overall,
+                            quality, value_for_money, timeliness, punctuality, communication,
+                            would_use_again, comment)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       on conflict (conversation_id) do update set
+         rating = excluded.rating, overall = excluded.overall,
+         quality = excluded.quality, value_for_money = excluded.value_for_money,
+         timeliness = excluded.timeliness, punctuality = excluded.punctuality,
+         communication = excluded.communication,
+         would_use_again = excluded.would_use_again, comment = excluded.comment`,
+      [conversationId, conv.cleaner_id, conv.client_id, legacy, overall.toFixed(2),
+       scores.quality, scores.value, scores.timeliness, scores.punctuality, scores.communication,
+       wouldUseAgain, text]
+    );
+    await refreshCleanerRating(conv.cleaner_id);
+    res.json({ ok: true, overall: Math.round(overall * 10) / 10 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not save your review.' });
+  }
+});
+
+// Per-category averages for a cleaner's public profile.
+async function reviewBreakdown(cleanerId) {
+  const { rows } = await query(
+    `select count(*)::int as n,
+            avg(quality) as quality, avg(value_for_money) as value,
+            avg(timeliness) as timeliness, avg(punctuality) as punctuality,
+            avg(communication) as communication, avg(overall) as overall,
+            avg(case when would_use_again then 1.0 else 0.0 end) as again
+       from reviews where cleaner_id = $1 and status = 'published'`,
+    [cleanerId]
+  );
+  const r = rows[0];
+  if (!r || !r.n) return null;
+  const num = (v) => (v == null ? 0 : Math.round(Number(v) * 10) / 10);
+  return {
+    count: r.n,
+    quality: num(r.quality),
+    value: num(r.value),
+    timeliness: num(r.timeliness),
+    punctuality: num(r.punctuality),
+    communication: num(r.communication),
+    overall: num(r.overall),
+    wouldUseAgainPct: r.again == null ? null : Math.round(Number(r.again) * 100),
+  };
+}
 
 // --- Relevance match ------------------------------------------------------
 // Rank active cleaners in a suburb by how well they fit the customer's
@@ -901,7 +1169,7 @@ app.post('/api/enquiry-status', async (req, res) => {
 // requested verification badges). Best-first, relevance falls away gradually.
 app.post('/api/match', async (req, res) => {
   try {
-    const { suburb, suburbs, services, budgetMin, budgetMax, verif, durationHours, slots } = req.body ?? {};
+    const { suburb, suburbs, services, budgetMin, budgetMax, verif, durationHours, slots, products } = req.body ?? {};
     // Accept a single suburb or a list (a whole-city search sends all its suburbs).
     const subList = Array.isArray(suburbs) && suburbs.length ? suburbs : suburb ? [suburb] : [];
     if (!subList.length) return res.status(400).json({ error: 'A suburb is required.' });
@@ -923,7 +1191,7 @@ app.post('/api/match', async (req, res) => {
         coalesce(cp.business_name, u.full_name) as name,
         cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
         cp.avg_rating, cp.review_count, cp.addons,
-        cp.id_verified, cp.police_verified, cp.insurance_verified,
+        cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
         (cp.featured_until is not null and cp.featured_until > now()) as is_featured,
         coalesce(array_agg(distinct st.slug) filter (where st.slug is not null), array[]::text[]) as services,
         coalesce(
@@ -942,7 +1210,7 @@ app.post('/api/match', async (req, res) => {
        and (ar.day_of_week, ar.start_time) in (
            select d, t from unnest($2::int[], $3::time[]) as x(d, t)
        )
-      where cp.listing_status = 'active'
+      where cp.listing_status = 'active' and u.status = 'active'
       group by cp.id, u.id`;
 
     const { rows } = await query(sql, [subList, days, starts]);
@@ -951,6 +1219,9 @@ app.post('/api/match', async (req, res) => {
       .map((r) => {
         const badges = { id: r.id_verified, police: r.police_verified, insurance: r.insurance_verified };
         if (reqVerif.some((b) => !badges[b])) return null; // must hold requested verifications
+        // Needing products is a hard requirement, not a ranking nudge: a cleaner
+        // who doesn't bring them simply can't do the job.
+        if (products && !r.brings_products) return null;
 
         // A cleaner "offers" both their base services and their priced extras.
         const addonSlugs = (Array.isArray(r.addons) ? r.addons : []).map((a) => a.slug);
@@ -982,6 +1253,7 @@ app.post('/api/match', async (req, res) => {
           rating: Number(r.avg_rating) || 0,
           reviews: r.review_count,
           badges, featured: r.is_featured,
+          bringsProducts: !!r.brings_products,
           services: offered,
           addons: Array.isArray(r.addons) ? r.addons : [],
           offered: offeredReq,

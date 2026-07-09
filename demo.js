@@ -15,21 +15,26 @@ const DEMO = {
 
   // Towns and the suburbs within them (for the location picker).
   towns: {
+    // Greater Christchurch: the city plus the surrounding Selwyn/Waimakariri
+    // towns, which we present as one area rather than separate districts.
     Christchurch: [
       'Addington', 'Aidanfield', 'Aranui', 'Avonhead', 'Avonside', 'Barrington',
       'Beckenham', 'Belfast', 'Bexley', 'Bishopdale', 'Bromley', 'Brooklands',
       'Bryndwr', 'Burnside', 'Burwood', 'Casebrook', 'Cashmere', 'Clifton',
-      'Cracroft', 'Dallington', 'Diamond Harbour', 'Edgeware', 'Fendalton',
-      'Ferrymead', 'Governors Bay', 'Halswell', 'Harewood', 'Heathcote Valley',
-      'Hei Hei', 'Hillmorton', 'Hoon Hay', 'Hornby', 'Huntsbury', 'Ilam',
-      'Islington', 'Linwood', 'Lyttelton', 'Mairehau', 'Marshland', 'Merivale',
+      'Cracroft', 'Cust', 'Dallington', 'Darfield', 'Diamond Harbour',
+      'Edgeware', 'Fendalton', 'Ferrymead', 'Governors Bay', 'Halswell',
+      'Harewood', 'Heathcote Valley', 'Hei Hei', 'Hillmorton', 'Hoon Hay',
+      'Hornby', 'Huntsbury', 'Ilam', 'Islington', 'Kaiapoi', 'Leeston',
+      'Lincoln', 'Linwood', 'Lyttelton', 'Mairehau', 'Marshland', 'Merivale',
       'Middleton', 'Mount Pleasant', 'New Brighton', 'North New Brighton',
-      'Northwood', 'Opawa', 'Papanui', 'Parklands', 'Phillipstown', 'Prestons',
-      'Redcliffs', 'Redwood', 'Riccarton', 'Richmond', 'Russley', 'Shirley',
-      'Sockburn', 'Somerfield', 'South New Brighton', 'Spreydon', 'St Albans',
-      'St Martins', 'Strowan', 'Sumner', 'Sydenham', 'Templeton',
-      'Upper Riccarton', 'Waimairi Beach', 'Wainoni', 'Waltham', 'Westmorland',
-      'Wigram', 'Woolston', 'Yaldhurst',
+      'Northwood', 'Ohoka', 'Opawa', 'Oxford', 'Papanui', 'Parklands',
+      'Pegasus', 'Phillipstown', 'Prebbleton', 'Prestons', 'Rangiora',
+      'Redcliffs', 'Redwood', 'Riccarton', 'Richmond', 'Rolleston', 'Russley',
+      'Shirley', 'Sockburn', 'Somerfield', 'South New Brighton', 'Spreydon',
+      'Springston', 'St Albans', 'St Martins', 'Strowan', 'Sumner',
+      'Swannanoa', 'Sydenham', 'Tai Tapu', 'Templeton', 'Upper Riccarton',
+      'Waimairi Beach', 'Wainoni', 'Waltham', 'West Melton', 'Westmorland',
+      'Wigram', 'Woodend', 'Woolston', 'Yaldhurst',
     ],
     Auckland: [
       'Albany', 'Avondale', 'Balmoral', 'Birkenhead', 'Botany Downs', 'Browns Bay',
@@ -42,8 +47,6 @@ const DEMO = {
       'Ranui', 'Remuera', 'Sandringham', 'St Heliers', 'Takapuna', 'Titirangi',
       'Torbay', 'Waiuku', 'Westmere', 'Whangaparaoa',
     ],
-    Selwyn: ['Rolleston', 'Lincoln', 'Prebbleton', 'West Melton', 'Leeston', 'Darfield', 'Springston', 'Tai Tapu'],
-    Waimakariri: ['Rangiora', 'Kaiapoi', 'Woodend', 'Pegasus', 'Oxford', 'Cust', 'Ohoka', 'Swannanoa'],
   },
 
   services: [

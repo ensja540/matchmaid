@@ -1,5 +1,7 @@
 -- Seed data: Christchurch suburbs + satellite towns, service types,
 -- and a few sample cleaners so search returns results on day one.
+-- The surrounding Selwyn/Waimakariri towns sit under Christchurch City: we
+-- present greater Christchurch as one area rather than separate districts.
 
 insert into suburbs (name, region, territorial_authority) values
   ('Riccarton','Canterbury','Christchurch City'),
@@ -8,10 +10,10 @@ insert into suburbs (name, region, territorial_authority) values
   ('Linwood','Canterbury','Christchurch City'),
   ('Sumner','Canterbury','Christchurch City'),
   ('Halswell','Canterbury','Christchurch City'),
-  ('Rolleston','Canterbury','Selwyn District'),
-  ('Lincoln','Canterbury','Selwyn District'),
-  ('Rangiora','Canterbury','Waimakariri District'),
-  ('Kaiapoi','Canterbury','Waimakariri District');
+  ('Rolleston','Canterbury','Christchurch City'),
+  ('Lincoln','Canterbury','Christchurch City'),
+  ('Rangiora','Canterbury','Christchurch City'),
+  ('Kaiapoi','Canterbury','Christchurch City');
 
 insert into service_types (name, slug) values
   ('Regular house clean','regular'),

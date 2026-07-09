@@ -17,7 +17,7 @@ const blurb = document.getElementById('roleBlurb');
 
 const LABEL = { maid: 'Maid account', customer: 'Customer account' };
 const BLURBS = {
-  maid: 'List your services and get exclusive local enquiries. Free for your first 3 months.',
+  maid: 'List your services and get exclusive local enquiries. Try it now for free while we build out our user base.',
   customer: 'Search local cleaners and see rates up front. Always free.',
 };
 
@@ -35,6 +35,7 @@ function render() {
   form.password.autocomplete = signup ? 'new-password' : 'current-password';
   msg.textContent = '';
   msg.className = 'auth-msg';
+  clearReactivate();
 }
 
 switchBtn.addEventListener('click', () => {
@@ -53,6 +54,8 @@ form.addEventListener('submit', async (e) => {
     password: form.password.value,
   };
   if (mode === 'signup') body.fullName = form.fullName.value;
+  // Set by the "Reactivate" prompt below, for a removed account signing back in.
+  if (pendingReactivate) body.reactivate = true;
 
   try {
     const res = await fetch(mode === 'signup' ? '/api/register' : '/api/login', {
@@ -62,22 +65,104 @@ form.addEventListener('submit', async (e) => {
     });
     const data = await res.json();
     if (!res.ok) {
+      if (data.deactivated) return offerReactivate(data.error);
       msg.textContent = data.error || 'Something went wrong.';
       msg.classList.add('error');
       return;
     }
-    Session.set(data.user);
-    msg.textContent = `Welcome, ${data.user.fullName}! Taking you to your ${
-      data.user.role === 'cleaner' ? 'maid portal' : 'customer portal'
-    }…`;
-    msg.classList.add('ok');
-    setTimeout(() => {
-      location.href = Session.homeFor(data.user.role);
-    }, 700);
+    pendingReactivate = false;
+    finishAuth(data.user);
   } catch {
     msg.textContent = 'Could not reach the server. Is it running?';
     msg.classList.add('error');
   }
 });
+
+// ---- Removed accounts ------------------------------------------------------
+// The server rejects a removed account with { deactivated: true } rather than
+// signing it in. Nothing was deleted, so we offer to restore it: retrying the
+// same credentials with reactivate:true flips the account back to active.
+let pendingReactivate = false;
+let pendingGoogleReactivate = false;
+
+// onConfirm defaults to replaying the password form; the Google path passes its
+// own replay so the user doesn't have to re-pick their account.
+function offerReactivate(text, onConfirm) {
+  msg.className = 'auth-msg error';
+  msg.textContent = text || 'This profile was removed.';
+  if (document.getElementById('reactivateBtn')) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'reactivate';
+  wrap.innerHTML =
+    '<button type="button" class="btn outline full" id="reactivateBtn">Reactivate my profile</button>';
+  msg.insertAdjacentElement('afterend', wrap);
+
+  document.getElementById('reactivateBtn').addEventListener('click', () => {
+    wrap.remove();
+    if (onConfirm) return onConfirm();
+    pendingReactivate = true;
+    form.requestSubmit();
+  });
+}
+function clearReactivate() {
+  document.querySelector('.reactivate')?.remove();
+  pendingReactivate = false;
+  pendingGoogleReactivate = false;
+}
+
+// Shared success path for password + Google sign-in.
+function finishAuth(user) {
+  Session.set(user);
+  msg.className = 'auth-msg ok';
+  msg.textContent = `Welcome, ${user.fullName}! Taking you to your ${
+    user.role === 'cleaner' ? 'maid portal' : 'customer portal'
+  }…`;
+  setTimeout(() => { location.href = Session.homeFor(user.role); }, 700);
+}
+
+// ---- Sign in with Google (Google Identity Services) ----
+// Set window.MM_GOOGLE_CLIENT_ID in login.html to your OAuth Web Client ID to
+// activate this. Until then the button shows as "coming soon".
+function onGoogleCredential(resp) {
+  msg.className = 'auth-msg';
+  msg.textContent = 'Signing you in with Google…';
+  fetch('/api/auth/google', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential: resp.credential, role, reactivate: pendingGoogleReactivate }),
+  })
+    .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      if (!ok) {
+        // A removed account: offer to restore it, then replay this same credential.
+        if (d.deactivated) return offerReactivate(d.error, () => {
+          pendingGoogleReactivate = true;
+          onGoogleCredential(resp);
+        });
+        msg.textContent = d.error || 'Google sign-in failed.';
+        msg.classList.add('error');
+        return;
+      }
+      pendingGoogleReactivate = false;
+      finishAuth(d.user);
+    })
+    .catch(() => { msg.textContent = 'Could not reach the server.'; msg.classList.add('error'); });
+}
+function initGoogle() {
+  const el = document.getElementById('googleBtn');
+  if (!el) return;
+  const gid = window.MM_GOOGLE_CLIENT_ID || '';
+  const ready = gid && !/YOUR_GOOGLE/i.test(gid) && window.google && google.accounts && google.accounts.id;
+  if (!ready) {
+    el.innerHTML =
+      '<button type="button" class="btn outline full" disabled>Continue with Google</button>' +
+      '<p class="auth-hint">Google sign-in activates once a Client ID is set.</p>';
+    return;
+  }
+  google.accounts.id.initialize({ client_id: gid, callback: onGoogleCredential });
+  google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', text: 'continue_with', width: 300 });
+}
+window.addEventListener('load', initGoogle);
 
 render();

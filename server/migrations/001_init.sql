@@ -53,6 +53,8 @@ create table client_profiles (
   default_suburb_id integer references suburbs(id),
   address_line      text,
   notes             text,
+  -- "I need the cleaner to bring cleaning products."
+  needs_products    boolean not null default false,
   created_at        timestamptz not null default now()
 );
 
@@ -72,6 +74,8 @@ create table cleaner_profiles (
   id_verified         boolean not null default false,
   police_verified     boolean not null default false,
   insurance_verified  boolean not null default false,
+  -- "I bring my own cleaning products."
+  brings_products     boolean not null default false,
   featured_until      timestamptz,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()

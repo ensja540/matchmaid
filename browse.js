@@ -13,6 +13,7 @@ const budgetMinEl = document.getElementById('budgetMin');
 const budgetMaxEl = document.getElementById('budgetMax');
 const extrasBox = document.getElementById('extras');
 const verifBox = document.getElementById('verif');
+const productsBox = document.getElementById('products');
 const cal = document.getElementById('cal');
 const results = document.getElementById('results');
 const meta = document.getElementById('meta');
@@ -53,6 +54,7 @@ showSearchPrompt();
 
 extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
+productsBox?.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 
 cal.innerHTML = calendarHTML(slots);
 wireCalendar(cal, slots);
@@ -70,6 +72,7 @@ function currentPrefs() {
     suburbs: parsed.suburbs,
     services: [...new Set([serviceSel.value, ...extras])],
     verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
+    products: !!productsBox?.querySelector('.chip.select.on'),
     hours: Number(hoursSel.value),
     budgetMin: Number(budgetMinEl.value) || 0,
     budgetMax: Number(budgetMaxEl.value) || 999,
@@ -100,6 +103,7 @@ async function runSearch() {
         budgetMin: p.budgetMin,
         budgetMax: p.budgetMax,
         verif: p.verif,
+        products: p.products,
         durationHours: p.hours,
         slots: p.slots,
       }),
@@ -156,7 +160,7 @@ function paintResults() {
 
 function resultCard(r, p) {
   const tierLabel = r.tier === 'great' ? 'Strong match' : r.tier === 'good' ? 'Good match' : 'Also available';
-  const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured'].filter(Boolean);
+  const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured', r.bringsProducts && 'Brings products'].filter(Boolean);
   const offeredChips = (r.offered || []).map((s) => `<span class="chip on">${SVC_NAME[s] || s}</span>`).join('');
   const missingChips = (r.missing || []).map((s) => `<span class="chip off">no ${SVC_NAME[s] || s}</span>`).join('');
   const slotChips = (r.matched || [])
@@ -168,8 +172,8 @@ function resultCard(r, p) {
   const first = r.name.split(/['\s]/)[0];
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
-      <div><h3><button class="linklike" type="button" data-cleaner="${r.id}">${r.name}</button> ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
-        <p class="result-meta">★ ${Number(r.rating).toFixed(1)} (${r.reviews}) · ${rateStr}${fairStr}${costStr} · ${p.locLabel}</p></div>
+      <div><h3><button class="linklike" type="button" data-cleaner="${r.id}">${r.name}</button>${Rating.badge(r.rating, r.reviews)} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
+        <p class="result-meta">${rateStr}${fairStr}${costStr} · ${p.locLabel}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
@@ -229,7 +233,7 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 function cleanerCardHTML(c) {
-  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured'].filter(Boolean);
+  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured', c.bringsProducts && 'Brings products'].filter(Boolean);
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
   const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
@@ -241,8 +245,8 @@ function cleanerCardHTML(c) {
     <div class="cv-head">
       <div class="avatar lg">${c.photo ? `<img src="${escapeHtml(c.photo)}" alt="" />` : `<span>${initial}</span>`}</div>
       <div>
-        <h2>${escapeHtml(c.name)}</h2>
-        <p class="muted" style="margin:0">★ ${Number(c.rating).toFixed(1)} (${c.reviews}) · ${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
+        <h2>${escapeHtml(c.name)}${Rating.badge(c.rating, c.reviews)}</h2>
+        <p class="muted" style="margin:0">${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
       </div>
     </div>
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
@@ -250,6 +254,7 @@ function cleanerCardHTML(c) {
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
     <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
+    ${Review.barsHTML(c.breakdown)}
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${escapeHtml(c.id)}" data-cpname="${escapeHtml(c.name)}">Message ${first}</button></div>`;
 }
 
