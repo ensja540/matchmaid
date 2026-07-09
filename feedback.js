@@ -17,7 +17,7 @@
   panel.hidden = true;
   panel.innerHTML =
     '<div class="mm-fb-head"><strong>Send feedback</strong><button type="button" class="mm-fb-x" aria-label="Close">×</button></div>' +
-    '<p class="mm-fb-sub">Ideas, bugs, anything — it goes straight to the Match Maid team.</p>' +
+    '<p class="mm-fb-sub">Ideas, bugs, anything. It goes straight to the Match Maid team.</p>' +
     '<textarea class="mm-fb-text" rows="4" placeholder="What’s on your mind?"></textarea>' +
     (user ? '' : '<input class="mm-fb-email" type="email" placeholder="Your email (optional)" />') +
     '<button type="button" class="mm-fb-send btn solid full">Send</button>' +
@@ -57,6 +57,6 @@
         msgEl.textContent = 'Thanks! We got it. 🙌';
         setTimeout(function () { toggle(false); msgEl.textContent = ''; }, 1500);
       })
-      .catch(function () { msgEl.textContent = 'Could not send — please try again.'; });
+      .catch(function () { msgEl.textContent = 'Could not send. Please try again.'; });
   });
 })();

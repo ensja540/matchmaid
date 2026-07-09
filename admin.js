@@ -82,7 +82,7 @@ function cardHTML(v) {
   return `<div class="panel-card admin-vrow" id="v-${v.id}">
     <div class="admin-vinfo">
       <strong>${esc(v.cleaner)}</strong> · ${esc(TYPE_LBL[v.type] || v.type)}
-      <span class="muted">${esc(v.email)} — uploaded ${esc(v.when)}</span>
+      <span class="muted">${esc(v.email)} · uploaded ${esc(v.when)}</span>
       ${v.extractedText ? `<p class="verif-read">Scanned text: “${esc(v.extractedText)}”</p>` : ''}
       <div class="admin-vactions">
         <button class="btn solid sm" data-decide="approve" data-id="${esc(v.id)}" type="button">Approve</button>

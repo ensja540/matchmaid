@@ -116,7 +116,7 @@ async function runSearch() {
     data = await res.json();
     if (!res.ok) throw new Error(data.error || 'search failed');
   } catch {
-    meta.textContent = 'Search is unavailable right now — please try again.';
+    meta.textContent = 'Search is unavailable right now. Please try again.';
     results.innerHTML = '';
     return;
   }
@@ -132,7 +132,7 @@ function paintResults() {
   const p = lastPrefs;
   const scored = (lastResults || []).slice();
   if (!scored.length) {
-    meta.textContent = `No cleaners cover ${p.locLabel} yet — more are joining soon.`;
+    meta.textContent = `No cleaners cover ${p.locLabel} yet. More are joining soon.`;
     results.innerHTML = '<img class="empty-art" src="assets/brand/empty_state.svg" alt="No results yet" />';
     return;
   }
@@ -314,7 +314,7 @@ function openModal(cleanerName, cleanerId) {
   pendingCleanerId = cleanerId || null;
   if (cleanerName) {
     modalTitle.textContent = `Message ${cleanerName}`;
-    modalSub.textContent = "You're one step away — create your free account to send a message.";
+    modalSub.textContent = "You're one step away. Create your free account to send a message.";
   } else {
     modalTitle.textContent = 'Create your free account';
     modalSub.textContent = 'Free forever, and about 20 seconds.';
@@ -351,7 +351,7 @@ capForm.addEventListener('submit', async (e) => {
     location.href = '/customer';
   } catch {
     Session.set({ id: 'demo', role: 'client', fullName: body.fullName || 'You', email: body.email });
-    capMsg.textContent = 'Account created — taking you to your portal…';
+    capMsg.textContent = 'Account created. Taking you to your portal…';
     capMsg.classList.add('ok');
     setTimeout(() => (location.href = '/customer'), 700);
   }

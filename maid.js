@@ -285,7 +285,7 @@ const PANELS = {
       <p class="wizard-lede">Each enquiry is exclusive to you, no bidding against anyone else.</p>
       <div id="enqList">${enquiries.length
         ? enquiries.map(enquiryCard).join('')
-        : '<p class="muted">No enquiries yet. When a client messages you from search, it lands here — exclusively yours.</p>'}</div>`;
+        : '<p class="muted">No enquiries yet. When a client messages you from search, it lands here, exclusively yours.</p>'}</div>`;
   },
 
   messages() {
@@ -338,21 +338,21 @@ const PANELS = {
         <div class="field"><span>Cleaning products &amp; equipment</span>
           <label class="check-inline"><input type="checkbox" name="products" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own cleaning products and equipment</label>
           <p class="muted" style="margin:0.4rem 0 0">On by default. Untick it only if the customer needs to supply
-            products and equipment — customers who need them supplied won't see you.</p>
+            products and equipment. Customers who need them supplied won't see you.</p>
         </div>
         <div class="field"><span>Type of clean you offer</span><div class="chip-select">${svcChips}</div></div>
         <div class="field"><span>Specialist clean surcharge (optional)</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Deep cleans and end-of-lease jobs are harder work.
-            If you charge more per hour for them, set it here — it's added to your hourly rate and shown
+            If you charge more per hour for them, set it here. It's added to your hourly rate and shown
             openly. Leave blank to charge your normal rate.</p>
           <div class="addon-list">${surchargeRows()}</div>
         </div>
         <div class="field"><span>Extras &amp; add-ons</span>
-          <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a price — it's added on top of your hourly rate at checkout.</p>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a price. It's added on top of your hourly rate at checkout.</p>
           <div class="addon-list">${addonRows}</div>
         </div>
         <div class="field"><span>Verification</span>
-          <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below — we review and approve it.</p>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below. We review and approve it.</p>
           ${Badges.strip(verif)}
           <div class="verif-list" style="margin-top:1rem">${VERIF_ITEMS.map(verifRow).join('')}</div>
         </div>
@@ -370,7 +370,7 @@ const PANELS = {
       <h1>Subscription</h1>
       <div class="trial-banner">
         <strong>You're listed for free</strong>
-        <p class="muted">Listed free while we build out our user base — full access, no fees yet.</p>
+        <p class="muted">Listed free while we build out our user base. Full access, no fees yet.</p>
       </div>
       <div class="plan-cards">
         <div class="plan">
@@ -427,7 +427,7 @@ const WIRE = {
     });
     panel.querySelector('#saveAvail').addEventListener('click', async () => {
       if (!sessionUser?.id) {
-        setMsg('availMsg', `Saved (demo — log in as a maid to save for real). ${avail.length} slots set.`, 'ok');
+        setMsg('availMsg', `Saved (demo: log in as a maid to save for real). ${avail.length} slots set.`, 'ok');
         return;
       }
       setMsg('availMsg', 'Saving…', 'pending');
@@ -439,9 +439,9 @@ const WIRE = {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Save failed');
-        setMsg('availMsg', `Saved — ${data.saved} slot${data.saved === 1 ? '' : 's'} on your profile. Customers can now match these times.`, 'ok');
+        setMsg('availMsg', `Saved. ${data.saved} slot${data.saved === 1 ? '' : 's'} on your profile. Customers can now match these times.`, 'ok');
       } catch {
-        setMsg('availMsg', 'Could not save — please try again.', 'err');
+        setMsg('availMsg', 'Could not save. Please try again.', 'err');
       }
     });
   },
@@ -526,7 +526,7 @@ const WIRE = {
         render();
       } catch {
         pauseBtn.disabled = false;
-        setMsg('pauseMsg', 'Could not update your listing — please try again.', 'err');
+        setMsg('pauseMsg', 'Could not update your listing. Please try again.', 'err');
       }
     });
     panel.querySelectorAll('[data-svc]').forEach((c) =>
@@ -605,7 +605,7 @@ const WIRE = {
       mp.years = f.years.value;
       mp.bringsProducts = f.products.checked;
       if (!sessionUser?.id) {
-        setMsg('profMsg', 'Saved (demo — log in as a maid to save for real).', 'ok');
+        setMsg('profMsg', 'Saved (demo: log in as a maid to save for real).', 'ok');
         return;
       }
       setMsg('profMsg', 'Saving…', 'pending');
@@ -630,9 +630,9 @@ const WIRE = {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'save failed');
-        setMsg('profMsg', "Saved to your profile — you're now live in search.", 'ok');
+        setMsg('profMsg', "Saved to your profile. You're now live in search.", 'ok');
       } catch {
-        setMsg('profMsg', 'Could not save — please try again.', 'err');
+        setMsg('profMsg', 'Could not save. Please try again.', 'err');
       }
     });
   },
@@ -765,7 +765,7 @@ function gettingStartedHTML() {
   const availSet = avail.length > 0;
   const steps = [
     { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your hourly rate.', tab: 'profile', done: profileSet },
-    { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work — this is what matches you to clients.', tab: 'availability', done: availSet },
+    { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work. This is what matches you to clients.', tab: 'availability', done: availSet },
     { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: profileSet },
     { n: 4, label: 'Get verified', desc: 'Upload ID, a police check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
   ];
@@ -827,7 +827,7 @@ function pauseHTML() {
       <h2>${paused ? 'Your listing is paused' : 'Pause your listing'}</h2>
       <p class="muted">${
         paused
-          ? "You're hidden from browse, search and matches. Your account, messages and reviews are untouched — resume whenever you're ready."
+          ? "You're hidden from browse, search and matches. Your account, messages and reviews are untouched. Resume whenever you're ready."
           : 'Taking a break? Hide yourself from browse, search and matches without deleting anything. Your account, messages and reviews stay exactly as they are.'
       }</p>
       <div class="save-row">
@@ -862,8 +862,8 @@ function referralsHTML() {
   return `
     <div class="panel-card referral-card">
       <h2>Refer a cleaner</h2>
-      <p class="muted">Share your code. When a cleaner you refer becomes fully verified —
-        ID, police check and insurance — you earn <strong>$${per}</strong> of credit toward
+      <p class="muted">Share your code. When a cleaner you refer becomes fully verified
+        (ID, police check and insurance), you earn <strong>$${per}</strong> of credit toward
         your future payments.</p>
 
       <div class="ref-credit">
@@ -879,7 +879,7 @@ function referralsHTML() {
         ${referrals.earned} fully verified · ${referrals.pending} awaiting verification
       </p>
 
-      ${rows ? `<div class="ref-list">${rows}</div>` : '<p class="muted">No referrals yet — share your code to get started.</p>'}
+      ${rows ? `<div class="ref-list">${rows}</div>` : '<p class="muted">No referrals yet. Share your code to get started.</p>'}
     </div>`;
 }
 
@@ -1006,7 +1006,7 @@ function verifRow(item) {
   const pill =
     st === 'verified' ? '<span class="status status-accepted">Verified ✓</span>'
     : st === 'pending' ? '<span class="status status-responded">Under review</span>'
-    : st === 'failed' ? '<span class="status status-new">Not accepted — re-upload</span>'
+    : st === 'failed' ? '<span class="status status-new">Not accepted, re-upload</span>'
     : '<span class="status status-new">Not added</span>';
   // Verified badges are awarded on review; the maid can (re)submit a document
   // unless already verified.
@@ -1033,7 +1033,7 @@ function locSectionHTML() {
     <span>Where you work</span>
     <select id="citySel" class="loc-city">${cityOpts}</select>
     <label class="check-inline" style="margin-top:0.7rem"><input type="checkbox" id="specificToggle" ${mpSpecific ? 'checked' : ''} /> I only want to work specific suburbs</label>
-    <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${mpCity}-wide</strong> — clients anywhere in ${mpCity} can find you.</p>
+    <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${mpCity}-wide</strong>. Clients anywhere in ${mpCity} can find you.</p>
     <div class="loc-picker" id="locPicker" ${mpSpecific ? '' : 'hidden'}>
       <div class="combo">
         <input type="text" id="subSearch" class="combo-input" placeholder="Search suburbs in ${mpCity}…" autocomplete="off" />
@@ -1045,7 +1045,7 @@ function locSectionHTML() {
 }
 function areaChipsHTML() {
   const chosen = (DEMO.towns[mpCity] || []).filter((s) => areas.has(s));
-  if (!chosen.length) return '<span class="muted" style="font-size:0.85rem">No suburbs added yet — search above and add the ones you cover.</span>';
+  if (!chosen.length) return '<span class="muted" style="font-size:0.85rem">No suburbs added yet. Search above and add the ones you cover.</span>';
   return chosen
     .map((s) => `<span class="area-chip">${s}<button type="button" class="area-x" data-remove="${s}" aria-label="Remove ${s}">×</button></span>`)
     .join('');

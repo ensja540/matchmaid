@@ -20,7 +20,7 @@ window.RemoveProfile = (function () {
         <h2>Remove profile</h2>
         <p class="muted">
           Your profile leaves Match Maid straight away and you lose access to your
-          account and its data. Nothing is deleted — sign back in any time to
+          account and its data. Nothing is deleted. Sign back in any time to
           restore everything.
         </p>
         ${billing}

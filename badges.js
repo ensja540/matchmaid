@@ -40,7 +40,7 @@ window.Badges = (function () {
     const st = status || {};
     const got = ITEMS.filter((i) => st[i.key] === 'verified').length;
     const note = got === ITEMS.length
-      ? 'All three earned — your listing shows every trust badge.'
+      ? 'All three earned. Your listing shows every trust badge.'
       : `${got} of ${ITEMS.length} earned. Each one you add shows on your listing.`;
     return `<div class="tbadge-strip">
       <p class="tbadge-row">${ITEMS.map((i) => pill(i.label, st[i.key] === 'verified')).join('')}</p>

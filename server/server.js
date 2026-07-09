@@ -152,7 +152,7 @@ app.post('/api/register', async (req, res) => {
   } catch (err) {
     if (err.code === '23505')
       return res.status(409).json({
-        error: 'That email already has a Match Maid account — just log in, and you can use both the maid and hirer sides.',
+        error: 'That email already has a Match Maid account. Just log in, and you can use both the maid and hirer sides.',
       });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });

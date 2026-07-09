@@ -55,7 +55,7 @@ let starredList = []; // starred cleaners with details (for the My cleaners tab)
 const HOWFLOW_STEPS = [
   { n: '01', h: 'Search your area', b: `Choose your suburb and the type of clean to see local maids, <span class="hi">best match first</span>.` },
   { n: '02', h: 'Compare openly', b: `Check each maid's rate, rating, reviews and verified badges. <span class="hi">Nothing hidden</span>.` },
-  { n: '03', h: 'Contact your pick', b: `Message the single cleaner you like — <span class="hi">no bidding wars</span>, no shared leads.` },
+  { n: '03', h: 'Contact your pick', b: `Message the single cleaner you like: <span class="hi">no bidding wars</span>, no shared leads.` },
   { n: '04', h: 'Arrange it directly', b: `Agree the day, time and price <span class="hi">between you</span>. Payment stays between you and your cleaner.` },
   { n: '05', h: 'Review after the clean', b: `Rate cleanliness, value and punctuality to help <span class="hi">the next household</span> choose well.` },
 ];
@@ -331,8 +331,8 @@ const PANELS = {
       <div class="panel-card">
         ${starredList.length
           ? `<div class="starred-grid">${starredList.map(starredCard).join('')}</div>`
-          : `<p class="muted">No cleaners yet. Tap the ☆ on any cleaner — in search results or on
-               their profile — and they'll be saved here so you can find them again.</p>
+          : `<p class="muted">No cleaners yet. Tap the ☆ on any cleaner, in search results or on
+               their profile, and they'll be saved here so you can find them again.</p>
              <button class="btn solid" data-goto="find" type="button" style="margin-top:1rem">Find a cleaner</button>`}
       </div>`;
   },
@@ -549,7 +549,7 @@ const WIRE = {
         });
         find.results = data.results || [];
       } catch {
-        box.innerHTML = '<p class="muted">Search is unavailable right now — please try again.</p>';
+        box.innerHTML = '<p class="muted">Search is unavailable right now. Please try again.</p>';
         return;
       }
       panel.querySelector('.results-tools')?.removeAttribute('hidden');
@@ -623,7 +623,7 @@ const WIRE = {
         el.textContent = 'Saved to your account.';
         el.className = 'save-msg ok';
       } catch {
-        el.textContent = 'Could not save — please try again.';
+        el.textContent = 'Could not save. Please try again.';
         el.className = 'save-msg err';
       }
     });
@@ -725,7 +725,7 @@ function resultCard(r) {
     ${breakdownHTML(r)}
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${reqSlots && (r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
-    ${reqSlots && !(r.matched || []).length ? `<p class="no-overlap">Not free at your chosen times — ask about other slots.</p>` : ''}
+    ${reqSlots && !(r.matched || []).length ? `<p class="no-overlap">Not free at your chosen times. Ask about other slots.</p>` : ''}
     <div class="result-actions"><button class="btn solid sm" type="button" data-contact="${attr(r.name)}" data-cid="${attr(r.id)}">Contact ${first}</button></div>
   </article>`;
 }
@@ -808,7 +808,7 @@ function openEnquiryModal(cleanerId, cleanerName) {
   const home = [cprof.bedrooms && `${cprof.bedrooms} bed`, cprof.bathrooms && `${cprof.bathrooms} bath`, cprof.homeType, cprof.storeys, cprof.stairs && 'stairs', cprof.pets && 'pets'].filter(Boolean).join(' · ');
   enquiryModalBody.innerHTML = `
     <h2 style="margin-top:0">Enquire with ${escapeHtml(cleanerName || 'this cleaner')}</h2>
-    <p class="muted">Send an official enquiry — it opens a private message thread with just the two of you.</p>
+    <p class="muted">Send an official enquiry. It opens a private message thread with just the two of you.</p>
     <form id="enquiryForm">
       <label class="field"><span>Service</span><select name="service">${svcOpts}</select></label>
       <div class="field-row">
@@ -855,7 +855,7 @@ function openReviewModal(conversationId) {
 
   reviewModalBody.innerHTML = `
     <h2 style="margin-top:0">Review ${escapeHtml(who)}</h2>
-    <p class="muted">Drag across the stars — you can land on any decimal. Your overall
+    <p class="muted">Drag across the stars. You can land on any decimal. Your overall
       rating is the average of these five.</p>
     <form id="reviewForm">
       ${Review.formHTML(existing)}
@@ -953,7 +953,7 @@ function bubblesHTML(msgs, review) {
     .map((m) => {
       if (m.kind === 'review_request') {
         return review
-          ? `<div class="bubble them review-done"><p>Thanks — you rated this clean ${Number(review.overall).toFixed(1)}/5.</p>
+          ? `<div class="bubble them review-done"><p>Thanks, you rated this clean ${Number(review.overall).toFixed(1)}/5.</p>
                <span class="rp-cta" data-review="1">Edit your review</span><span>${m.at}</span></div>`
           : `<button type="button" class="bubble them review-prompt" data-review="1">
                <p>${escapeHtml(m.body)}</p><span class="rp-cta">Leave a review →</span><span>${m.at}</span></button>`;
