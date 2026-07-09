@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Match Maid | Sign in</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
-    <link rel="stylesheet" href="styles.css?v=46" />
+    <link rel="stylesheet" href="styles.css?v=48" />
   </head>
   <body class="auth-body">
     <div class="auth-wrap">
@@ -27,6 +27,11 @@
           <label class="field">
             <span>Password</span>
             <input name="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+          </label>
+          <!-- Maids only: an unknown code is ignored, never blocks the signup. -->
+          <label class="field" data-signup-only data-maid-only>
+            <span>Referral code (optional)</span>
+            <input name="referralCode" type="text" autocomplete="off" placeholder="e.g. K7QW2M" />
           </label>
 
           <button class="btn solid lg full" type="submit" id="submitBtn">Log in</button>
@@ -54,9 +59,9 @@
          to already be defined. An async script may execute after load. -->
     <script src="https://accounts.google.com/gsi/client" defer></script>
 
-    <script src="session.js?v=46"></script>
-    <script src="auth.js"></script>
-    <script src="feedback.js?v=46"></script>
+    <script src="session.js?v=48"></script>
+    <script src="auth.js?v=48"></script>
+    <script src="feedback.js?v=48"></script>
 
   </body>
 </html>

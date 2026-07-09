@@ -5,7 +5,16 @@
 window.RemoveProfile = (function () {
   const PHRASE = 'REMOVE';
 
-  function html() {
+  // opts.billingNote: only the maid side pays, so only they see the billing line.
+  function html(opts) {
+    const billing = opts && opts.billingNote
+      ? `<p class="danger-billing">
+           If you remove your account you will still be billed until the end of the
+           current billing cycle. To restore access you'll need to re-subscribe:
+           billing then starts at the beginning of the next billing period, or
+           straight away if it's been more than a month.
+         </p>`
+      : '';
     return `
       <section class="danger-zone">
         <h2>Remove profile</h2>
@@ -14,6 +23,7 @@ window.RemoveProfile = (function () {
           account and its data. Nothing is deleted — sign back in any time to
           restore everything.
         </p>
+        ${billing}
         <label class="field">
           <span>Type <strong>${PHRASE}</strong> to confirm</span>
           <input id="dzConfirm" autocomplete="off" placeholder="${PHRASE}" />

@@ -5,6 +5,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
@@ -28,6 +29,65 @@ app.use(
 
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
+
+// --- Referrals --------------------------------------------------------------
+// A cleaner earns $10 of credit toward future payments for every cleaner they
+// refer who goes on to become FULLY verified (ID + police + insurance). The
+// referral row is created at signup; the credit is stamped on at verification.
+const REFERRAL_CREDIT_CENTS = 1000;
+// Ambiguous characters (0/O, 1/I/L) removed so a code survives being read aloud.
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const makeReferralCode = () =>
+  Array.from(randomBytes(6), (x) => CODE_ALPHABET[x % CODE_ALPHABET.length]).join('');
+
+async function ensureReferralCode(cleanerId) {
+  const { rows } = await query('select referral_code from cleaner_profiles where id = $1', [cleanerId]);
+  if (rows[0]?.referral_code) return rows[0].referral_code;
+  for (let i = 0; i < 10; i++) {
+    const code = makeReferralCode();
+    try {
+      await query('update cleaner_profiles set referral_code = $2 where id = $1', [cleanerId, code]);
+      return code;
+    } catch (err) {
+      if (err.code !== '23505') throw err; // collision — retry
+    }
+  }
+  return null;
+}
+
+// Record who referred a brand-new cleaner. Silently does nothing on an unknown
+// or self-referring code: a typo must never cost someone their signup.
+async function linkReferral(newCleanerId, code) {
+  const clean = String(code).trim().toUpperCase();
+  if (!clean) return;
+  const { rows } = await query('select id from cleaner_profiles where referral_code = $1', [clean]);
+  const referrer = rows[0]?.id;
+  if (!referrer || referrer === newCleanerId) return;
+  try {
+    await query(
+      'insert into referrals (referrer_cleaner_id, referred_cleaner_id) values ($1, $2)',
+      [referrer, newCleanerId]
+    );
+  } catch (err) {
+    if (err.code !== '23505') throw err; // already referred — leave the first one
+  }
+}
+
+// Called after a verification is approved. Idempotent: the credit is only
+// stamped when credited_at is still null, so re-approving can't pay twice.
+async function awardReferralIfFullyVerified(cleanerId) {
+  const { rows } = await query(
+    `select id_verified and police_verified and insurance_verified as full
+       from cleaner_profiles where id = $1`,
+    [cleanerId]
+  );
+  if (!rows[0]?.full) return;
+  await query(
+    `update referrals set credit_cents = $2, credited_at = now()
+      where referred_cleaner_id = $1 and credited_at is null`,
+    [cleanerId, REFERRAL_CREDIT_CENTS]
+  );
+}
 
 // A removed account keeps every row it owns — enquiries, threads, reviews all
 // stay put for the other party — but cannot be used until the owner reactivates.
@@ -57,7 +117,7 @@ const START_TO_SLOT = { '08:00': 'morning', '12:00': 'afternoon', '17:00': 'even
 // --- Auth: register ---------------------------------------------------------
 app.post('/api/register', async (req, res) => {
   try {
-    const { role, fullName, email, password } = req.body ?? {};
+    const { role, fullName, email, password, referralCode } = req.body ?? {};
     const dbRole = ROLE_MAP[role];
     if (!dbRole) return res.status(400).json({ error: 'Choose maid or customer.' });
     if (!fullName || !email || !password)
@@ -75,7 +135,11 @@ app.post('/api/register', async (req, res) => {
 
     // Give them the matching empty profile so the rest of the app is coherent.
     if (dbRole === 'cleaner') {
-      await query('insert into cleaner_profiles (user_id) values ($1)', [user.id]);
+      const cp = await query('insert into cleaner_profiles (user_id) values ($1) returning id', [user.id]);
+      const cleanerId = cp.rows[0].id;
+      await ensureReferralCode(cleanerId);
+      // A bad or unknown code must never block a signup — it just earns nobody.
+      if (referralCode) await linkReferral(cleanerId, referralCode);
     } else {
       await query('insert into client_profiles (user_id) values ($1)', [user.id]);
     }
@@ -170,6 +234,75 @@ app.post('/api/auth/google', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Google sign-in failed. Please try again.' });
+  }
+});
+
+// A cleaner's referral code, credit balance, and who they've brought in.
+app.get('/api/referrals', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const cleanerId = await cleanerIdForUser(userId);
+    if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    const code = await ensureReferralCode(cleanerId);
+    const { rows } = await query(
+      `select r.credited_at, r.credit_cents,
+              coalesce(nullif(cp.business_name, ''), u.full_name) as name,
+              cp.id_verified and cp.police_verified and cp.insurance_verified as fully_verified
+         from referrals r
+         join cleaner_profiles cp on cp.id = r.referred_cleaner_id
+         join users u on u.id = cp.user_id
+        where r.referrer_cleaner_id = $1
+        order by r.created_at desc`,
+      [cleanerId]
+    );
+
+    const creditCents = rows.reduce((a, r) => a + (r.credit_cents || 0), 0);
+    res.json({
+      code,
+      creditCents,
+      creditDollars: creditCents / 100,
+      perReferralDollars: REFERRAL_CREDIT_CENTS / 100,
+      earned: rows.filter((r) => r.credited_at).length,
+      pending: rows.filter((r) => !r.credited_at).length,
+      referrals: rows.map((r) => ({
+        name: r.name,
+        fullyVerified: !!r.fully_verified,
+        credited: !!r.credited_at,
+        creditDollars: (r.credit_cents || 0) / 100,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load your referrals.' });
+  }
+});
+
+// --- Account: pause / resume listing ----------------------------------------
+// Pausing hides a cleaner from browse, search and match without touching their
+// account, threads or reviews. listing_status already has a 'paused' value and
+// every public query filters on 'active', so this is the whole mechanism.
+// Resuming puts them back to 'active'; a cleaner who never published stays draft.
+app.post('/api/profile/pause', async (req, res) => {
+  try {
+    const { userId, paused } = req.body ?? {};
+    if (!userId || typeof paused !== 'boolean')
+      return res.status(400).json({ error: 'userId and paused (true/false) are required.' });
+    const cleanerId = await cleanerIdForUser(userId);
+    if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    const { rows } = await query(
+      `update cleaner_profiles
+          set listing_status = $2::listing_status, updated_at = now()
+        where id = $1
+      returning listing_status`,
+      [cleanerId, paused ? 'paused' : 'active']
+    );
+    res.json({ ok: true, listingStatus: rows[0].listing_status });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not update your listing.' });
   }
 });
 
@@ -286,7 +419,7 @@ app.get('/api/profile', async (req, res) => {
               cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
               cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified,
-              cp.brings_products,
+              cp.brings_products, cp.profile_photo_url,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.user_id = $1`,
@@ -313,6 +446,7 @@ app.get('/api/profile', async (req, res) => {
       reviews: cp.review_count || 0,
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
       bringsProducts: !!cp.brings_products,
+      photo: cp.profile_photo_url || '',
       services: svc.rows.map((r) => r.slug),
       addons: Array.isArray(cp.addons) ? cp.addons : [],
       areas: areas.rows.map((r) => r.name),
@@ -327,7 +461,7 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
@@ -355,13 +489,15 @@ app.put('/api/profile', async (req, res) => {
          hourly_rate_min = $5, hourly_rate_max = $6, hourly_rate = $7,
          listing_status = coalesce($8, listing_status),
          addons = coalesce($9, addons),
-         brings_products = coalesce($10, brings_products), updated_at = now()
+         brings_products = coalesce($10, brings_products),
+         profile_photo_url = coalesce($11, profile_photo_url), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
         min, max, mid, listingStatus ?? null,
         cleanAddons != null ? JSON.stringify(cleanAddons) : null,
         typeof bringsProducts === 'boolean' ? bringsProducts : null,
+        photo || null,
       ]
     );
 
@@ -614,6 +750,8 @@ app.post('/api/admin/verification-decision', async (req, res) => {
       await query("update verifications set status = 'verified', verified_at = now() where id = $1", [id]);
       const col = VERIF_COL[type];
       if (col) await query(`update cleaner_profiles set ${col} = true where id = $1`, [cleaner_id]);
+      // This approval may have been their last outstanding badge.
+      await awardReferralIfFullyVerified(cleaner_id);
     } else {
       await query("update verifications set status = 'failed' where id = $1", [id]);
     }

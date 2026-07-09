@@ -74,8 +74,10 @@ create table cleaner_profiles (
   id_verified         boolean not null default false,
   police_verified     boolean not null default false,
   insurance_verified  boolean not null default false,
-  -- "I bring my own cleaning products."
-  brings_products     boolean not null default false,
+  -- Cleaners bring their own products and equipment unless they say otherwise.
+  brings_products     boolean not null default true,
+  -- Short code others enter at signup to credit this cleaner with a referral.
+  referral_code       text unique,
   featured_until      timestamptz,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
@@ -211,6 +213,18 @@ create table verifications (
   verified_at  timestamptz,
   expires_at   timestamptz,
   created_at   timestamptz not null default now()
+);
+
+-- Cleaner-to-cleaner referrals. The $10 credit is stamped on only once the
+-- referred cleaner is fully verified (ID + police + insurance).
+create table referrals (
+  id                   uuid primary key default gen_random_uuid(),
+  referrer_cleaner_id  uuid not null references cleaner_profiles(id) on delete cascade,
+  referred_cleaner_id  uuid not null unique references cleaner_profiles(id) on delete cascade,
+  credit_cents         integer not null default 0,
+  credited_at          timestamptz,
+  created_at           timestamptz not null default now(),
+  constraint referrals_no_self check (referrer_cleaner_id <> referred_cleaner_id)
 );
 
 create table featured_placements (

@@ -158,7 +158,7 @@ function loadSuburbs() {
     .catch(() => {});
 }
 function loadDirectory() {
-  getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages', 'mycleaners'); }).catch(() => {});
+  getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages'); }).catch(() => {});
 }
 function loadProfile() {
   getJSON(`/api/client-profile?userId=${encodeURIComponent(uid)}`)
@@ -313,24 +313,19 @@ const PANELS = {
       ${howflowHTML()}`;
   },
 
-  // Starred cleaners and the ones you've messaged, in one place.
+  // Only the cleaners this customer has starred. Empty until they star someone —
+  // people they've merely messaged live in the Messages tab, not here.
   mycleaners() {
     return `
       <h1>My cleaners</h1>
-      <p class="wizard-lede">The cleaners you've saved and the ones you're already talking to.</p>
+      <p class="wizard-lede">The cleaners you've saved. Tap the ☆ on any cleaner to add them here.</p>
 
       <div class="panel-card">
-        <h2>Your starred cleaners</h2>
         ${starredList.length
           ? `<div class="starred-grid">${starredList.map(starredCard).join('')}</div>`
-          : '<p class="muted">Tap the ☆ on any cleaner to save them here — handy for finding a cleaner you liked again.</p>'}
-      </div>
-
-      <div class="panel-card">
-        <h2>Cleaners you've messaged</h2>
-        ${convos.length
-          ? `<div class="mycleaners">${convos.map(myCleanerRow).join('')}</div>`
-          : '<p class="muted">No one yet — the cleaners you message will appear here.</p>'}
+          : `<p class="muted">No cleaners yet. Tap the ☆ on any cleaner — in search results or on
+               their profile — and they'll be saved here so you can find them again.</p>
+             <button class="btn solid" data-goto="find" type="button" style="margin-top:1rem">Find a cleaner</button>`}
       </div>`;
   },
 
@@ -459,10 +454,7 @@ const WIRE = {
     initHowflow(panel);
   },
   mycleaners() {
-    // "Message" opens the thread; the cards also open profiles, contact, unstar.
-    panel.querySelectorAll('[data-open]').forEach((b) =>
-      b.addEventListener('click', () => openConvo(b.dataset.open, true))
-    );
+    panel.querySelector('[data-goto]')?.addEventListener('click', () => goTo('find'));
     wireStars(panel);
     wireContact(panel);
     bindCleanerLinks(panel);
@@ -696,7 +688,8 @@ function resultCard(r) {
 // A star toggle for saving a cleaner (☆ / ★).
 function starBtn(id, name) {
   const on = starredIds.has(id);
-  return `<button class="star-btn ${on ? 'on' : ''}" type="button" data-star="${attr(id)}" data-starname="${attr(name)}" aria-pressed="${on}" title="${on ? 'Saved' : 'Save this cleaner'}" aria-label="${on ? 'Remove from saved' : 'Save this cleaner'}">${on ? '★' : '☆'}</button>`;
+  const label = on ? 'Click to remove from My Cleaners' : 'Click to add to My Cleaners';
+  return `<button class="star-btn ${on ? 'on' : ''}" type="button" data-star="${attr(id)}" data-starname="${attr(name)}" aria-pressed="${on}" title="${label}" aria-label="${label}">${on ? '★' : '☆'}</button>`;
 }
 function wireStars(box) {
   if (!box) return;
@@ -889,24 +882,6 @@ function cleanerCardHTML(c) {
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
     ${Review.barsHTML(c.breakdown)}
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${attr(c.id)}">Message ${first}</button></div>`;
-}
-
-// A cleaner the customer has an open thread with. Conversations don't carry
-// rates or ratings, so we enrich from the directory when it's loaded.
-function myCleanerRow(c) {
-  const d = directory.find((x) => x.id === c.cleanerId);
-  const rate = d ? rateLabel(d.rateMin, d.rateMax) : '';
-  const last = escapeHtml((c.lastBody || '').slice(0, 48));
-  return `<article class="mycleaner">
-    <div class="mycleaner-main">
-      <h3>${withLabel(c)}${d ? Rating.badge(d.rating, d.reviews) : ''}</h3>
-      <p class="result-meta">${rate ? `${escapeHtml(rate)} · ` : ''}${last}</p>
-    </div>
-    <div class="mycleaner-actions">
-      <button class="btn outline sm" type="button" data-cleaner="${attr(c.cleanerId)}">View profile</button>
-      <button class="btn solid sm" type="button" data-open="${c.id}">Message</button>
-    </div>
-  </article>`;
 }
 
 // ---------- Shared helpers ----------

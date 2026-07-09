@@ -27,6 +27,7 @@ function loadVerif() {
     insurance: DEMO.maidProfile.badges.insurance ? 'verified' : 'none',
   };
 }
+let referrals = null; // { code, creditDollars, earned, pending, referrals[] }
 let verif = loggedIn ? { id: 'none', police: 'none', insurance: 'none' } : loadVerif();
 let verifRead = {}; // OCR-extracted text per verification type (review aid)
 const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
@@ -60,7 +61,7 @@ let mpSpecific = false; // false = whole-city ("Christchurch-wide")
 const svcSet = new Set(loggedIn ? [] : profile.services); // base service slugs offered
 let mpAddons = loggedIn ? [] : (profile.addons || []); // priced extras [{slug, price}]
 let mp = loggedIn
-  ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0, bringsProducts: false }
+  ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0, bringsProducts: true, photo: '' }
   : {
       businessName: profile.businessName,
       bio: profile.bio,
@@ -86,6 +87,7 @@ if (sessionUser?.id) {
         avgRating: data.avgRating ?? 0,
         reviews: data.reviews ?? 0,
         bringsProducts: !!data.bringsProducts,
+        photo: data.photo ?? '',
       };
       areas.clear();
       (data.areas || []).forEach((a) => areas.add(a));
@@ -113,6 +115,12 @@ if (sessionUser?.id) {
       ['id', 'police', 'insurance'].forEach((k) => { if (s[k]) verif[k] = s[k]; });
       render();
     })
+    .catch(() => {});
+
+  // Referral code + earned credit.
+  fetch(`/api/referrals?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d) { referrals = d; render(); } })
     .catch(() => {});
 
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -307,14 +315,19 @@ const PANELS = {
     return `
       <h1>Your profile</h1>
       <form class="profile-form" id="profileForm">
+        <div class="avatar-row">
+          <div class="avatar" id="avatar">${mp.photo ? `<img src="${escapeHtml(mp.photo)}" alt="" />` : '<span>Photo</span>'}</div>
+          <label class="btn outline sm">Upload photo<input type="file" id="photoInput" accept="image/*" hidden /></label>
+        </div>
         <label class="field"><span>Business name</span><input name="business" value="${mp.businessName ?? ''}" /></label>
         <label class="field"><span>Bio</span><textarea name="bio" rows="3">${mp.bio ?? ''}</textarea></label>
         <label class="field"><span>Your desired hourly rate ($/hr)</span><input name="rate" type="number" value="${mp.rate ?? ''}" /></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
         ${locSectionHTML()}
-        <div class="field"><span>Cleaning products</span>
-          <label class="check-inline"><input type="checkbox" name="products" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own cleaning products</label>
-          <p class="muted" style="margin:0.4rem 0 0">Customers who need products supplied will only see cleaners who bring their own.</p>
+        <div class="field"><span>Cleaning products &amp; equipment</span>
+          <label class="check-inline"><input type="checkbox" name="products" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own cleaning products and equipment</label>
+          <p class="muted" style="margin:0.4rem 0 0">On by default. Untick it only if the customer needs to supply
+            products and equipment — customers who need them supplied won't see you.</p>
         </div>
         <div class="field"><span>Type of clean you offer</span><div class="chip-select">${svcChips}</div></div>
         <div class="field"><span>Extras &amp; add-ons</span>
@@ -330,7 +343,8 @@ const PANELS = {
           <span class="save-msg" id="profMsg"></span>
         </div>
       </form>
-      ${loggedIn ? RemoveProfile.html() : ''}`;
+      ${pauseHTML()}
+      ${loggedIn ? RemoveProfile.html({ billingNote: true }) : ''}`;
   },
 
   subscription() {
@@ -362,7 +376,10 @@ const PANELS = {
           <button class="btn solid full" type="button" disabled>Coming soon</button>
         </div>
       </div>
-      <p class="save-msg" id="planMsg"></p>`;
+      <p class="muted" style="max-width:62ch">We want to make a platform that's affordable for everyone
+        and that maximises profits for cleaners. As we grow, we'll lower monthly costs for our cleaners.</p>
+      <p class="save-msg" id="planMsg"></p>
+      ${referralsHTML()}`;
   },
 };
 
@@ -462,6 +479,38 @@ const WIRE = {
   },
   profile() {
     if (loggedIn) RemoveProfile.bind(sessionUser.id);
+    // Photo is held as a data URL and saved with the rest of the profile.
+    const avatar = panel.querySelector('#avatar');
+    panel.querySelector('#photoInput')?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        mp.photo = reader.result;
+        avatar.innerHTML = `<img src="${mp.photo}" alt="" />`;
+      };
+      reader.readAsDataURL(file);
+    });
+    const pauseBtn = panel.querySelector('#pauseBtn');
+    pauseBtn?.addEventListener('click', async () => {
+      const paused = pauseBtn.dataset.paused === 'true';
+      pauseBtn.disabled = true;
+      setMsg('pauseMsg', paused ? 'Resuming…' : 'Pausing…', 'pending');
+      try {
+        const res = await fetch('/api/profile/pause', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: sessionUser.id, paused: !paused }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'failed');
+        mp.listingStatus = data.listingStatus;
+        render();
+      } catch {
+        pauseBtn.disabled = false;
+        setMsg('pauseMsg', 'Could not update your listing — please try again.', 'err');
+      }
+    });
     panel.querySelectorAll('[data-svc]').forEach((c) =>
       c.addEventListener('click', () => {
         const slug = c.dataset.svc;
@@ -542,6 +591,7 @@ const WIRE = {
             bio: mp.bio,
             years: mp.years,
             bringsProducts: mp.bringsProducts,
+            photo: mp.photo || null,
             rate: mp.rate,
             services: [...svcSet],
             addons: mpAddons,
@@ -559,6 +609,18 @@ const WIRE = {
   },
   subscription() {
     // Plans aren't purchasable yet — buttons show "Coming soon" (disabled).
+    const copy = panel.querySelector('#copyRefLink');
+    copy?.addEventListener('click', async () => {
+      const link = copy.dataset.link;
+      try {
+        await navigator.clipboard.writeText(link);
+        copy.textContent = 'Copied!';
+      } catch {
+        // clipboard blocked (insecure origin, permissions) — show it to select.
+        window.prompt('Copy your invite link:', link);
+      }
+      setTimeout(() => { copy.textContent = 'Copy invite link'; }, 1800);
+    });
   },
 };
 
@@ -703,6 +765,73 @@ function enquiryRow(e) {
     <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.when}</span></div>
     <span class="status status-${e.status}">${e.status}</span>
   </div>`;
+}
+
+// Pausing hides the listing from browse, search and matches. Nothing else
+// changes — it's the reversible middle ground between staying live and removing
+// the account entirely.
+function pauseHTML() {
+  if (!loggedIn) return '';
+  const paused = mp.listingStatus === 'paused';
+  return `
+    <section class="pause-card">
+      <h2>${paused ? 'Your listing is paused' : 'Pause your listing'}</h2>
+      <p class="muted">${
+        paused
+          ? "You're hidden from browse, search and matches. Your account, messages and reviews are untouched — resume whenever you're ready."
+          : 'Taking a break? Hide yourself from browse, search and matches without deleting anything. Your account, messages and reviews stay exactly as they are.'
+      }</p>
+      <div class="save-row">
+        <button class="btn ${paused ? 'solid' : 'outline'}" id="pauseBtn" type="button" data-paused="${paused}">
+          ${paused ? 'Resume my listing' : 'Pause my listing'}
+        </button>
+        <span class="save-msg" id="pauseMsg"></span>
+      </div>
+    </section>`;
+}
+
+// Referral card: your code, your credit, and who you've brought in. The credit
+// only lands once a referred cleaner is fully verified, so pending ones are
+// shown as such rather than silently missing.
+function referralsHTML() {
+  if (!loggedIn) return '';
+  if (!referrals) return '<div class="panel-card"><h2>Refer a cleaner</h2><p class="muted">Loading your referral code…</p></div>';
+
+  const per = referrals.perReferralDollars;
+  const link = `${location.origin}/login?role=maid&mode=signup&ref=${encodeURIComponent(referrals.code)}`;
+  const rows = referrals.referrals
+    .map(
+      (r) => `<div class="ref-row">
+        <span>${escapeHtml(r.name)}</span>
+        ${r.credited
+          ? `<span class="status status-accepted">+$${r.creditDollars} credited</span>`
+          : '<span class="status status-new">Awaiting full verification</span>'}
+      </div>`
+    )
+    .join('');
+
+  return `
+    <div class="panel-card referral-card">
+      <h2>Refer a cleaner</h2>
+      <p class="muted">Share your code. When a cleaner you refer becomes fully verified —
+        ID, police check and insurance — you earn <strong>$${per}</strong> of credit toward
+        your future payments.</p>
+
+      <div class="ref-credit">
+        <span class="ref-amount">$${referrals.creditDollars}</span>
+        <span class="ref-amount-label">Referral credit</span>
+      </div>
+
+      <div class="ref-code-row">
+        <code class="ref-code">${escapeHtml(referrals.code)}</code>
+        <button class="btn outline sm" type="button" id="copyRefLink" data-link="${escapeHtml(link)}">Copy invite link</button>
+      </div>
+      <p class="muted ref-counts">
+        ${referrals.earned} fully verified · ${referrals.pending} awaiting verification
+      </p>
+
+      ${rows ? `<div class="ref-list">${rows}</div>` : '<p class="muted">No referrals yet — share your code to get started.</p>'}
+    </div>`;
 }
 
 function enquiryCard(e) {

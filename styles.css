@@ -748,16 +748,37 @@ a { color: inherit; text-decoration: none; }
 .bubble.review-prompt .rp-cta { display: block; margin-top: 0.35rem; font-weight: 700; color: var(--copper); }
 .bubble.review-done { background: var(--bg-mist); border: 1px solid var(--line); }
 
-/* ---------- My cleaners (customer overview) ---------- */
-.mycleaners { display: flex; flex-direction: column; gap: 0.7rem; }
-.mycleaner {
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
-  border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem 1.1rem; background: var(--paper);
+/* ---------- Pause listing (maid profile tab) ----------
+   Sits above the danger zone as the reversible middle ground. */
+.pause-card { margin-top: 2.4rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-mist); }
+.pause-card h2 { margin: 0 0 0.4rem; font-size: 1.35rem; }
+.pause-card .muted { margin: 0; max-width: 62ch; }
+.danger-billing {
+  margin: 0 0 1.2rem; padding: 0.65rem 0.9rem; border-left: 3px solid #a3402f;
+  background: #fff; font-size: 0.88rem; color: var(--ink); max-width: 60ch;
 }
-.mycleaner-main { min-width: 0; }
-.mycleaner-main h3 { margin: 0 0 0.15rem; font-size: 1.15rem; }
-.mycleaner-main .result-meta { margin: 0; }
-.mycleaner-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+/* ---------- Referral card (maid subscription tab) ---------- */
+.referral-card .muted { max-width: 62ch; }
+.ref-credit { display: flex; align-items: baseline; gap: 0.6rem; margin: 1.2rem 0 1rem; }
+.ref-amount {
+  font-family: var(--sans); font-weight: 700; font-size: 2.4rem; line-height: 1; color: var(--green);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.ref-amount-label { font-size: 0.74rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.ref-code-row { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
+.ref-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; font-weight: 700;
+  letter-spacing: 0.16em; padding: 0.5rem 0.9rem; border: 1px dashed var(--copper);
+  border-radius: var(--radius); background: var(--bg-cream); color: var(--ink);
+}
+.ref-counts { margin: 0.8rem 0 0; font-size: 0.86rem; }
+.ref-list { margin-top: 1rem; border-top: 1px solid var(--line); }
+.ref-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.7rem 0; border-bottom: 1px solid var(--line);
+}
+
 .browse-prompt { text-align: center; max-width: 34ch; margin: 0.6rem auto 0; color: var(--muted); }
 .linklike { border: none; background: none; color: var(--copper); font-weight: 600; cursor: pointer; font-size: inherit; padding: 0; }
 .back { color: var(--muted); font-size: 0.82rem; letter-spacing: 0.1em; text-transform: uppercase; }

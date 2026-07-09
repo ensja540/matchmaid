@@ -24,11 +24,21 @@ const BLURBS = {
 roleLabel.textContent = LABEL[role];
 blurb.textContent = BLURBS[role];
 
+// A cleaner's share link carries their code: /login?role=maid&mode=signup&ref=XXXXXX
+const refFromLink = (params.get('ref') || '').trim().toUpperCase();
+
 function render() {
   const signup = mode === 'signup';
   document.querySelectorAll('[data-signup-only]').forEach((el) => {
     el.style.display = signup ? '' : 'none';
   });
+  // Referrals are cleaner-to-cleaner, so the code field is maid-side only.
+  document.querySelectorAll('[data-maid-only]').forEach((el) => {
+    if (role !== 'maid') el.style.display = 'none';
+  });
+  if (signup && role === 'maid' && refFromLink && form.referralCode && !form.referralCode.value) {
+    form.referralCode.value = refFromLink;
+  }
   submitBtn.textContent = signup ? 'Create account' : 'Log in';
   switchText.textContent = signup ? 'Already registered?' : 'New to Match Maid?';
   switchBtn.textContent = signup ? 'Log in instead' : 'Create an account';
@@ -53,7 +63,10 @@ form.addEventListener('submit', async (e) => {
     email: form.email.value,
     password: form.password.value,
   };
-  if (mode === 'signup') body.fullName = form.fullName.value;
+  if (mode === 'signup') {
+    body.fullName = form.fullName.value;
+    if (role === 'maid') body.referralCode = form.referralCode?.value.trim() || refFromLink || undefined;
+  }
   // Set by the "Reactivate" prompt below, for a removed account signing back in.
   if (pendingReactivate) body.reactivate = true;
 
