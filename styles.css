@@ -304,12 +304,11 @@ a { color: inherit; text-decoration: none; }
   transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease, transform 0.35s ease;
 }
 .choice:hover { transform: translateY(-3px); }
-.choice-k { font-family: var(--sans); font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700; color: var(--copper); }
 .choice-t { font-family: var(--serif); font-weight: 700; font-size: clamp(2.2rem, 4.5vw, 3.4rem); line-height: 1; }
 .choice-s { font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
 .choice.maid:hover { background: var(--copper); border-color: var(--copper); color: var(--paper); }
 .choice.customer:hover { background: var(--green); border-color: var(--green); color: var(--paper); }
-.choice:hover .choice-k, .choice:hover .choice-s { color: rgba(244, 241, 234, 0.82); }
+.choice:hover .choice-s { color: rgba(244, 241, 234, 0.82); }
 
 /* Clean, colourful footer bar */
 .splash-footer {
