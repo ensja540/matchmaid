@@ -23,6 +23,7 @@
   --bg-tint: #e7f6f4;    /* soft teal tint */
   --bg-cream: #fdf7ec;   /* warm off-white, hint of gold */
   --bg-ink: #123b4a;     /* deep ink, for a standout feature band */
+  --bg-masthead: #0a2630; /* deeper than the notice bar, so the banner reads as its own slab */
   --radius: 6px;         /* soft edge on cards, inputs, buttons */
   --radius-lg: 16px;     /* rounder edge on imagery */
 
@@ -212,13 +213,14 @@ a { color: inherit; text-decoration: none; }
 .splash-ask { margin: 0.1rem 0 1.6rem; text-align: center; }
 
 /* ---------- Masthead ----------
-   Sits flush under the navy notice bar, so the two read as one slab. The
-   circles are drawn, not placed: an <img> here would need re-exporting every
-   time the wordmark or the badges change. */
+   A shade deeper than the navy notice bar above it, so the banner steps
+   forward instead of merging into the bar. The circles are drawn, not placed:
+   an <img> here would need re-exporting every time the wordmark or the badges
+   change. */
 .masthead {
   position: relative;
   overflow: hidden;
-  background: var(--bg-ink);
+  background: var(--bg-masthead);
   color: var(--paper);
   padding: 3.4rem 1.5rem 3rem;
   text-align: center;
@@ -285,13 +287,13 @@ a { color: inherit; text-decoration: none; }
 
 .splash-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
 
-/* One quiet line under the choices. The banner makes the pitch; this only has
-   to explain who pays, so it stays subordinate to the two cards. */
+/* The line under the choices carries the pitch, so it reads at body scale
+   rather than as fine print. */
 .splash-kicker {
-  max-width: 62ch; margin: 2.4rem auto 0; text-align: center;
-  color: var(--muted); font-size: 0.95rem; line-height: 1.65;
+  max-width: 56ch; margin: 2.6rem auto 0; text-align: center;
+  color: var(--ink); font-size: 1.2rem; line-height: 1.55;
 }
-.splash-kicker em { font-family: var(--serif); font-style: italic; color: var(--copper-dark); }
+.splash-kicker strong { display: block; font-weight: 700; color: var(--copper-dark); }
 
 .choice {
   position: relative;
