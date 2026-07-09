@@ -84,10 +84,11 @@ function currentPrefs() {
   };
 }
 
-// Nothing shows until the visitor actually searches — no results (and no big
-// empty-state image) before prefs; just a one-line prompt in the meta row.
+// Nothing shows until the visitor actually searches: no results, no empty-state
+// image, and no prompt. The meta row keeps its height (see .browse-meta) so the
+// page doesn't jump when the first result count lands in it.
 function showSearchPrompt() {
-  meta.textContent = 'Choose your area and what you need, then search.';
+  meta.textContent = '';
   const sw = document.getElementById('sortWrap');
   if (sw) sw.hidden = true;
   results.innerHTML = '';
