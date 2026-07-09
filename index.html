@@ -18,8 +18,8 @@
     <meta name="twitter:title" content="Match Maid" />
     <meta name="twitter:description" content="Independent local cleaners, rates up front. Free for households." />
     <meta name="twitter:image" content="https://matchmaid.co.nz/og-image.png" />
-    <link rel="stylesheet" href="styles.css?v=56" />
-    <script src="session.js?v=56"></script>
+    <link rel="stylesheet" href="styles.css?v=57" />
+    <script src="session.js?v=57"></script>
     <script>
       // The role gateway is a first-visit thing. If we already know who you are,
       // or which side you chose last time, skip straight in.
@@ -59,8 +59,8 @@
     </header>
 
     <main class="splash">
-      <h2 class="splash-ask">Are you…</h2>
-      <div class="splash-choices">
+      <h2 class="splash-ask reveal">Are you…</h2>
+      <div class="splash-choices reveal">
         <a class="choice maid" href="/for-maids">
           <span class="choice-t">A maid</span>
           <span class="choice-s">List your services</span>
@@ -70,7 +70,7 @@
           <span class="choice-s">Browse local cleaners</span>
         </a>
       </div>
-      <p class="splash-kicker">
+      <p class="splash-kicker reveal">
         <strong>We're making the simplest and most affordable directory of cleaners in NZ.</strong>
         Maids pay a small monthly fee to use it, which keeps Match Maid completely
         free for everyone needing a clean.
@@ -93,8 +93,34 @@
       var c = document.querySelector('.choice.customer');
       if (m) m.addEventListener('click', function () { localStorage.setItem('mm_side', 'maid'); });
       if (c) c.addEventListener('click', function () { localStorage.setItem('mm_side', 'customer'); });
+
+      // Reveal the splash on scroll. The hidden start state lives behind
+      // `.js-anim`, added here — no script, no hiding. Reduced motion and old
+      // browsers skip straight to the visible state.
+      (function () {
+        var splash = document.querySelector('.splash');
+        var items = [].slice.call(document.querySelectorAll('.splash .reveal'));
+        if (!splash || !items.length) return;
+        var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduce || typeof IntersectionObserver === 'undefined') {
+          items.forEach(function (el) { el.classList.add('in-view'); });
+          return;
+        }
+        splash.classList.add('js-anim');
+        var io = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (en) {
+              if (!en.isIntersecting) return;
+              en.target.classList.add('in-view'); // once: never re-hidden
+              io.unobserve(en.target);
+            });
+          },
+          { threshold: 0.18 }
+        );
+        items.forEach(function (el) { io.observe(el); });
+      })();
     </script>
-    <script src="feedback.js?v=56"></script>
+    <script src="feedback.js?v=57"></script>
 
   </body>
 </html>
