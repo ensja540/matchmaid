@@ -9,8 +9,8 @@ DEMO.services.forEach((s) => (SVC_NAME[s.slug] = s.name));
 const suburbSel = document.getElementById('suburb');
 const serviceSel = document.getElementById('service');
 const hoursSel = document.getElementById('hours');
-const budgetMinEl = document.getElementById('budgetMin');
-const budgetMaxEl = document.getElementById('budgetMax');
+const rateEl = document.getElementById('rate');
+const rateOut = document.getElementById('rateOut');
 const extrasBox = document.getElementById('extras');
 const verifBox = document.getElementById('verif');
 const productsBox = document.getElementById('products');
@@ -56,6 +56,8 @@ extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('cl
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 productsBox?.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 
+rateEl.addEventListener('input', () => (rateOut.textContent = `$${rateEl.value}/hr`));
+
 cal.innerHTML = calendarHTML(slots);
 wireCalendar(cal, slots);
 
@@ -75,8 +77,9 @@ function currentPrefs() {
     verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
     products: !!productsBox?.querySelector('.chip.select.on'),
     hours: Number(hoursSel.value),
-    budgetMin: Number(budgetMinEl.value) || 0,
-    budgetMax: Number(budgetMaxEl.value) || 999,
+    // One rate in, a fair window out — same +/- $10 band the wizard uses.
+    budgetMin: Math.max(0, Number(rateEl.value) - 10),
+    budgetMax: Number(rateEl.value) + 10,
     slots,
   };
 }
@@ -235,7 +238,6 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 function cleanerCardHTML(c) {
-  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured', c.bringsProducts && 'Brings products'].filter(Boolean);
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
   const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
@@ -251,7 +253,7 @@ function cleanerCardHTML(c) {
         <p class="muted" style="margin:0">${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
       </div>
     </div>
-    ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
+    ${Badges.earned(c.badges, c.bringsProducts)}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
     ${c.serviceSurcharges && c.serviceSurcharges.length

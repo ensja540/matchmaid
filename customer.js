@@ -899,7 +899,6 @@ function rateLabel(min, max) {
   return r == null ? 'rate on enquiry' : `$${r}/hr`;
 }
 function cleanerCardHTML(c) {
-  const badges = [c.badges.id && 'ID verified', c.badges.police && 'Police checked', c.badges.insurance && 'Insured', c.bringsProducts && 'Brings products'].filter(Boolean);
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
   const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
@@ -916,7 +915,7 @@ function cleanerCardHTML(c) {
       </div>
       ${starBtn(c.id, c.name)}
     </div>
-    ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
+    ${Badges.earned(c.badges, c.bringsProducts)}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
     ${c.serviceSurcharges && c.serviceSurcharges.length

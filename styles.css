@@ -401,9 +401,6 @@ a { color: inherit; text-decoration: none; }
 .bf-block { margin-top: 1.3rem; }
 .bf-label { display: block; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; color: var(--muted); margin-bottom: 0.6rem; }
 .bf-actions { margin-top: 1.4rem; }
-.budget-row { display: flex; gap: 1rem; flex-wrap: wrap; }
-.budget-row label { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--muted); font-size: 0.85rem; }
-.budget-row input { width: 90px; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--sans); }
 
 /* Dynamic "how it works" flow chart */
 .flow { display: flex; align-items: stretch; margin-top: 1.6rem; }
@@ -914,7 +911,7 @@ a { color: inherit; text-decoration: none; }
 
 .slider-wrap { margin-top: 0.5rem; }
 .slider-value { display: block; font-family: var(--serif); font-size: 2.2rem; margin-bottom: 0.4rem; }
-#rate, .find-form input[type=range] { width: 100%; accent-color: var(--copper); }
+.slider-wrap input[type=range], .find-form input[type=range] { width: 100%; accent-color: var(--copper); }
 .slider-scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.85rem; }
 .est { margin-top: 1rem; color: var(--muted); background: var(--paper-2); padding: 0.75rem 0.9rem; border-radius: var(--radius); }
 
@@ -966,12 +963,38 @@ a { color: inherit; text-decoration: none; }
 .chip.on { border-color: var(--copper); color: var(--copper-dark); }
 .chip.off { border-color: #c9a7a0; color: #a3402f; }
 .verif { margin: 0.6rem 0 0; display: flex; gap: 0.4rem; }
+
+/* Trust badges. A tick in a copper medallion, mirroring the masthead badges —
+   an earned mark should look the same wherever it appears. `.off` is the
+   cleaner's own view of one they haven't earned yet: dashed, hollow, quiet. */
+.tbadge-row { margin: 0.9rem 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.tbadge {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.42rem 0.9rem 0.42rem 0.5rem; border-radius: 999px;
+  border: 1px solid var(--copper); background: rgba(20, 184, 166, 0.08);
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--copper-dark); white-space: nowrap;
+}
+.tbadge i {
+  display: grid; place-items: center; flex: none;
+  width: 1.05rem; height: 1.05rem; border-radius: 50%;
+  background: var(--copper); color: var(--paper);
+  font-size: 0.6rem; font-weight: 800; font-style: normal; letter-spacing: 0;
+}
+.tbadge.off { border-style: dashed; border-color: var(--line); background: none; color: var(--muted); }
+.tbadge.off i { background: none; border: 1px dashed var(--line); }
+
+.tbadge-strip { border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; }
+.tbadge-strip .tbadge-row { margin: 0; }
+.tbadge-note { margin: 0.7rem 0 0; font-size: 0.85rem; }
 .no-overlap { margin: 0.7rem 0 0; color: var(--muted); font-size: 0.88rem; }
 .result-actions { margin-top: 0.9rem; }
 .results-summary, .results-actions { color: var(--muted); margin: 0.6rem 0 1rem; }
 
 /* Dashboard */
 .dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin: 1.4rem 0; }
+.dash-badges { margin: 1.4rem 0; }
+.dash-badges-h { font-size: 1.35rem; margin: 0 0 0.8rem; }
 .stat-card { padding: 1.3rem; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 0.25rem; }
 .stat-card:last-child { border-right: none; }
 /* Sans, not the serif: Cormorant's old-style figures render "1" as a stunted

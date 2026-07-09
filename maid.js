@@ -259,6 +259,11 @@ const PANELS = {
         <div class="stat-card"><span class="stat-num cap">${mp.listingStatus}</span><span class="stat-label">Listing status</span></div>
       </div>
 
+      <div class="dash-badges">
+        <h2 class="dash-badges-h">Your trust badges</h2>
+        ${Badges.strip(verif)}
+      </div>
+
       ${howflowHTML()}`;
   },
 
@@ -348,7 +353,8 @@ const PANELS = {
         </div>
         <div class="field"><span>Verification</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below — we review and approve it.</p>
-          <div class="verif-list">${VERIF_ITEMS.map(verifRow).join('')}</div>
+          ${Badges.strip(verif)}
+          <div class="verif-list" style="margin-top:1rem">${VERIF_ITEMS.map(verifRow).join('')}</div>
         </div>
         <div class="save-row">
           <button class="btn solid" type="submit">Save profile</button>
