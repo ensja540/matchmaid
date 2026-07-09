@@ -45,9 +45,8 @@ let convos = []; // this user's conversations
 let msgCache = {}; // conversationId -> messages[]
 let reviewCache = {}; // conversationId -> review | null (undefined = not loaded)
 let activeConvo = null;
-let myEnquiries = []; // enquiries this customer has sent
 let starredIds = new Set(); // cleaner ids this customer has starred
-let starredList = []; // starred cleaners with details (for the overview)
+let starredList = []; // starred cleaners with details (for the My cleaners tab)
 
 // "How Match Maid works" — customer steps as a scroll-driven zigzag timeline
 // (same component as the maid side, customer copy).
@@ -159,16 +158,11 @@ function loadSuburbs() {
     .catch(() => {});
 }
 function loadDirectory() {
-  getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages', 'overview'); }).catch(() => {});
+  getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages', 'mycleaners'); }).catch(() => {});
 }
 function loadProfile() {
   getJSON(`/api/client-profile?userId=${encodeURIComponent(uid)}`)
-    .then((data) => { cprof = { ...PROFILE_DEFAULTS, ...data }; reRenderIf('profile', 'overview'); })
-    .catch(() => {});
-}
-function loadEnquiries() {
-  getJSON(`/api/enquiries?userId=${encodeURIComponent(uid)}`)
-    .then((list) => { myEnquiries = list.filter((e) => e.role === 'client'); reRenderIf('overview'); })
+    .then((data) => { cprof = { ...PROFILE_DEFAULTS, ...data }; reRenderIf('profile', 'find'); })
     .catch(() => {});
 }
 function loadFavourites() {
@@ -176,11 +170,11 @@ function loadFavourites() {
     .then((list) => {
       starredList = Array.isArray(list) ? list : [];
       starredIds = new Set(starredList.map((c) => c.id));
-      reRenderIf('overview', 'find');
+      reRenderIf('mycleaners', 'find');
     })
     .catch(() => {});
 }
-// Star / unstar a cleaner, then keep the overview + any star buttons in sync.
+// Star / unstar a cleaner, then keep My cleaners + any star buttons in sync.
 function toggleStar(cleanerId, name) {
   if (!uid || !cleanerId) return;
   const wasStarred = starredIds.has(cleanerId);
@@ -275,7 +269,6 @@ if (uid) {
   loadSuburbs();
   loadDirectory();
   loadProfile();
-  loadEnquiries();
   loadFavourites();
   initMessages();
 } else {
@@ -317,6 +310,15 @@ const PANELS = {
         <button class="btn solid" data-goto="find" type="button">Find a cleaner</button>
       </div>
 
+      ${howflowHTML()}`;
+  },
+
+  // Starred cleaners and the ones you've messaged, in one place.
+  mycleaners() {
+    return `
+      <h1>My cleaners</h1>
+      <p class="wizard-lede">The cleaners you've saved and the ones you're already talking to.</p>
+
       <div class="panel-card">
         <h2>Your starred cleaners</h2>
         ${starredList.length
@@ -324,24 +326,8 @@ const PANELS = {
           : '<p class="muted">Tap the ☆ on any cleaner to save them here — handy for finding a cleaner you liked again.</p>'}
       </div>
 
-      ${howflowHTML()}
-
       <div class="panel-card">
-        <h2>Your enquiries</h2>
-        ${myEnquiries.length
-          ? myEnquiries
-              .map(
-                (e) => `<div class="enquiry-row">
-                  <div><strong>${escapeHtml(e.cleaner)}</strong> · ${escapeHtml(e.service)}<br /><span class="muted">${escapeHtml(e.when)}</span></div>
-                  <span class="status status-${e.status}">${e.status}</span>
-                </div>`
-              )
-              .join('')
-          : '<p class="muted">You haven\'t sent any enquiries yet. Find a cleaner and say hello.</p>'}
-      </div>
-
-      <div class="panel-card">
-        <h2>My cleaners</h2>
+        <h2>Cleaners you've messaged</h2>
         ${convos.length
           ? `<div class="mycleaners">${convos.map(myCleanerRow).join('')}</div>`
           : '<p class="muted">No one yet — the cleaners you message will appear here.</p>'}
@@ -470,14 +456,16 @@ const PANELS = {
 const WIRE = {
   overview() {
     panel.querySelector('[data-goto]')?.addEventListener('click', () => goTo('find'));
+    initHowflow(panel);
+  },
+  mycleaners() {
+    // "Message" opens the thread; the cards also open profiles, contact, unstar.
     panel.querySelectorAll('[data-open]').forEach((b) =>
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
-    // Starred cleaner cards: open profile, message, or unstar.
     wireStars(panel);
     wireContact(panel);
     bindCleanerLinks(panel);
-    initHowflow(panel);
   },
   find() {
     const form = panel.querySelector('#findForm');
@@ -716,7 +704,7 @@ function wireStars(box) {
     b.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(b.dataset.star, b.dataset.starname); })
   );
 }
-// Compact card for a starred cleaner on the overview.
+// Compact card for a starred cleaner in the My cleaners tab.
 function starredCard(c) {
   const rate = rateLabel(c.rateMin, c.rateMax);
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);

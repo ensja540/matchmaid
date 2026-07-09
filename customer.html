@@ -12,7 +12,9 @@
       🧽 We're building our database, more cleaners and homes to clean are coming soon. In the meantime enjoy the service for free
     </div>
     <header class="app-bar">
-      <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
+      <!-- The logo goes to the explainer, not "/": the splash bounces a logged-in
+           user straight back here, so "/" would be a no-op. -->
+      <a class="brand" href="/for-customers" title="How Match Maid works"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
       <div class="app-bar-right">
         <span id="who" class="who"></span>
         <a class="switch-side" href="/maid" id="switchSide">Maid portal</a>
@@ -22,6 +24,7 @@
 
     <nav class="portal-tabs" id="tabs">
       <button class="portal-tab active" data-tab="overview" type="button">Overview</button>
+      <button class="portal-tab" data-tab="mycleaners" type="button">My cleaners</button>
       <button class="portal-tab" data-tab="find" type="button">Find a cleaner</button>
       <button class="portal-tab" data-tab="messages" type="button">Messages</button>
       <button class="portal-tab" data-tab="profile" type="button">Profile</button>
@@ -67,7 +70,7 @@
     </footer>
     <script>document.querySelector('.pf-year').textContent = new Date().getFullYear();</script>
 
-    <script src="session.js"></script>
+    <script src="session.js?v=46"></script>
     <script src="demo.js?v=46"></script>
     <script src="rating.js?v=46"></script>
     <script src="review.js?v=46"></script>

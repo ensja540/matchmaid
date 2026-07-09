@@ -56,9 +56,9 @@ function reflectAuthNav() {
     location.href = '/';
   });
   const portal = document.createElement('a');
-  portal.className = 'btn sm';
+  portal.className = 'btn sm solid';
   portal.href = Session.homeFor(user.role);
-  portal.textContent = user.role === 'cleaner' ? 'My dashboard' : 'My account';
+  portal.textContent = user.role === 'cleaner' ? 'Maid portal' : 'Customer portal';
   bar.appendChild(out);
   bar.appendChild(portal);
 }
