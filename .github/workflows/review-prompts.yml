@@ -1,0 +1,30 @@
+name: Post review prompts
+
+# The evening of each clean, ask the customer how it went.
+#
+# 07:00 UTC is 19:00 NZST / 20:00 NZDT. That timing is load-bearing: the task
+# prompts every accepted clean whose date is today or earlier, so an earlier
+# UTC hour would land before the cleaner has been. GitHub delays scheduled runs
+# under load, which only ever pushes this later into the NZ evening — safe.
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  prompt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post prompts for cleans that have happened
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET repository secret is not set"
+            exit 1
+          fi
+          # A sleeping service answers only once it has booted, so allow the
+          # full cold start. --fail-with-body prints the API's error message.
+          curl -sS --fail-with-body --max-time 120 \
+            -X POST https://matchmaid.onrender.com/api/tasks/post-review-prompts \
+            -H "x-cron-secret: $CRON_SECRET"
