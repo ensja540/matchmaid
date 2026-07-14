@@ -1280,3 +1280,18 @@ a { color: inherit; text-decoration: none; }
   .meta-strip span:nth-child(2) { border-right: none; }
   .meta-strip span:nth-child(1), .meta-strip span:nth-child(2) { border-bottom: 1px solid var(--line); }
 }
+
+/* Review nudge: the dashboard half of the post-clean prompt. Copper left rule
+   marks it as something asked of you, not something offered. */
+.review-nudge { border-left: 3px solid var(--copper); }
+.review-nudge p { margin-bottom: 1rem; }
+.review-nudge .btn + .btn { margin-left: 0.6rem; }
+
+/* Booking a date is part of accepting an enquiry, so the form replaces the
+   Accept/Decline buttons in place rather than opening a modal. */
+.accept-date { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.8rem; }
+.accept-date label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; color: var(--muted); }
+.accept-date input { padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+.accept-date-actions { display: flex; gap: 0.5rem; }
+.accept-date .save-msg { flex-basis: 100%; margin: 0; }
+.booked-on { margin-bottom: 0.6rem; }

@@ -38,6 +38,7 @@ function parseLoc(val) {
 let suburbList = DEMO.suburbs.slice();
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
+let pendingReviews = []; // cleans the customer has been asked to rate, and hasn't
 let msgCache = {}; // conversationId -> messages[]
 let reviewCache = {}; // conversationId -> review | null (undefined = not loaded)
 let activeConvo = null;
@@ -192,6 +193,16 @@ function toggleStar(cleanerId, name) {
     .then(() => loadFavourites())
     .catch(() => {});
 }
+// The prompt also sits in the chat thread, but chat is where people arrange a
+// clean, not where they go after one. This is what they actually see next.
+function loadPendingReviews() {
+  return getJSON(`/api/pending-reviews?userId=${encodeURIComponent(uid)}`)
+    .then((list) => {
+      pendingReviews = list || [];
+      reRenderIf('overview');
+    })
+    .catch(() => {});
+}
 function refreshConvos() {
   return getJSON(`/api/conversations?userId=${encodeURIComponent(uid)}`)
     .then((list) => { convos = list; })
@@ -273,6 +284,7 @@ if (uid) {
   loadProfile();
   loadEnquiries();
   loadFavourites();
+  loadPendingReviews();
   initMessages();
 } else {
   loadSuburbs();
@@ -305,6 +317,7 @@ const PANELS = {
   overview() {
     return `
       <h1>Welcome, ${escapeHtml(firstName)}.</h1>
+      ${pendingReviewsHTML()}
       <div class="cta-card">
         <div>
           <h2>Need a clean?</h2>
@@ -480,6 +493,9 @@ const PANELS = {
 const WIRE = {
   overview() {
     panel.querySelector('[data-goto]')?.addEventListener('click', () => goTo('find'));
+    panel.querySelectorAll('[data-review-convo]').forEach((b) =>
+      b.addEventListener('click', () => openConvo(b.dataset.reviewConvo, true))
+    );
     initHowflow(panel);
   },
   mycleaners() {
@@ -878,6 +894,7 @@ function openReviewModal(conversationId) {
     try {
       const res = await postJSON('/api/review', { conversationId, userId: uid, ...data });
       reviewCache[conversationId] = { ...data, overall: res.overall };
+      pendingReviews = pendingReviews.filter((p) => p.conversationId !== conversationId);
       reviewModal.hidden = true;
       render();
     } catch {
@@ -927,6 +944,24 @@ function cleanerCardHTML(c) {
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
     ${Review.barsHTML(c.breakdown)}
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${attr(c.id)}">Message ${first}</button></div>`;
+}
+
+// Sits above the fold on the dashboard until every clean has been rated. The
+// button opens the thread, where the existing prompt is waiting to be tapped.
+function pendingReviewsHTML() {
+  if (!pendingReviews.length) return '';
+  const one = pendingReviews.length === 1;
+  return `<div class="panel-card review-nudge">
+    <h2>How did ${one ? 'your clean' : 'your cleans'} go?</h2>
+    <p class="muted">Your rating is what tells the next customer who to trust.</p>
+    ${pendingReviews
+      .map(
+        (p) => `<button type="button" class="btn solid sm" data-review-convo="${attr(p.conversationId)}">
+                  Rate ${escapeHtml(p.cleaner)}
+                </button>`
+      )
+      .join('')}
+  </div>`;
 }
 
 // ---------- Shared helpers ----------

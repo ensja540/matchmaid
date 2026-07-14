@@ -5,7 +5,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
@@ -26,6 +26,10 @@ app.use(
     },
   })
 );
+
+// Deliberately touches nothing — no DB, no auth — so the keep-alive ping that
+// stops Render's free tier idling out is as cheap as a request can be.
+app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
@@ -1073,6 +1077,7 @@ app.get('/api/enquiries', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const { rows } = await query(
       `select e.id, e.status, e.message, to_char(e.created_at, 'Dy DD Mon') as when,
+              to_char(e.scheduled_on, 'Dy DD Mon') as scheduled_when,
               st.name as service, s.name as suburb,
               clu.full_name as client_name,
               coalesce(cpf.business_name, cu.full_name) as cleaner_name,
@@ -1095,6 +1100,7 @@ app.get('/api/enquiries', async (req, res) => {
       status: r.status,
       message: r.message || '',
       when: r.when,
+      scheduledWhen: r.scheduled_when || '',
       service: r.service || 'Cleaning',
       suburb: r.suburb || '',
       role: r.cleaner_user_id === userId ? 'cleaner' : 'client',
@@ -1149,13 +1155,37 @@ app.get('/api/client-view', async (req, res) => {
   }
 });
 
+// A calendar date, 'YYYY-MM-DD'. The round-trip through Date catches the days
+// that don't exist ('2026-02-31' would otherwise slide through as 2 March).
+function parseCleanDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value) return null;
+  const DAY = 86_400_000;
+  const now = Date.now();
+  // A day's grace for timezones: the server runs in UTC, the cleaner is in NZ.
+  if (d.getTime() < now - DAY) return null;
+  if (d.getTime() > now + 365 * DAY) return null;
+  return value;
+}
+
 // Cleaner accepts / declines / responds to an enquiry.
 app.post('/api/enquiry-status', async (req, res) => {
   try {
-    const { enquiryId, userId, status } = req.body ?? {};
+    const { enquiryId, userId, status, scheduledOn } = req.body ?? {};
     const allowed = ['new', 'responded', 'accepted', 'declined', 'closed', 'completed'];
     if (!enquiryId || !userId || !allowed.includes(status))
       return res.status(400).json({ error: 'enquiryId, userId and a valid status are required.' });
+
+    // Accepting fixes the date of the clean, and that date is what later fires
+    // the review prompt. An accept without one would leave the enquiry with no
+    // trigger at all, so it is refused rather than quietly stored as null.
+    let scheduled = null;
+    if (status === 'accepted') {
+      scheduled = parseCleanDate(scheduledOn);
+      if (!scheduled) return res.status(400).json({ error: 'Pick the date of the clean to accept.' });
+    }
+
     const auth = await query(
       `select 1 from enquiries e join cleaner_profiles cpf on cpf.id = e.cleaner_id
         where e.id = $1 and cpf.user_id = $2`,
@@ -1164,12 +1194,14 @@ app.post('/api/enquiry-status', async (req, res) => {
     if (!auth.rows.length) return res.status(403).json({ error: 'Not your enquiry.' });
     await query(
       `update enquiries set status = $2::enquiry_status,
+              scheduled_on = coalesce($3::date, scheduled_on),
               responded_at = case when $2::enquiry_status <> 'new' then now() else responded_at end
         where id = $1`,
-      [enquiryId, status]
+      [enquiryId, status, scheduled]
     );
 
-    // Marking the clean done drops a tappable review prompt into the thread.
+    // The cleaner can still end a clean early by hand; the daily task does it
+    // for everyone who doesn't. Both land in the same place.
     if (status === 'completed') await postReviewRequest(enquiryId);
     res.json({ ok: true });
   } catch (err) {
@@ -1211,6 +1243,77 @@ async function postReviewRequest(enquiryId) {
   );
   await query('update conversations set last_message_at = now() where id = $1', [convId]);
 }
+
+// --- Scheduled tasks -------------------------------------------------------
+// Driven by .github/workflows/review-prompts.yml, never by a browser. Compared
+// in constant time so the secret can't be recovered a character at a time.
+function cronAuthorised(req) {
+  const expected = Buffer.from(process.env.CRON_SECRET);
+  const given = Buffer.from(req.get('x-cron-secret') || '');
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+// Posts the review prompt for every accepted clean whose date has arrived.
+//
+// `scheduled_on <= current_date` combined with the workflow's 07:00 UTC
+// schedule lands the prompt on the evening of the clean itself, New Zealand
+// time, while the customer still remembers how it went. Moving that cron
+// earlier in the UTC day would fire it before the cleaner has been.
+app.post('/api/tasks/post-review-prompts', async (req, res) => {
+  if (!process.env.CRON_SECRET)
+    return res.status(503).json({ error: 'CRON_SECRET is not set on this server.' });
+  if (!cronAuthorised(req)) return res.status(403).json({ error: 'Forbidden.' });
+  try {
+    const { rows } = await query(
+      `select e.id from enquiries e
+         join conversations c on c.enquiry_id = e.id
+        where e.status = 'accepted'
+          and e.scheduled_on is not null
+          and e.scheduled_on <= current_date
+          and not exists (
+            select 1 from messages m
+             where m.conversation_id = c.id and m.kind = 'review_request')`
+    );
+    for (const { id } of rows) {
+      await query("update enquiries set status = 'completed' where id = $1", [id]);
+      await postReviewRequest(id);
+    }
+    console.log(`review prompts: posted ${rows.length}`);
+    res.json({ prompted: rows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not post review prompts.' });
+  }
+});
+
+// Cleans this customer has been asked to review and hasn't. The chat thread is
+// where the prompt is posted, but chat is where people arrange a clean, not
+// where they go after one — so the dashboard surfaces it on their next visit.
+app.get('/api/pending-reviews', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query(
+      `select c.id as conversation_id,
+              coalesce(cpf.business_name, cu.full_name) as cleaner_name
+         from conversations c
+         join client_profiles clp on clp.id = c.client_id
+         join cleaner_profiles cpf on cpf.id = c.cleaner_id
+         join users cu on cu.id = cpf.user_id
+        where clp.user_id = $1
+          and exists (
+            select 1 from messages m
+             where m.conversation_id = c.id and m.kind = 'review_request')
+          and not exists (select 1 from reviews r where r.conversation_id = c.id)
+        order by c.last_message_at desc`,
+      [userId]
+    );
+    res.json(rows.map((r) => ({ conversationId: r.conversation_id, cleaner: r.cleaner_name })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load pending reviews.' });
+  }
+});
 
 // Recompute the cleaner's headline numbers from their published reviews.
 async function refreshCleanerRating(cleanerId) {

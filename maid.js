@@ -445,7 +445,10 @@ const WIRE = {
       b.addEventListener('click', async () => {
         const enq = enquiries.find((e) => e.id === b.dataset.id);
         if (!enq) return;
-        const ACT = { accept: 'accepted', decline: 'declined', complete: 'completed' };
+        // Accepting needs a date, so it opens the little form below the card
+        // rather than firing straight at the API.
+        if (b.dataset.act === 'accept') return openAcceptForm(b, enq);
+        const ACT = { decline: 'declined', complete: 'completed' };
         const status = ACT[b.dataset.act];
         if (!status) return;
         if (sessionUser?.id) {
@@ -878,15 +881,66 @@ function referralsHTML() {
     </div>`;
 }
 
+// Accepting books a date. That date, not the cleaner remembering to press a
+// button afterwards, is what asks the customer for a review — so it is part of
+// the accept rather than an afterthought, and there is no way to skip it.
+function openAcceptForm(button, enq) {
+  const actions = button.parentElement;
+  if (actions.querySelector('.accept-date')) return;
+  // UTC, so in New Zealand this floor is never later than the local today.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  actions.innerHTML = `
+    <form class="accept-date">
+      <label>Date of the clean
+        <input type="date" name="scheduledOn" min="${todayISO}" required />
+      </label>
+      <div class="accept-date-actions">
+        <button class="btn solid sm" type="submit">Confirm</button>
+        <button class="btn outline sm" type="button" data-cancel>Cancel</button>
+      </div>
+      <p class="save-msg" role="status"></p>
+    </form>`;
+  const form = actions.querySelector('.accept-date');
+  const msg = form.querySelector('.save-msg');
+  form.querySelector('[data-cancel]').addEventListener('click', render);
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const scheduledOn = form.scheduledOn.value;
+    if (!scheduledOn) return;
+    if (!sessionUser?.id) {
+      enq.status = 'accepted';
+      return render();
+    }
+    msg.textContent = 'Accepting…';
+    msg.className = 'save-msg pending';
+    try {
+      const res = await fetch('/api/enquiry-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enquiryId: enq.id, userId: sessionUser.id, status: 'accepted', scheduledOn }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not accept.');
+      enq.status = 'accepted';
+      render();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'save-msg err';
+    }
+  });
+}
+
 function enquiryCard(e) {
-  // Once accepted, the maid marks the clean done — that posts a review prompt
-  // into the customer's chat thread.
+  // Accepting books a date; the evening of that date the customer is asked for
+  // a review. "Mark clean complete" only brings that forward by hand.
+  const booked = e.scheduledWhen ? `<p class="muted booked-on">Booked for ${e.scheduledWhen}</p>` : '';
   const actions =
     e.status === 'new'
       ? `<button class="btn solid sm" data-act="accept" data-id="${e.id}" type="button">Accept</button>
          <button class="btn outline sm" data-act="decline" data-id="${e.id}" type="button">Decline</button>`
       : e.status === 'accepted'
-        ? `<button class="btn solid sm" data-act="complete" data-id="${e.id}" type="button">Mark clean complete</button>`
+        ? `${booked}
+           <button class="btn solid sm" data-act="complete" data-id="${e.id}" type="button">Mark clean complete</button>`
         : `<span class="status status-${e.status}">${e.status}</span>`;
   return `<article class="enquiry">
     <div class="enquiry-head">
