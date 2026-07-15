@@ -776,10 +776,10 @@ a { color: inherit; text-decoration: none; }
 .auth-msg.error { color: #a3402f; }
 .auth-msg.ok { color: var(--green); }
 .auth-switch { text-align: center; font-size: 0.9rem; color: var(--muted); margin: 1.1rem 0 0; display: flex; flex-direction: column; gap: 0.3rem; align-items: center; }
-/* The switch links pick up the page's accent (teal for maids, navy for
-   customers), matching the coloured cross-links in the marketing header. */
-.auth-switch .linklike { color: var(--accent); }
-.auth-switch .linklike:hover { color: var(--accent-dark); text-decoration: underline; }
+/* The switch links use the teal logo colour on both sides (navy accent on the
+   customer page read as plain dark text, not green). */
+.auth-switch .linklike { color: var(--copper); }
+.auth-switch .linklike:hover { color: var(--copper-dark); text-decoration: underline; }
 .auth-divider { display: flex; align-items: center; gap: 0.9rem; margin: 1.3rem 0; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .google-btn { display: grid; justify-items: center; gap: 0.5rem; }
