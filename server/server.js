@@ -38,7 +38,7 @@ const SIDE_NAME = { cleaner: 'maid', client: 'hirer' };
 
 // The clean types a customer picks exactly one of. Everything else in the
 // catalogue is a flat-priced "extra". Must match DEMO.baseServiceSlugs.
-const BASE_SERVICE_SLUGS = ['regular', 'one-off', 'deep', 'end-of-tenancy'];
+const BASE_SERVICE_SLUGS = ['regular', 'deep', 'end-of-tenancy'];
 
 // --- Referrals --------------------------------------------------------------
 // A cleaner earns $10 of credit toward future payments for every cleaner they
@@ -762,7 +762,14 @@ app.get('/api/admin/verifications', async (req, res) => {
     const { rows } = await query(
       `select v.id, v.type, v.status, v.document_url, v.extracted_text,
               to_char(v.created_at, 'DD Mon YYYY, HH24:MI') as when,
-              coalesce(cpf.business_name, u.full_name) as cleaner, u.email
+              to_char(u.created_at, 'DD Mon YYYY') as joined,
+              coalesce(cpf.business_name, u.full_name) as cleaner,
+              u.full_name, u.email, u.phone,
+              cpf.business_name, cpf.years_experience,
+              cpf.hourly_rate_min, cpf.hourly_rate_max,
+              (select coalesce(array_agg(distinct s.name) filter (where s.name is not null), array[]::text[])
+                 from cleaner_service_areas csa join suburbs s on s.id = csa.suburb_id
+                where csa.cleaner_id = cpf.id) as areas
          from verifications v
          join cleaner_profiles cpf on cpf.id = v.cleaner_id
          join users u on u.id = cpf.user_id
@@ -772,6 +779,14 @@ app.get('/api/admin/verifications', async (req, res) => {
     res.json(rows.map((r) => ({
       id: r.id, type: r.type, documentUrl: r.document_url, extractedText: r.extracted_text || '',
       when: r.when, cleaner: r.cleaner, email: r.email,
+      // Basic identity details so the reviewer can check the document against
+      // who the cleaner says they are.
+      fullName: r.full_name || '', businessName: r.business_name || '',
+      phone: r.phone || '', joined: r.joined || '',
+      years: r.years_experience != null ? r.years_experience : null,
+      rateMin: r.hourly_rate_min != null ? Number(r.hourly_rate_min) : null,
+      rateMax: r.hourly_rate_max != null ? Number(r.hourly_rate_max) : null,
+      areas: Array.isArray(r.areas) ? r.areas : [],
     })));
   } catch (err) {
     console.error(err);

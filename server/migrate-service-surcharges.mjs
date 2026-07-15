@@ -1,7 +1,7 @@
 // Non-destructive, idempotent: optional per-hour surcharge on specialist cleans.
 //
-// A cleaner may elect to charge extra per hour for a deep clean, an end-of-
-// tenancy clean or a one-off, on top of their normal hourly rate. Stored as
+// A cleaner may elect to charge extra per hour for a deep clean or an end-of-
+// tenancy clean, on top of their normal hourly rate. Stored as
 // [{ slug, extra }] where `extra` is dollars PER HOUR.
 //
 // Deliberately not folded into cleaner_profiles.addons: those are flat one-off

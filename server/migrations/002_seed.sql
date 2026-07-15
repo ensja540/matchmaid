@@ -17,7 +17,6 @@ insert into suburbs (name, region, territorial_authority) values
 
 insert into service_types (name, slug) values
   ('Regular house clean','regular'),
-  ('One-off clean','one-off'),
   ('Deep clean','deep'),
   ('End of tenancy','end-of-tenancy'),
   ('Oven clean','oven'),
@@ -43,7 +42,7 @@ values
 insert into cleaner_services (cleaner_id, service_type_id)
 select cp.id, st.id from cleaner_profiles cp, service_types st
 where (cp.business_name='Aroha''s Home Care' and st.slug in ('regular','deep','end-of-tenancy'))
-   or (cp.business_name='Sam the Cleaner'      and st.slug in ('regular','one-off','oven'))
+   or (cp.business_name='Sam the Cleaner'      and st.slug in ('regular','oven'))
    or (cp.business_name='Sparkle by Mei'       and st.slug in ('regular','deep','carpet'));
 
 -- Which suburbs each cleaner covers

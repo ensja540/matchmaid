@@ -81,11 +81,30 @@ function cardHTML(v) {
       ? `<a href="${v.documentUrl}" target="_blank" rel="noopener"><img class="admin-doc" src="${v.documentUrl}" alt="Uploaded document" /></a>`
       : `<a class="btn outline sm" href="${v.documentUrl}" target="_blank" rel="noopener">Open document</a>`
     : '<span class="muted">No file attached</span>';
+  const rate = v.rateMin != null
+    ? (v.rateMax && v.rateMax !== v.rateMin ? `$${v.rateMin}–$${v.rateMax}/hr` : `$${v.rateMin}/hr`)
+    : '';
+  const areas = Array.isArray(v.areas) && v.areas.length ? v.areas.join(', ') : '';
+  // Details to check the document against — legal name first, it's what an ID shows.
+  const info = [
+    ['Legal name', v.fullName],
+    ['Business', v.businessName],
+    ['Email', v.email],
+    ['Phone', v.phone],
+    ['Rate', rate],
+    ['Experience', v.years != null ? `${v.years} yr${v.years === 1 ? '' : 's'}` : ''],
+    ['Works', areas],
+    ['Joined', v.joined],
+  ].filter(([, val]) => val);
+  const details = `<dl class="admin-vdetails">${info
+    .map(([k, val]) => `<div><dt>${esc(k)}</dt><dd>${esc(val)}</dd></div>`)
+    .join('')}</dl>`;
   return `<div class="panel-card admin-vrow" id="v-${v.id}">
     <div class="admin-vinfo">
       <strong>${esc(v.cleaner)}</strong> · ${esc(TYPE_LBL[v.type] || v.type)}
-      <span class="muted">${esc(v.email)} · uploaded ${esc(v.when)}</span>
-      ${v.extractedText ? `<p class="verif-read">Scanned text: “${esc(v.extractedText)}”</p>` : ''}
+      <span class="muted">Uploaded ${esc(v.when)}</span>
+      ${details}
+      ${v.extractedText ? `<p class="verif-read">Scanned from document: “${esc(v.extractedText)}”</p>` : ''}
       <div class="admin-vactions">
         <button class="btn solid sm" data-decide="approve" data-id="${esc(v.id)}" type="button">Approve</button>
         <button class="btn outline sm" data-decide="reject" data-id="${esc(v.id)}" type="button">Reject</button>

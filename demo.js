@@ -66,7 +66,6 @@ const DEMO = {
 
   services: [
     { slug: 'regular', name: 'Regular house clean' },
-    { slug: 'one-off', name: 'One-off clean' },
     { slug: 'deep', name: 'Deep clean' },
     { slug: 'end-of-tenancy', name: 'End of tenancy clean' },
     { slug: 'oven', name: 'Oven clean' },
@@ -86,7 +85,7 @@ const DEMO = {
     },
     {
       id: 'c2', name: 'Sam the Cleaner', areas: ['Riccarton', 'Halswell'],
-      services: ['regular', 'one-off', 'oven'], rate: 35, rateMin: 30, rateMax: 40, rating: 4.6, reviews: 12,
+      services: ['regular', 'oven'], rate: 35, rateMin: 30, rateMax: 40, rating: 4.6, reviews: 12,
       badges: { id: true, police: false, insurance: true }, featured: false,
       availability: [
         { day: 0, slot: 'am' }, { day: 1, slot: 'am' }, { day: 3, slot: 'pm' },
@@ -113,7 +112,7 @@ const DEMO = {
     },
     {
       id: 'c5', name: 'Tidy Tui', areas: ['Halswell', 'Lincoln'],
-      services: ['regular', 'one-off', 'carpet'], rate: 30, rateMin: 26, rateMax: 34, rating: 4.4, reviews: 6,
+      services: ['regular', 'carpet'], rate: 30, rateMin: 26, rateMax: 34, rating: 4.4, reviews: 6,
       badges: { id: true, police: false, insurance: false }, featured: false,
       availability: [
         { day: 2, slot: 'am' }, { day: 4, slot: 'pm' }, { day: 6, slot: 'am' },
@@ -154,12 +153,12 @@ const DEMO = {
     },
     {
       id: 'e2', customer: 'David Lim', suburb: 'Fendalton', service: 'Deep clean',
-      preferred: 'Fri midday', frequency: 'One-off', status: 'new',
-      message: 'Looking for a one-off deep clean before guests arrive. How much for roughly 3 hours?',
+      preferred: 'Fri midday', frequency: 'One-time', status: 'new',
+      message: 'Looking for a deep clean before guests arrive. How much for roughly 3 hours?',
     },
     {
       id: 'e3', customer: 'Priya Sharma', suburb: 'Papanui', service: 'End of tenancy',
-      preferred: 'Sat morning', frequency: 'One-off', status: 'responded',
+      preferred: 'Sat morning', frequency: 'One-time', status: 'responded',
       message: 'Moving out end of month, need an end-of-tenancy clean. Are you available Saturdays?',
     },
   ],
@@ -219,7 +218,7 @@ const DEMO = {
 
 // The type of clean a customer books (they pick ONE). Everything else in the
 // service catalogue is a priced "extra" a maid can offer on top of their rate.
-DEMO.baseServiceSlugs = ['regular', 'one-off', 'deep', 'end-of-tenancy'];
+DEMO.baseServiceSlugs = ['regular', 'deep', 'end-of-tenancy'];
 DEMO.extraServices = [
   { slug: 'oven', name: 'Oven clean' },
   { slug: 'windows', name: 'Interior windows' },

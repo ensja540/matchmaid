@@ -61,8 +61,7 @@ let mpSpecific = false; // false = whole-city ("Christchurch-wide")
 const svcSet = new Set(loggedIn ? [] : profile.services); // base service slugs offered
 let mpAddons = loggedIn ? [] : (profile.addons || []); // priced extras [{slug, price}]
 // Optional per-HOUR surcharge on specialist cleans [{slug, extra}]. Only the
-// genuinely harder jobs carry one — a regular or one-off clean is the
-// advertised rate.
+// genuinely harder jobs carry one — a regular clean is the advertised rate.
 let mpSurcharges = loggedIn ? [] : (profile.serviceSurcharges || []);
 const SURCHARGEABLE = ['deep', 'end-of-tenancy'];
 let mp = loggedIn
@@ -320,7 +319,7 @@ const PANELS = {
         const on = !!cur;
         return `<div class="addon-row ${on ? 'on' : ''}" data-addon="${x.slug}">
             <label class="check-inline"><input type="checkbox" class="addon-toggle" ${on ? 'checked' : ''} /> ${x.name}</label>
-            <span class="addon-price"><span class="addon-dollar">$</span><input type="number" class="addon-input" min="0" step="1" value="${cur ? cur.price : ''}" placeholder="0" ${on ? '' : 'disabled'} /></span>
+            <span class="addon-price"><span class="addon-dollar">$</span><input type="number" class="addon-input" min="0" step="1" value="${cur ? cur.price : ''}" placeholder="0" ${on ? '' : 'disabled'} /><span class="addon-per">each</span></span>
           </div>`;
       })
       .join('');
@@ -349,7 +348,7 @@ const PANELS = {
           <div class="addon-list">${surchargeRows()}</div>
         </div>
         <div class="field"><span>Extras &amp; add-ons</span>
-          <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a price. It's added on top of your hourly rate at checkout.</p>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a flat price for each. It's a one-off charge per item, added to the job total at checkout — not per hour.</p>
           <div class="addon-list">${addonRows}</div>
         </div>
         <div class="field"><span>Verification</span>
