@@ -5,7 +5,15 @@ const KEY = 'matchmaid_user';
 const Session = {
   get() {
     try {
-      return JSON.parse(localStorage.getItem(KEY));
+      const user = JSON.parse(localStorage.getItem(KEY));
+      // Purge legacy "demo" sessions. A failed browse signup used to store a
+      // fake { id: 'demo' } user that never worked server-side; drop it so the
+      // visitor is cleanly logged out the next time any page loads.
+      if (user && user.id === 'demo') {
+        localStorage.removeItem(KEY);
+        return null;
+      }
+      return user;
     } catch {
       return null;
     }
