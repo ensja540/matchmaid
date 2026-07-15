@@ -803,6 +803,58 @@ app.post('/api/admin/verification-decision', async (req, res) => {
   }
 });
 
+// --- Admin: moderate customer reviews --------------------------------------
+// Every review, newest first, whatever its status, so a hidden one can be
+// restored. Names on both sides so the admin can see who said what about whom.
+app.get('/api/admin/reviews', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const { rows } = await query(
+      `select r.id, r.overall, r.quality, r.value_for_money, r.timeliness,
+              r.punctuality, r.communication, r.would_use_again, r.comment, r.status,
+              to_char(r.created_at, 'DD Mon YYYY, HH24:MI') as when,
+              coalesce(cpf.business_name, cu.full_name) as cleaner,
+              clu.full_name as client
+         from reviews r
+         join cleaner_profiles cpf on cpf.id = r.cleaner_id
+         join users cu on cu.id = cpf.user_id
+         join client_profiles clp on clp.id = r.client_id
+         join users clu on clu.id = clp.user_id
+        order by r.created_at desc limit 300`
+    );
+    res.json(rows.map((r) => ({
+      id: r.id, overall: Number(r.overall), status: r.status,
+      quality: Number(r.quality), value: Number(r.value_for_money),
+      timeliness: Number(r.timeliness), punctuality: Number(r.punctuality),
+      communication: Number(r.communication), wouldUseAgain: r.would_use_again,
+      comment: r.comment || '', when: r.when, cleaner: r.cleaner, client: r.client,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load reviews.' });
+  }
+});
+
+// Hiding sets 'removed' so the review drops off the cleaner's profile and out
+// of their rating; restoring returns it to 'published'. Either way the
+// cleaner's headline average is recomputed from what remains published.
+app.post('/api/admin/review-moderate', async (req, res) => {
+  try {
+    const { userId, id, action } = req.body ?? {};
+    if (!(await isAdmin(userId))) return res.status(403).json({ error: 'Not authorized.' });
+    if (!id || !['hide', 'restore'].includes(action))
+      return res.status(400).json({ error: 'id and a valid action are required.' });
+    const status = action === 'hide' ? 'removed' : 'published';
+    const upd = await query('update reviews set status = $2 where id = $1 returning cleaner_id', [id, status]);
+    if (!upd.rows.length) return res.status(404).json({ error: 'No such review.' });
+    await refreshCleanerRating(upd.rows[0].cleaner_id);
+    res.json({ ok: true, status });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not update the review.' });
+  }
+});
+
 // --- Cleaner directory (for the messages picker) ---------------------------
 app.get('/api/directory', async (_req, res) => {
   try {

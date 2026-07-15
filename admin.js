@@ -12,12 +12,14 @@ function esc(s) {
 }
 
 const feedbackBody = document.getElementById('feedbackBody');
+const reviewsBody = document.getElementById('reviewsBody');
 
 if (!sessionUser) {
   body.innerHTML = '<div class="panel-card"><p class="muted">Please <a href="/login">log in</a> with the admin account to review documents.</p></div>';
 } else {
   load();
   loadFeedback();
+  loadReviews();
 }
 
 async function loadFeedback() {
@@ -102,6 +104,62 @@ async function decide(btn, id, decision) {
       body: JSON.stringify({ userId: sessionUser.id, id, decision }),
     });
     if (res.ok) load();
+    else btn.disabled = false;
+  } catch {
+    btn.disabled = false;
+  }
+}
+
+// ---- Customer reviews -----------------------------------------------------
+async function loadReviews() {
+  if (!reviewsBody) return;
+  reviewsBody.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const res = await fetch(`/api/admin/reviews?userId=${encodeURIComponent(sessionUser.id)}`);
+    if (res.status === 403) { reviewsBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>'; return; }
+    const list = await res.json();
+    if (!Array.isArray(list) || !list.length) {
+      reviewsBody.innerHTML = '<div class="panel-card"><p class="muted">No reviews yet.</p></div>';
+      return;
+    }
+    reviewsBody.innerHTML = list.map(reviewHTML).join('');
+    reviewsBody.querySelectorAll('[data-moderate]').forEach((b) =>
+      b.addEventListener('click', () => moderateReview(b, b.dataset.id, b.dataset.moderate))
+    );
+  } catch {
+    reviewsBody.innerHTML = '<div class="panel-card"><p class="muted">Could not load reviews.</p></div>';
+  }
+}
+
+function reviewHTML(r) {
+  const hidden = r.status !== 'published';
+  const cats = [['Quality', r.quality], ['Value', r.value], ['Timeliness', r.timeliness],
+    ['Punctuality', r.punctuality], ['Communication', r.communication]]
+    .map(([k, v]) => `${k} ${Number(v).toFixed(1)}`).join(' · ');
+  const again = r.wouldUseAgain ? 'Would use again' : 'Would not use again';
+  const badge = hidden ? '<span class="admin-rv-hidden">Hidden</span>' : '';
+  const btn = hidden
+    ? `<button class="btn outline sm" data-moderate="restore" data-id="${esc(r.id)}" type="button">Restore</button>`
+    : `<button class="btn outline sm" data-moderate="hide" data-id="${esc(r.id)}" type="button">Hide</button>`;
+  return `<div class="panel-card admin-rv${hidden ? ' is-hidden' : ''}">
+    <div class="admin-rv-head"><strong>${Number(r.overall).toFixed(1)} ★</strong> ${badge}
+      <span class="muted">${esc(again)}</span></div>
+    ${r.comment ? `<p class="admin-rv-msg">“${esc(r.comment)}”</p>` : '<p class="muted admin-rv-msg">No comment left.</p>'}
+    <p class="muted admin-rv-cats">${esc(cats)}</p>
+    <p class="muted admin-rv-meta">${esc(r.cleaner)} · from ${esc(r.client)} · ${esc(r.when)}</p>
+    <div class="admin-rv-actions">${btn}</div>
+  </div>`;
+}
+
+async function moderateReview(btn, id, action) {
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/admin/review-moderate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: sessionUser.id, id, action }),
+    });
+    if (res.ok) loadReviews();
     else btn.disabled = false;
   } catch {
     btn.disabled = false;

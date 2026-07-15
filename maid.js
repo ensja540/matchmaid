@@ -533,6 +533,20 @@ const WIRE = {
         if (svcSet.has(slug)) svcSet.delete(slug);
         else svcSet.add(slug);
         c.classList.toggle('on', svcSet.has(slug));
+        // A surcharge can only be set for a clean type that's offered, so
+        // toggling the service must enable/disable its surcharge row live —
+        // otherwise the box stays greyed as "(not offered)" until a re-render.
+        const srow = panel.querySelector(`[data-surcharge="${slug}"]`);
+        if (srow) {
+          const offers = svcSet.has(slug);
+          const sname = srow.querySelector('.surcharge-name');
+          const sinput = srow.querySelector('.surcharge-input');
+          sinput.disabled = !offers;
+          sname.classList.toggle('muted', !offers);
+          sname.innerHTML = `${escapeHtml(DEMO.serviceName(slug))}${offers ? '' : ' <em>(not offered)</em>'}`;
+          // Dropping the service drops any surcharge that was set for it.
+          if (!offers) { sinput.value = ''; mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug); }
+        }
       })
     );
     // Priced extras: ticking one enables its price box; both keep mpAddons in sync.
