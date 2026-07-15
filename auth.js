@@ -24,6 +24,18 @@ const BLURBS = {
 roleLabel.textContent = LABEL[role];
 blurb.textContent = BLURBS[role];
 
+// Landed on the wrong side? Cross to the other role's page without losing your
+// place in login vs signup. The maid page offers "need a clean"; vice versa.
+const OTHER = { maid: 'customer', customer: 'maid' };
+const ROLE_SWITCH = {
+  maid: { text: 'Actually need a clean?', link: 'Find a cleaner instead' },
+  customer: { text: 'Here to clean, not hire?', link: 'List your services instead' },
+};
+const roleSwitchText = document.getElementById('roleSwitchText');
+const roleSwitchLink = document.getElementById('roleSwitchLink');
+roleSwitchText.textContent = ROLE_SWITCH[role].text;
+roleSwitchLink.textContent = ROLE_SWITCH[role].link;
+
 // A cleaner's share link carries their code: /login?role=maid&mode=signup&ref=XXXXXX
 const refFromLink = (params.get('ref') || '').trim().toUpperCase();
 
@@ -40,6 +52,8 @@ function render() {
     form.referralCode.value = refFromLink;
   }
   submitBtn.textContent = signup ? 'Create account' : 'Log in';
+  // Carry login/signup across the switch so a wrong-role signup stays a signup.
+  roleSwitchLink.href = `/login?role=${OTHER[role]}${signup ? '&mode=signup' : ''}`;
   switchText.textContent = signup ? 'Already registered?' : 'New to Match Maid?';
   switchBtn.textContent = signup ? 'Log in instead' : 'Create an account';
   form.password.autocomplete = signup ? 'new-password' : 'current-password';

@@ -347,13 +347,17 @@ capForm.addEventListener('submit', async (e) => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    if (!res.ok) {
+      // A real failure — most often "that email already has an account". Show
+      // the server's own message; never fake a session or a success redirect.
+      capMsg.textContent = data.error || 'Could not create your account.';
+      capMsg.classList.add('error');
+      return;
+    }
     Session.set(data.user);
     location.href = '/customer';
   } catch {
-    Session.set({ id: 'demo', role: 'client', fullName: body.fullName || 'You', email: body.email });
-    capMsg.textContent = 'Account created. Taking you to your portal…';
-    capMsg.classList.add('ok');
-    setTimeout(() => (location.href = '/customer'), 700);
+    capMsg.textContent = 'Could not reach the server. Please try again.';
+    capMsg.classList.add('error');
   }
 });
