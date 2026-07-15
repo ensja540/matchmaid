@@ -68,7 +68,7 @@ const DEMO = {
     { slug: 'regular', name: 'Regular house clean' },
     { slug: 'one-off', name: 'One-off clean' },
     { slug: 'deep', name: 'Deep clean' },
-    { slug: 'end-of-tenancy', name: 'End of tenancy' },
+    { slug: 'end-of-tenancy', name: 'End of tenancy clean' },
     { slug: 'oven', name: 'Oven clean' },
     { slug: 'carpet', name: 'Carpet clean' },
     { slug: 'windows', name: 'Window clean' },

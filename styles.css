@@ -843,10 +843,15 @@ a { color: inherit; text-decoration: none; }
 .enq-right { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
 
 /* ---------- Specialist-clean surcharge rows (maid profile) ---------- */
-.surcharge-name em { font-style: normal; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.surcharge-name { display: flex; flex-direction: column; gap: 0.12rem; font-weight: 600; }
+.addon-hint { font-weight: 400; font-size: 0.75rem; color: var(--muted); letter-spacing: 0; text-transform: none; }
 .surcharge-input { width: 4.5rem; padding: 0.35rem 0.4rem; border: 1px solid var(--line); border-radius: 8px; font-family: var(--sans); text-align: right; }
 .surcharge-input:disabled { opacity: 0.45; cursor: not-allowed; }
 .addon-per { color: var(--muted); font-size: 0.82rem; }
+/* An un-offered surcharge row is muted but still legible; an offered one lights
+   up like a ticked add-on (the shared .addon-row.on rule). */
+.addon-row.is-off { opacity: 0.72; }
+.addon-row { transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease; }
 
 /* ---------- Pause listing (maid profile tab) ----------
    Sits above the danger zone as the reversible middle ground. */

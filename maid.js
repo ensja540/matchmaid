@@ -56,10 +56,11 @@ let mpCity = 'Christchurch'; // default city
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
 const svcSet = new Set(loggedIn ? [] : profile.services); // base service slugs offered
 let mpAddons = loggedIn ? [] : (profile.addons || []); // priced extras [{slug, price}]
-// Optional per-HOUR surcharge on specialist cleans [{slug, extra}]. A regular
-// clean is the advertised rate, so it never carries one.
+// Optional per-HOUR surcharge on specialist cleans [{slug, extra}]. Only the
+// genuinely harder jobs carry one — a regular or one-off clean is the
+// advertised rate.
 let mpSurcharges = loggedIn ? [] : (profile.serviceSurcharges || []);
-const SURCHARGEABLE = DEMO.baseServiceSlugs.filter((s) => s !== 'regular');
+const SURCHARGEABLE = ['deep', 'end-of-tenancy'];
 let mp = loggedIn
   ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0, bringsProducts: true, photo: '' }
   : {
@@ -534,19 +535,9 @@ const WIRE = {
         else svcSet.add(slug);
         c.classList.toggle('on', svcSet.has(slug));
         // A surcharge can only be set for a clean type that's offered, so
-        // toggling the service must enable/disable its surcharge row live —
-        // otherwise the box stays greyed as "(not offered)" until a re-render.
+        // toggling the service enables/disables its surcharge row live.
         const srow = panel.querySelector(`[data-surcharge="${slug}"]`);
-        if (srow) {
-          const offers = svcSet.has(slug);
-          const sname = srow.querySelector('.surcharge-name');
-          const sinput = srow.querySelector('.surcharge-input');
-          sinput.disabled = !offers;
-          sname.classList.toggle('muted', !offers);
-          sname.innerHTML = `${escapeHtml(DEMO.serviceName(slug))}${offers ? '' : ' <em>(not offered)</em>'}`;
-          // Dropping the service drops any surcharge that was set for it.
-          if (!offers) { sinput.value = ''; mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug); }
-        }
+        if (srow) setSurchargeRow(srow, slug, svcSet.has(slug));
       })
     );
     // Priced extras: ticking one enables its price box; both keep mpAddons in sync.
@@ -810,13 +801,14 @@ function enquiryRow(e) {
 
 // One row per specialist clean type, each with an optional "+$X/hr". Only the
 // clean types the maid actually offers can be priced.
+const SURCHARGE_HINT = 'Offer this clean type above to price it';
 function surchargeRows() {
   return SURCHARGEABLE.map((slug) => {
     const offers = svcSet.has(slug);
     const cur = mpSurcharges.find((s) => s.slug === slug);
-    return `<div class="addon-row" data-surcharge="${slug}">
-      <span class="surcharge-name${offers ? '' : ' muted'}">${escapeHtml(DEMO.serviceName(slug))}${
-        offers ? '' : ' <em>(not offered)</em>'
+    return `<div class="addon-row surcharge-row ${offers ? 'on' : 'is-off'}" data-surcharge="${slug}">
+      <span class="surcharge-name">${escapeHtml(DEMO.serviceName(slug))}${
+        offers ? '' : `<span class="addon-hint">${SURCHARGE_HINT}</span>`
       }</span>
       <span class="addon-price">
         <span class="addon-dollar">+$</span>
@@ -826,6 +818,20 @@ function surchargeRows() {
       </span>
     </div>`;
   }).join('');
+}
+
+// Reflect whether a specialist clean is offered onto its surcharge row: the box
+// is only usable for a clean type the maid offers. Un-offering it clears any
+// surcharge that had been set.
+function setSurchargeRow(row, slug, offers) {
+  const name = row.querySelector('.surcharge-name');
+  const input = row.querySelector('.surcharge-input');
+  row.classList.toggle('on', offers);
+  row.classList.toggle('is-off', !offers);
+  input.disabled = !offers;
+  name.innerHTML = escapeHtml(DEMO.serviceName(slug)) +
+    (offers ? '' : `<span class="addon-hint">${SURCHARGE_HINT}</span>`);
+  if (!offers) { input.value = ''; mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug); }
 }
 
 // Pausing hides the listing from browse, search and matches. Nothing else
