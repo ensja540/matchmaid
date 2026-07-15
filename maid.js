@@ -244,7 +244,7 @@ const PANELS = {
           <span>Free while we build out our user base</span>
         </div>
         <p class="muted">Full access with no fees while we build out our user base. After that it's a flat
-          $40/month (or $60/month to be promoted to the top of results).</p>
+          $30/month (or $50/month to be promoted to the top of results).</p>
       </div>
 
       <div class="dash-grid">
@@ -370,7 +370,7 @@ const PANELS = {
       <div class="plan-cards">
         <div class="plan">
           <p class="tag">Standard</p>
-          <p class="price">$40<span>/month</span></p>
+          <p class="price">$30<span>/month</span></p>
           <ul class="checks">
             <li>Stay listed in your suburbs</li>
             <li>Unlimited exclusive enquiries</li>
@@ -380,7 +380,7 @@ const PANELS = {
         </div>
         <div class="plan featured">
           <p class="tag">Promoted</p>
-          <p class="price">$60<span>/month</span></p>
+          <p class="price">$50<span>/month</span></p>
           <ul class="checks">
             <li>Everything in Standard</li>
             <li><strong>Top of the list</strong> in your suburbs</li>
@@ -676,7 +676,7 @@ const HOWFLOW_STEPS = [
   { n: '03', h: 'Set your price', b: `Add your hourly rate. You set it, and it's shown openly; no race to the bottom.` },
   { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas near you.` },
   { n: '05', h: `Get <span class="hi">exclusive</span> enquiries`, b: `Clients who want your services at your times reach out to <span class="hi">you alone</span>. Reply and arrange directly; <span class="hi">you keep 100%</span>.` },
-  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$40/month</span> (or <span class="hi">$60 to be promoted</span>).` },
+  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$30/month</span> (or <span class="hi">$50 to be promoted</span>).` },
 ];
 
 function howflowHTML() {
