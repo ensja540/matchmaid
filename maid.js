@@ -47,6 +47,10 @@ document.getElementById('logout').addEventListener('click', (e) => {
 const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
 let current = 'overview';
+// First-run setup wizard state (defined here so the async data-load callbacks
+// can flip these flags safely).
+let profileLoaded = false, availLoaded = false, wizardAutoTried = false;
+let wizStep = 0, wizEl = null;
 
 // Availability is real: load the logged-in maid's saved slots from the API,
 // and save changes back to the database. Falls back to demo when not logged in.
@@ -105,8 +109,9 @@ if (sessionUser?.id) {
       mpAddons = Array.isArray(data.addons) ? data.addons : [];
       mpSurcharges = Array.isArray(data.serviceSurcharges) ? data.serviceSurcharges : [];
       render();
+      profileLoaded = true; tryAutoWizard();
     })
-    .catch(() => {});
+    .catch(() => { profileLoaded = true; tryAutoWizard(); });
 
   // Real verification statuses (document submissions + approvals).
   fetch(`/api/verifications?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -127,8 +132,8 @@ if (sessionUser?.id) {
 
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((data) => { if (data?.slots) { avail = data.slots; render(); } })
-    .catch(() => {});
+    .then((data) => { if (data?.slots) { avail = data.slots; render(); } availLoaded = true; tryAutoWizard(); })
+    .catch(() => { availLoaded = true; tryAutoWizard(); });
 
   // Real enquiries addressed to this maid.
   fetch(`/api/enquiries?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -412,6 +417,7 @@ const WIRE = {
         render();
       })
     );
+    panel.querySelectorAll('[data-open-wizard]').forEach((b) => b.addEventListener('click', openWizard));
     panel.querySelectorAll('[data-open-convo]').forEach((b) =>
       b.addEventListener('click', () => openEnquiryConvo(b.dataset.openConvo))
     );
@@ -789,6 +795,7 @@ function gettingStartedHTML() {
         )
         .join('')}
     </div>
+    <button class="btn solid gs-launch" data-open-wizard type="button">Set up my profile</button>
   </div>`;
 }
 
@@ -1119,16 +1126,18 @@ function areaChipsHTML() {
     .map((s) => `<span class="area-chip">${s}<button type="button" class="area-x" data-remove="${s}" aria-label="Remove ${s}">×</button></span>`)
     .join('');
 }
-function renderAreaChips() {
-  const box = panel.querySelector('#selectedAreas');
+// These accept a root element (default: the portal panel) so the same location
+// picker can be wired inside the first-run wizard modal, which lives on body.
+function renderAreaChips(root = panel) {
+  const box = root.querySelector('#selectedAreas');
   if (!box) return;
   box.innerHTML = areaChipsHTML();
   box.querySelectorAll('[data-remove]').forEach((b) =>
-    b.addEventListener('click', () => { areas.delete(b.dataset.remove); renderAreaChips(); })
+    b.addEventListener('click', () => { areas.delete(b.dataset.remove); renderAreaChips(root); })
   );
 }
-function renderSubResults(q) {
-  const box = panel.querySelector('#subResults');
+function renderSubResults(q, root = panel) {
+  const box = root.querySelector('#subResults');
   if (!box) return;
   const query = (q || '').trim().toLowerCase();
   const matches = (DEMO.towns[mpCity] || [])
@@ -1140,33 +1149,33 @@ function renderSubResults(q) {
   box.querySelectorAll('[data-add]').forEach((b) =>
     b.addEventListener('click', () => {
       areas.add(b.dataset.add);
-      const inp = panel.querySelector('#subSearch');
+      const inp = root.querySelector('#subSearch');
       if (inp) { inp.value = ''; inp.focus(); }
       box.hidden = true;
-      renderAreaChips();
+      renderAreaChips(root);
     })
   );
 }
-function wireLocSection() {
-  panel.querySelector('#citySel')?.addEventListener('change', (e) => { mpCity = e.target.value; rerenderLoc(); });
-  panel.querySelector('#specificToggle')?.addEventListener('change', (e) => { mpSpecific = e.target.checked; rerenderLoc(); });
-  const inp = panel.querySelector('#subSearch');
+function wireLocSection(root = panel) {
+  root.querySelector('#citySel')?.addEventListener('change', (e) => { mpCity = e.target.value; rerenderLoc(root); });
+  root.querySelector('#specificToggle')?.addEventListener('change', (e) => { mpSpecific = e.target.checked; rerenderLoc(root); });
+  const inp = root.querySelector('#subSearch');
   if (inp) {
-    inp.addEventListener('input', () => renderSubResults(inp.value));
-    inp.addEventListener('focus', () => renderSubResults(inp.value));
+    inp.addEventListener('input', () => renderSubResults(inp.value, root));
+    inp.addEventListener('focus', () => renderSubResults(inp.value, root));
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); const first = panel.querySelector('#subResults [data-add]'); if (first) first.click(); }
+      if (e.key === 'Enter') { e.preventDefault(); const first = root.querySelector('#subResults [data-add]'); if (first) first.click(); }
     });
     // Hide the dropdown shortly after leaving the field (delay lets a click land).
-    inp.addEventListener('blur', () => setTimeout(() => { const box = panel.querySelector('#subResults'); if (box) box.hidden = true; }, 150));
+    inp.addEventListener('blur', () => setTimeout(() => { const box = root.querySelector('#subResults'); if (box) box.hidden = true; }, 150));
   }
-  renderAreaChips();
+  renderAreaChips(root);
 }
-function rerenderLoc() {
-  const f = panel.querySelector('#locField');
+function rerenderLoc(root = panel) {
+  const f = root.querySelector('#locField');
   if (!f) return;
   f.outerHTML = locSectionHTML();
-  wireLocSection();
+  wireLocSection(root);
 }
 function setMsg(id, text, cls) {
   const el = panel.querySelector('#' + id);
@@ -1202,6 +1211,246 @@ function wireCalendar(container, selected, onChange) {
       onChange?.();
     })
   );
+}
+
+// ---------- First-run setup wizard ----------
+// A modal that walks a new maid through the settings that make them live in
+// search, then saves the profile and availability together. It lives on
+// document.body so a background re-render of the portal can't wipe it, and
+// reuses the same location picker, surcharge rows, calendar and verification
+// UIs as the full profile tab.
+const WIZ_STEPS = [
+  { key: 'about', title: 'About you' },
+  { key: 'areas', title: 'Where you work' },
+  { key: 'pricing', title: 'Pricing & services' },
+  { key: 'availability', title: 'Availability' },
+  { key: 'verification', title: 'Verification' },
+];
+
+// Live in search once they have the essentials: a name, a rate and some hours.
+function profileComplete() {
+  const set = !!(mp.businessName && String(mp.businessName).trim() && mp.rate != null && String(mp.rate) !== '');
+  return set && avail.length > 0;
+}
+function tryAutoWizard() {
+  if (profileLoaded && availLoaded) maybeAutoOpenWizard();
+}
+function maybeAutoOpenWizard() {
+  if (wizardAutoTried || !loggedIn) return;
+  wizardAutoTried = true;
+  let dismissed = false;
+  try { dismissed = !!sessionStorage.getItem('mm_wizard_dismissed'); } catch {}
+  if (dismissed || profileComplete()) return;
+  openWizard();
+}
+
+const WIZ_CONTENT = {
+  about: () => `
+    <p class="wiz-lede">The essentials clients see first. You can polish everything later in your profile.</p>
+    <label class="field"><span>Business or display name</span>
+      <input id="wizBiz" type="text" value="${escapeHtml(mp.businessName || '')}" placeholder="e.g. Alex's Cleaning" /></label>
+    <label class="field"><span>Short bio <span class="muted">(optional)</span></span>
+      <textarea id="wizBio" rows="3" placeholder="A sentence or two about you and your cleaning.">${escapeHtml(mp.bio || '')}</textarea></label>
+    <label class="field"><span>Your hourly rate ($/hr)</span>
+      <input id="wizRate" type="number" min="0" step="1" value="${mp.rate ?? ''}" placeholder="35" /></label>`,
+  areas: () => `
+    <p class="wiz-lede">Where will you take jobs? Christchurch-wide by default, or narrow to specific suburbs.</p>
+    ${locSectionHTML()}`,
+  pricing: () => {
+    const chips = DEMO.services
+      .filter((s) => DEMO.baseServiceSlugs.includes(s.slug))
+      .map((s) => `<button type="button" class="chip select ${svcSet.has(s.slug) ? 'on' : ''}" data-svc="${s.slug}">${s.name}</button>`)
+      .join('');
+    return `
+      <p class="wiz-lede">Pick the cleans you offer, then set any specialist surcharge.</p>
+      <div class="field"><span>Types of clean you offer</span><div class="chip-select">${chips}</div></div>
+      <div class="field"><label class="check-inline"><input type="checkbox" id="wizProducts" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own products and equipment</label></div>
+      <div class="field"><span>Specialist clean surcharge <span class="muted">(optional, +$/hr)</span></span>
+        <div class="addon-list">${surchargeRows()}</div></div>`;
+  },
+  availability: () => `
+    <p class="wiz-lede">Tap the times you're usually free. This is what matches you to clients.</p>
+    <div class="cal" id="wizCal">${calendarHTML(avail)}</div>`,
+  verification: () => `
+    <p class="wiz-lede">Optional — but verified badges win trust and let clients filter for you. Add them now or skip and do it later.</p>
+    ${Badges.strip(verif)}
+    <div class="verif-list" style="margin-top:1rem">${VERIF_ITEMS.map(verifRow).join('')}</div>`,
+};
+
+const WIZ_WIRE = {
+  areas: (root) => wireLocSection(root),
+  pricing: (root) => {
+    root.querySelectorAll('[data-svc]').forEach((c) =>
+      c.addEventListener('click', () => {
+        const slug = c.dataset.svc;
+        if (svcSet.has(slug)) svcSet.delete(slug); else svcSet.add(slug);
+        c.classList.toggle('on', svcSet.has(slug));
+        const srow = root.querySelector(`[data-surcharge="${slug}"]`);
+        if (srow) setSurchargeRow(srow, slug, svcSet.has(slug));
+      })
+    );
+    root.querySelectorAll('[data-surcharge]').forEach((row) => {
+      const input = row.querySelector('.surcharge-input');
+      input.addEventListener('input', () => {
+        const slug = row.dataset.surcharge;
+        const v = Math.max(0, Math.round(Number(input.value) || 0));
+        mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug);
+        if (v > 0) mpSurcharges.push({ slug, extra: v });
+      });
+    });
+  },
+  availability: (root) => {
+    const cal = root.querySelector('#wizCal');
+    if (cal) wireCalendar(cal, avail, () => {});
+  },
+  verification: (root) => {
+    root.querySelectorAll('[data-doc]').forEach((inp) =>
+      inp.addEventListener('change', () => {
+        const file = inp.files[0];
+        if (!file || !sessionUser?.id) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const doc = inp.dataset.doc;
+          verif[doc] = 'pending';
+          renderWizStep(); // refresh only the wizard, never the whole portal
+          const scanned = await ocrDocument(reader.result, file.type);
+          if (scanned) { verifRead[doc] = scanned.slice(0, 160); renderWizStep(); }
+          try {
+            const res = await fetch('/api/verification', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: sessionUser.id, type: doc, documentDataUrl: reader.result, extractedText: scanned || '' }),
+            });
+            const data = await res.json();
+            if (data && data.read) { verifRead[doc] = data.read; renderWizStep(); }
+          } catch {}
+        };
+        reader.readAsDataURL(file);
+      })
+    );
+  },
+};
+
+function openWizard() {
+  if (wizEl) return;
+  wizStep = 0;
+  wizEl = document.createElement('div');
+  wizEl.className = 'wiz-overlay';
+  wizEl.innerHTML = `<div class="wiz" role="dialog" aria-modal="true" aria-label="Set up your profile">
+    <button class="wiz-close" type="button" aria-label="Close">×</button>
+    <div class="wiz-progress" id="wizProgress"></div>
+    <div class="wiz-body" id="wizBody"></div>
+    <p class="wiz-msg" id="wizMsg" role="status"></p>
+    <div class="wiz-foot">
+      <button class="btn outline" id="wizBack" type="button">Back</button>
+      <div class="wiz-foot-right">
+        <button class="btn ghost" id="wizSkip" type="button">Skip</button>
+        <button class="btn solid" id="wizNext" type="button">Next</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(wizEl);
+  wizEl.querySelector('.wiz-close').addEventListener('click', dismissWizard);
+  wizEl.querySelector('#wizBack').addEventListener('click', () => { if (wizStep > 0) { wizStep--; renderWizStep(); } });
+  wizEl.querySelector('#wizSkip').addEventListener('click', () => advanceWizard(true));
+  wizEl.querySelector('#wizNext').addEventListener('click', () => advanceWizard(false));
+  renderWizStep();
+}
+function dismissWizard() {
+  try { sessionStorage.setItem('mm_wizard_dismissed', '1'); } catch {}
+  closeWizard();
+}
+function closeWizard() {
+  if (wizEl) { wizEl.remove(); wizEl = null; }
+}
+function wizSetMsg(text, cls) {
+  const m = wizEl && wizEl.querySelector('#wizMsg');
+  if (m) { m.textContent = text || ''; m.className = 'wiz-msg ' + (cls || ''); }
+}
+function renderWizStep() {
+  if (!wizEl) return;
+  const step = WIZ_STEPS[wizStep];
+  wizEl.querySelector('#wizProgress').innerHTML =
+    WIZ_STEPS.map((s, i) => `<span class="wiz-dot ${i === wizStep ? 'now' : ''} ${i < wizStep ? 'done' : ''}"></span>`).join('') +
+    `<span class="wiz-step-count">Step ${wizStep + 1} of ${WIZ_STEPS.length}</span>`;
+  const body = wizEl.querySelector('#wizBody');
+  body.innerHTML = `<h2 class="wiz-title">${step.title}</h2>` + WIZ_CONTENT[step.key]();
+  WIZ_WIRE[step.key] && WIZ_WIRE[step.key](body);
+  wizSetMsg('');
+  wizEl.querySelector('#wizBack').style.visibility = wizStep === 0 ? 'hidden' : 'visible';
+  wizEl.querySelector('#wizSkip').hidden = step.key !== 'verification';
+  wizEl.querySelector('#wizNext').textContent = wizStep === WIZ_STEPS.length - 1 ? 'Finish' : 'Next';
+}
+// Validate/capture the current step, then move on — or save on the last step.
+function captureWizStep(key) {
+  if (key === 'about') {
+    const biz = wizEl.querySelector('#wizBiz').value.trim();
+    const rate = wizEl.querySelector('#wizRate').value;
+    if (!biz) { wizSetMsg('Add a business or display name to continue.', 'err'); return false; }
+    if (!(Number(rate) > 0)) { wizSetMsg('Set your hourly rate to continue.', 'err'); return false; }
+    mp.businessName = biz;
+    mp.bio = wizEl.querySelector('#wizBio').value;
+    mp.rate = rate;
+    return true;
+  }
+  if (key === 'pricing') {
+    mp.bringsProducts = wizEl.querySelector('#wizProducts')?.checked ?? mp.bringsProducts;
+    if (!svcSet.size) { wizSetMsg('Pick at least one type of clean you offer.', 'err'); return false; }
+    return true;
+  }
+  if (key === 'availability') {
+    if (!avail.length) { wizSetMsg('Tap at least one time you can work.', 'err'); return false; }
+    return true;
+  }
+  // areas + verification: state is already mutated live by their own wiring.
+  return true;
+}
+async function advanceWizard(skip) {
+  const step = WIZ_STEPS[wizStep];
+  if (!skip && !captureWizStep(step.key)) return;
+  if (wizStep < WIZ_STEPS.length - 1) { wizStep++; renderWizStep(); return; }
+  await saveWizard();
+}
+async function saveWizard() {
+  if (!sessionUser?.id) { dismissWizard(); render(); return; }
+  const nextBtn = wizEl.querySelector('#wizNext');
+  nextBtn.disabled = true;
+  wizSetMsg('Saving your profile…', 'pending');
+  try {
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: sessionUser.id,
+        businessName: mp.businessName,
+        bio: mp.bio,
+        years: mp.years,
+        bringsProducts: mp.bringsProducts,
+        photo: mp.photo || null,
+        serviceSurcharges: mpSurcharges,
+        rate: mp.rate,
+        services: [...svcSet],
+        addons: mpAddons,
+        areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
+        listingStatus: 'active',
+      }),
+    });
+    if (!res.ok) throw new Error('profile');
+    mp.listingStatus = 'active';
+    if (avail.length) {
+      await fetch('/api/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: sessionUser.id, slots: avail }),
+      });
+    }
+    try { sessionStorage.setItem('mm_wizard_dismissed', '1'); } catch {}
+    wizSetMsg("You're all set — you're now live in search!", 'ok');
+    setTimeout(() => { closeWizard(); render(); }, 1100);
+  } catch {
+    nextBtn.disabled = false;
+    wizSetMsg('Could not save. Please check your details and try again.', 'err');
+  }
 }
 
 // Everything above is defined — safe to do the first render now.
