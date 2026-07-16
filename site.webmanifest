@@ -1,0 +1,13 @@
+{
+  "name": "Match Maid",
+  "short_name": "Match Maid",
+  "description": "Find or list a local house cleaner. Rates up front, free for households.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F1",
+  "theme_color": "#14B8A6",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

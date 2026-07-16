@@ -1,0 +1,13 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <rect width="120" height="120" rx="26" fill="#14B8A6"/>
+  <g transform="translate(12,12)">
+    <g transform="translate(48,48) skewX(-12) translate(-48,-48)">
+      <path d="M 22.08 51.84 L 29.76 70.08 L 40.32 22.08" fill="none" stroke="#123B4A" stroke-width="10.56" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M 40.32 22.08 L 52.8 47.04 L 65.28 22.08 L 65.28 70.08" fill="none" stroke="#123B4A" stroke-width="10.56" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <path d="M 79.68 12.48 Q 79.68 19.2 86.4 19.2 Q 79.68 19.2 79.68 25.92 Q 79.68 19.2 72.96 19.2 Q 79.68 19.2 79.68 12.48 Z" fill="#FAF7F1"/>
+    <path d="M 86.4 34.56 Q 86.4 38.4 90.24 38.4 Q 86.4 38.4 86.4 42.24 Q 86.4 38.4 82.56 38.4 Q 86.4 38.4 86.4 34.56 Z" fill="#FAF7F1"/>
+    <path d="M 15.36 24.48 Q 15.36 28.8 19.68 28.8 Q 15.36 28.8 15.36 33.12 Q 15.36 28.8 11.04 28.8 Q 15.36 28.8 15.36 24.48 Z" fill="#FAF7F1" opacity="0.9"/>
+    <path d="M 44.16 77.28 Q 44.16 80.64 47.52 80.64 Q 44.16 80.64 44.16 84.0 Q 44.16 80.64 40.8 80.64 Q 44.16 80.64 44.16 77.28 Z" fill="#FAF7F1"/>
+  </g>
+</svg>
