@@ -53,6 +53,18 @@ window.Session = Session;
 function reflectAuthNav() {
   const user = Session.get();
   if (!user) return;
+
+  // In-page CTAs ("Log in", "Find a cleaner", "Create account") point at /login.
+  // Once you're logged in those are wrong — send them to your portal, and rename
+  // the plain "Log in" ones so nothing on the page still invites you to log in.
+  const portalHref = Session.homeFor(user.role);
+  const portalLabel = user.role === 'cleaner' ? 'Maid portal' : 'Customer portal';
+  document.querySelectorAll('main a[href*="/login"]').forEach((el) => {
+    const wasLogin = /log\s?in/i.test(el.textContent);
+    el.href = portalHref;
+    if (wasLogin) el.textContent = portalLabel;
+  });
+
   const bar = document.querySelector('.pitch-top-right');
   if (!bar) return;
   bar.querySelectorAll('a[href*="/login"], #signupHook').forEach((el) => el.remove());

@@ -15,13 +15,11 @@ const switchText = document.getElementById('switchText');
 const roleLabel = document.getElementById('roleLabel');
 const blurb = document.getElementById('roleBlurb');
 
-const LABEL = { maid: 'Maid account', customer: 'Customer account' };
 const BLURBS = {
   maid: 'List your services and get exclusive local enquiries. Try it now for free while we build out our user base.',
   customer: 'Search local cleaners and see rates up front. Always free.',
 };
 
-roleLabel.textContent = LABEL[role];
 blurb.textContent = BLURBS[role];
 
 // Landed on the wrong side? Cross to the other role's page without losing your
@@ -41,6 +39,10 @@ const refFromLink = (params.get('ref') || '').trim().toUpperCase();
 
 function render() {
   const signup = mode === 'signup';
+  // Make first-party identity explicit: this is Match Maid's own login, not a
+  // page collecting credentials for any third party. Clear for users, and a
+  // signal to Safe Browsing's social-engineering classifier.
+  roleLabel.textContent = signup ? 'Create your Match Maid account' : 'Log in to Match Maid';
   document.querySelectorAll('[data-signup-only]').forEach((el) => {
     el.style.display = signup ? '' : 'none';
   });
