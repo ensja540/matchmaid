@@ -88,20 +88,44 @@ const PRODUCT_OPTIONS = [
   { value: 'supplied', label: 'The customer supplies products and equipment' },
   { value: 'either', label: 'Either — I can bring them or use the customer’s' },
 ];
+const PAYMENT_OPTIONS = [
+  { value: 'bank', label: 'Bank transfer' },
+  { value: 'cash', label: 'Cash' },
+];
 function extractRates(src) {
   const cr = src && typeof src === 'object' ? { ...src } : {};
   const bond = !!cr.bondGuaranteed;
   const endOfLease = !!cr.endOfLease;
   const productsOption = PRODUCT_OPTIONS.some((o) => o.value === cr.productsOption) ? cr.productsOption : 'own';
+  // Accepted payment methods. Default to accepting both when nothing's saved.
+  const payments = Array.isArray(cr.payments)
+    ? cr.payments.filter((p) => PAYMENT_OPTIONS.some((o) => o.value === p))
+    : PAYMENT_OPTIONS.map((o) => o.value);
   delete cr.bondGuaranteed;
   delete cr.endOfLease;
   delete cr.productsOption;
-  return { rates: cr, bond, endOfLease, productsOption };
+  delete cr.payments;
+  return { rates: cr, bond, endOfLease, productsOption, payments };
 }
 let mpCleanRates = loggedIn ? {} : extractRates(profile.cleanRates).rates;
 let mpBondGuaranteed = loggedIn ? false : extractRates(profile.cleanRates).bond;
 let mpEndOfLease = loggedIn ? false : extractRates(profile.cleanRates).endOfLease;
 let mpProductsOption = loggedIn ? 'own' : extractRates(profile.cleanRates).productsOption;
+let mpPayments = new Set(loggedIn ? PAYMENT_OPTIONS.map((o) => o.value) : extractRates(profile.cleanRates).payments);
+// Payment-method toggles shared by the profile form and the setup wizard.
+function paymentOptionsHTML() {
+  return `<div class="pay-opts">${PAYMENT_OPTIONS.map((o) =>
+    `<label class="check-inline"><input type="checkbox" class="pay-toggle" value="${o.value}" ${mpPayments.has(o.value) ? 'checked' : ''} /> ${escapeHtml(o.label)}</label>`
+  ).join('')}</div>`;
+}
+function wirePayments(root) {
+  root.querySelectorAll('.pay-toggle').forEach((cb) =>
+    cb.addEventListener('change', () => {
+      if (cb.checked) mpPayments.add(cb.value);
+      else mpPayments.delete(cb.value);
+    })
+  );
+}
 // Which cleans the maid offers (a slug is offered once ticked). Kept separate
 // from the fee so a type can be "offered" while its price is still being typed.
 let mpOffers = new Set(Object.keys(mpCleanRates));
@@ -252,7 +276,7 @@ if (sessionUser?.id) {
       }
       mpCity = best;
       mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
-      { const ex = extractRates(data.cleanRates); mpCleanRates = ex.rates; mpBondGuaranteed = ex.bond; mpEndOfLease = ex.endOfLease; mpProductsOption = ex.productsOption; mpOffers = new Set(Object.keys(mpCleanRates)); }
+      { const ex = extractRates(data.cleanRates); mpCleanRates = ex.rates; mpBondGuaranteed = ex.bond; mpEndOfLease = ex.endOfLease; mpProductsOption = ex.productsOption; mpPayments = new Set(ex.payments); mpOffers = new Set(Object.keys(mpCleanRates)); }
       { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       render();
       profileLoaded = true; tryAutoWizard();
@@ -371,11 +395,14 @@ tabs.addEventListener('click', (e) => {
   render();
 });
 
-// Header referral-credit pill → jump to the Subscription tab.
+// Header referral-credit pill → jump to the Subscription tab and scroll to the
+// referral card, which lists everyone you've referred and whether they've joined.
 document.getElementById('refPill')?.addEventListener('click', () => {
   current = 'subscription';
   tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'subscription'));
   render();
+  const card = panel.querySelector('.referral-card');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 function render() {
@@ -492,6 +519,7 @@ const PANELS = {
             ${PRODUCT_OPTIONS.map((o) => `<option value="${o.value}" ${mpProductsOption === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
           </select>
         </label>
+        <div class="field"><span>Payment accepted</span>${paymentOptionsHTML()}</div>
         <div class="field"><span>Your fees</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Both cleans are priced per hour. Leave one blank if you don't offer it. End-of-lease cleans are an option under the deep clean.</p>
           <div class="addon-list">${cleanFeesHTML()}</div>
@@ -536,7 +564,7 @@ const PANELS = {
             <li><strong>Top of the list</strong> in your suburbs</li>
             <li>Premium badge on your profile</li>
           </ul>
-          <button class="btn solid full" type="button" disabled>Coming soon</button>
+          <button class="btn outline full" type="button" disabled>Coming soon</button>
         </div>
       </div>
       <p class="muted" style="max-width:62ch">We want to make a platform that's affordable for everyone
@@ -691,6 +719,7 @@ const WIRE = {
       }
     });
     wireHomeLocation(panel);
+    wirePayments(panel);
     wireCleanFees(panel);
     wireLocSection();
     panel.querySelectorAll('[data-doc]').forEach((inp) =>
@@ -747,6 +776,7 @@ const WIRE = {
             years: mp.years,
             bringsProducts: mp.bringsProducts,
             productsOption: mpProductsOption,
+            payments: [...mpPayments],
             photo: mp.photo,
             cleanRates: mpCleanRates,
             bondGuaranteed: mpBondGuaranteed,
@@ -1391,7 +1421,8 @@ const WIZ_CONTENT = {
       <label class="field"><span>Cleaning products &amp; equipment</span>
         <select id="wizProducts">
           ${PRODUCT_OPTIONS.map((o) => `<option value="${o.value}" ${mpProductsOption === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
-        </select></label>`,
+        </select></label>
+      <div class="field"><span>Payment accepted</span>${paymentOptionsHTML()}</div>`,
   availability: () => `
     <p class="wiz-lede">Tap the times you're usually free. This is what matches you to clients.</p>
     <div class="cal" id="wizCal">${calendarHTML(avail)}</div>`,
@@ -1404,7 +1435,7 @@ const WIZ_CONTENT = {
 const WIZ_WIRE = {
   about: (root) => wireHomeLocation(root),
   areas: (root) => wireLocSection(root),
-  pricing: (root) => wireCleanFees(root),
+  pricing: (root) => { wireCleanFees(root); wirePayments(root); },
   availability: (root) => {
     const cal = root.querySelector('#wizCal');
     if (cal) wireCalendar(cal, avail, () => {});
@@ -1537,6 +1568,8 @@ async function saveWizard() {
         residentialAddress: mp.residentialAddress,
         years: mp.years,
         bringsProducts: mp.bringsProducts,
+        productsOption: mpProductsOption,
+        payments: [...mpPayments],
         photo: mp.photo || null,
         cleanRates: mpCleanRates,
         bondGuaranteed: mpBondGuaranteed,

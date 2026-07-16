@@ -632,7 +632,7 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, endOfLease, productsOption, residentialAddress, fullName } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, endOfLease, productsOption, payments, residentialAddress, fullName } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
@@ -651,6 +651,7 @@ app.put('/api/profile', async (req, res) => {
       if (endOfLease) cleanRatesClean.endOfLease = true;
       if (endOfLease && bondGuaranteed) cleanRatesClean.bondGuaranteed = true;
       if (['own', 'supplied', 'either'].includes(productsOption)) cleanRatesClean.productsOption = productsOption;
+      if (Array.isArray(payments)) cleanRatesClean.payments = payments.filter((p) => ['bank', 'cash'].includes(p));
     }
     const feeVals = hourlyFeeVals;
 
