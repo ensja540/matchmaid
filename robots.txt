@@ -1,0 +1,18 @@
+# Match Maid — https://matchmaid.co.nz
+# Public pages are open to all crawlers, including AI answer engines
+# (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, Applebot-Extended, etc.).
+# We deliberately do not opt out of AI crawling: being read and cited by
+# assistants is part of how people will find us. Named agents fall through to
+# the rules below, so the gated app areas stay excluded for everyone.
+
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /customer
+Disallow: /maid
+Disallow: /availability
+Disallow: /api/
+Disallow: /header-preview
+Disallow: /howflow-preview
+
+Sitemap: https://matchmaid.co.nz/sitemap.xml

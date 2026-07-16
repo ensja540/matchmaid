@@ -1,0 +1,30 @@
+# Match Maid
+
+> Match Maid is a New Zealand marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge — Match Maid never takes a commission on a job. Currently serving Christchurch and Auckland.
+
+## What it is
+- A directory / marketplace, not a cleaning company. Match Maid introduces households to independent cleaners and does not employ cleaners, take bookings, or handle payments.
+- Households browse cleaners, compare rates and reviews, and contact the one they choose. Payment and scheduling are arranged directly between the household and the cleaner.
+- Cleaners create a profile, set their own hourly and flat rates, list their suburbs and availability, and receive enquiries directly.
+
+## Why people use it
+- For households: rates are visible before you make contact, it is always free, you contact only the one cleaner you pick (no bidding wars or a flood of quotes), and it is built around keeping the same trusted cleaner long term.
+- For cleaners: exclusive local enquiries, no commission on jobs, and trust badges (ID verified, criminal check, insured) that help win clients.
+
+## Pricing
+- Households: free, always.
+- Cleaners: free to list for the first 3 months while the network is being built, then a flat monthly fee (no per-job commission). A premium tier offers promoted placement.
+
+## Coverage
+- Christchurch and Auckland, New Zealand, expanding from there.
+
+## Key pages
+- [Home](https://matchmaid.co.nz/): overview and role gateway.
+- [For households](https://matchmaid.co.nz/for-customers): how it works for people who need a clean.
+- [For cleaners](https://matchmaid.co.nz/for-maids): how it works for cleaners, and how to list.
+- [Browse cleaners](https://matchmaid.co.nz/browse): search local cleaners by suburb, clean type, verification and price (no account needed).
+- [Terms of Service](https://matchmaid.co.nz/terms)
+- [Privacy Policy](https://matchmaid.co.nz/privacy)
+
+## Contact
+- Email: ensor.jack@gmail.com
