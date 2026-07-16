@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="UTF-8" />
+<title>Match Maid — community board flyer (A5, printable)</title>
+<style>
+  :root { --ink:#123b4a; --copper:#0f9b8e; --paper:#faf7f1; --line:#d9d2c4; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ece7dc; font-family: "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+
+  .toolbar { text-align:center; padding: 14px; font-size: 13px; color:#555; }
+  .toolbar button { font-size: 14px; padding: 8px 16px; cursor: pointer; }
+
+  /* A5 portrait sheet */
+  .sheet {
+    width: 148mm; min-height: 210mm; margin: 0 auto 20px; background: var(--paper);
+    padding: 16mm 14mm 8mm; display: flex; flex-direction: column;
+    box-shadow: 0 4px 24px rgba(0,0,0,.18);
+  }
+  .eyebrow { letter-spacing: .28em; text-transform: uppercase; font-size: 11px; font-weight: 700; color: var(--copper); margin: 0 0 10mm; }
+  h1 { font-size: 34px; line-height: 1.08; margin: 0 0 6mm; font-weight: 800; }
+  h1 em { color: var(--copper); font-style: normal; }
+  .sub { font-size: 15px; line-height: 1.5; margin: 0 0 8mm; color: #3a4b52; }
+  ul.props { list-style: none; margin: 0 0 8mm; padding: 0; }
+  ul.props li { font-size: 15px; padding: 4mm 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+  ul.props li b { color: var(--copper); }
+
+  .cta { margin-top: auto; display: flex; align-items: center; gap: 6mm; padding: 6mm 0; }
+  .qr { width: 26mm; height: 26mm; border: 2px dashed var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 9px; color: #999; padding: 3px; flex: none; }
+  .url { font-size: 24px; font-weight: 800; color: var(--ink); }
+  .url small { display:block; font-size: 13px; font-weight: 500; color: var(--copper); letter-spacing:.02em; }
+
+  /* Tear-off tabs */
+  .tabs { display: flex; border-top: 2px dashed var(--line); margin-top: 4mm; }
+  .tab { flex: 1; border-left: 1px dashed var(--line); padding: 4mm 0 2mm; text-align: center; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12px; font-weight: 700; color: var(--ink); }
+  .tab:first-child { border-left: none; }
+  .tab span { color: var(--copper); }
+
+  @media print {
+    html, body { background: #fff; }
+    .toolbar { display: none; }
+    .sheet { box-shadow: none; margin: 0 auto; width: 148mm; }
+    @page { size: A5 portrait; margin: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    A5 flyer — press <button onclick="window.print()">Print</button> (or Ctrl/Cmd-P).
+    Swap a real QR into the dashed box: generate one free for <b>matchmaid.co.nz</b> and paste it in.
+  </div>
+
+  <div class="sheet">
+    <p class="eyebrow">Match Maid · Christchurch</p>
+    <h1>Need a cleaner<br /><em>worth keeping?</em></h1>
+    <p class="sub">Stop scrolling Facebook for an unverified cleaner. Match Maid is a free
+      local directory where you see the rate up front, then pick who you like.</p>
+
+    <ul class="props">
+      <li><b>✓</b> See every cleaner's <b>hourly rate</b> before you message</li>
+      <li><b>✓</b> Reviews + verified badges — ID, criminal check, insured</li>
+      <li><b>✓</b> Contact just one cleaner. No bidding wars.</li>
+      <li><b>✓</b> <b>Free for households</b>, always. Deal direct.</li>
+    </ul>
+
+    <div class="cta">
+      <div class="qr">QR to<br />matchmaid.co.nz</div>
+      <div class="url">matchmaid.co.nz<small>Free · Christchurch &amp; Auckland</small></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+      <div class="tab">matchmaid<span>.co.nz</span></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -14,5 +14,6 @@ Disallow: /availability
 Disallow: /api/
 Disallow: /header-preview
 Disallow: /howflow-preview
+Disallow: /marketing
 
 Sitemap: https://matchmaid.co.nz/sitemap.xml
