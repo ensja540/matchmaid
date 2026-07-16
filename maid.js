@@ -294,6 +294,8 @@ const PANELS = {
         ${Badges.strip(verif)}
       </div>
 
+      ${referralBannerHTML()}
+
       ${howflowHTML()}`;
   },
 
@@ -430,6 +432,7 @@ const WIRE = {
     panel.querySelectorAll('[data-open-convo]').forEach((b) =>
       b.addEventListener('click', () => openEnquiryConvo(b.dataset.openConvo))
     );
+    wireRefCopy(panel);
     initHowflow(panel);
   },
   availability() {
@@ -614,18 +617,14 @@ const WIRE = {
   },
   subscription() {
     // Plans aren't purchasable yet — buttons show "Coming soon" (disabled).
-    const copy = panel.querySelector('#copyRefLink');
-    copy?.addEventListener('click', async () => {
-      const link = copy.dataset.link;
-      try {
-        await navigator.clipboard.writeText(link);
-        copy.textContent = 'Copied!';
-      } catch {
-        // clipboard blocked (insecure origin, permissions) — show it to select.
-        window.prompt('Copy your invite link:', link);
-      }
-      setTimeout(() => { copy.textContent = 'Copy invite link'; }, 1800);
-    });
+    wireRefCopy(panel);
+    panel.querySelectorAll('[data-start]').forEach((b) =>
+      b.addEventListener('click', () => {
+        current = b.dataset.start;
+        tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === current));
+        render();
+      })
+    );
   },
 };
 
@@ -796,6 +795,51 @@ function pauseHTML() {
     </section>`;
 }
 
+// Prominent, hard-to-miss referral pitch for the overview. Grows the network
+// (our whole mission) and rewards the maid for it — so it earns top billing on
+// the dashboard, not just a card buried in the subscription tab.
+function referralBannerHTML() {
+  if (!loggedIn) return '';
+  const per = referrals ? referrals.perReferralDollars : null;
+  const link = referrals
+    ? `${location.origin}/login?role=maid&mode=signup&ref=${encodeURIComponent(referrals.code)}`
+    : '';
+  return `
+    <div class="referral-banner">
+      <div class="rb-body">
+        <span class="rb-kicker">Grow the network, get paid for it</span>
+        <h2 class="rb-head">Refer a cleaner${per ? `, earn $${per} credit` : ''}</h2>
+        <p class="rb-copy">Know a great cleaner? Share your invite link. When they join and get fully
+          verified (ID, police check and insurance)${per ? `, you earn <strong>$${per}</strong> off your future payments` : ', you earn credit off your future payments'} —
+          and there's no cap on how many you can bring in.</p>
+        ${referrals
+          ? `<div class="rb-actions">
+              <code class="ref-code">${escapeHtml(referrals.code)}</code>
+              <button class="btn solid sm js-ref-copy" type="button" data-link="${escapeHtml(link)}">Copy invite link</button>
+              <button class="btn outline sm" type="button" data-start="subscription">See your referrals</button>
+            </div>`
+          : '<p class="muted">Loading your invite link…</p>'}
+      </div>
+    </div>`;
+}
+
+// Copy-to-clipboard wiring for every invite-link button under `root`. Falls back
+// to a prompt when the clipboard is blocked (insecure origin / permissions).
+function wireRefCopy(root) {
+  root.querySelectorAll('.js-ref-copy').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const link = btn.dataset.link;
+      try {
+        await navigator.clipboard.writeText(link);
+        btn.textContent = 'Copied!';
+      } catch {
+        window.prompt('Copy your invite link:', link);
+      }
+      setTimeout(() => { btn.textContent = 'Copy invite link'; }, 1800);
+    })
+  );
+}
+
 // Referral card: your code, your credit, and who you've brought in. The credit
 // only lands once a referred cleaner is fully verified, so pending ones are
 // shown as such rather than silently missing.
@@ -830,7 +874,7 @@ function referralsHTML() {
 
       <div class="ref-code-row">
         <code class="ref-code">${escapeHtml(referrals.code)}</code>
-        <button class="btn outline sm" type="button" id="copyRefLink" data-link="${escapeHtml(link)}">Copy invite link</button>
+        <button class="btn outline sm js-ref-copy" type="button" data-link="${escapeHtml(link)}">Copy invite link</button>
       </div>
       <p class="muted ref-counts">
         ${referrals.earned} fully verified · ${referrals.pending} awaiting verification
