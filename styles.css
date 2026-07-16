@@ -400,7 +400,7 @@ a { color: inherit; text-decoration: none; }
 .pitch-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink); }
 .pitch-stats .stat { padding: 1.7rem 0.6rem; border-right: 1px solid var(--line); }
 .pitch-stats .stat:last-child { border-right: none; }
-.pitch-stats .n { font-family: var(--serif); font-weight: 700; font-size: clamp(1.9rem, 3.6vw, 3rem); color: var(--accent); line-height: 1; }
+.pitch-stats .n { font-family: var(--sans); font-weight: 800; font-size: clamp(1.9rem, 3.6vw, 3rem); color: var(--accent); line-height: 1; font-variant-numeric: lining-nums tabular-nums; }
 .pitch-stats .l { display: block; margin-top: 0.5rem; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 
 .benefit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
