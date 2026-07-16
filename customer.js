@@ -320,10 +320,10 @@ const PANELS = {
       ${pendingReviewsHTML()}
       <div class="cta-card">
         <div>
-          <h2>Need a clean?</h2>
-          <p class="muted">Search local maids, compare rates openly, and contact just the one you choose.</p>
+          <h2>Cleaner search is coming soon</h2>
+          <p class="muted">We're building our network of local cleaners first. You're on the waitlist — we'll email you the moment they're available in your area.</p>
         </div>
-        <button class="btn solid" data-goto="find" type="button">Find a cleaner</button>
+        <button class="btn solid" data-goto="find" type="button">Learn more</button>
       </div>
 
       ${howflowHTML()}`;
@@ -371,47 +371,23 @@ const PANELS = {
       </div>`;
   },
 
+  // Search is switched off while we build up the cleaner network. Customers can
+  // still complete their profile, which is their place on the waitlist.
   find() {
     return `
-      <h1>Find a cleaner</h1>
-      <p class="wizard-lede">Set what you're after. We rank local maids by how well they match,
-        closest first. You set your price, they set theirs.</p>
-      <form class="find-form" id="findForm">
-        <div class="field-row">
-          <label class="field"><span>Location</span>
-            <select name="loc">${locationOptions(find.loc)}</select>
-          </label>
-          <label class="field"><span>Type of clean</span>
-            <select name="service">${DEMO.services.filter((s) => DEMO.baseServiceSlugs.includes(s.slug)).map((s) => opt(s.slug, s.name, find.service)).join('')}</select>
-          </label>
-        </div>
-        <div class="field"><span>Add-on extras (optional)</span>
-          <div class="chip-select" id="findExtras">${DEMO.extraServices
-            .map((x) => `<button type="button" class="chip select ${find.extras.includes(x.slug) ? 'on' : ''}" data-extra="${x.slug}">${escapeHtml(x.name)}</button>`)
-            .join('')}</div>
-        </div>
-        <label class="field"><span>Ideal hourly rate: <strong id="rateOut">$${find.desiredRate}/hr</strong></span>
-          <input type="range" id="rate" min="20" max="80" value="${find.desiredRate}" />
-          <span class="muted" style="font-size:0.82rem">We'll show you cleaners within a similar price range.</span>
-        </label>
-        <div class="field"><span>Cleaning products</span>
-          <label class="check-inline"><input type="checkbox" id="needProducts" ${needsProducts() ? 'checked' : ''} /> The cleaner must bring cleaning products</label>
-        </div>
-        <div class="field"><span>When suits you? (optional)</span>
-          <div class="cal" id="cal">${calendarHTML(find.slots)}</div>
-        </div>
-        <button class="btn solid" type="submit">Show my matches</button>
-      </form>
-      <div class="results-tools" ${find.ran ? '' : 'hidden'}>
-        <label class="sort-label">Sort
-          <select id="sortBy">
-            <option value="relevance" ${find.sort === 'relevance' ? 'selected' : ''}>Best match</option>
-            <option value="price-asc" ${find.sort === 'price-asc' ? 'selected' : ''}>Price: low to high</option>
-            <option value="price-desc" ${find.sort === 'price-desc' ? 'selected' : ''}>Price: high to low</option>
-          </select>
-        </label>
-      </div>
-      <div id="findResults" class="results">${find.ran ? renderResults(find.results) : ''}</div>`;
+      <h1>Cleaner search is coming soon</h1>
+      <div class="panel-card waitlist-card">
+        <span class="waitlist-badge">Coming soon</span>
+        <h2>We're building our network of cleaners first.</h2>
+        <p class="wizard-lede">Match Maid is brand new. We're signing up trusted local cleaners
+          in your area right now — search switches on the moment there are cleaners near you to
+          match with.</p>
+        <p><strong>You're on the waitlist.</strong> We'll email you the moment cleaners are
+          available in your area.</p>
+        <p class="muted">Want the best match when they arrive? Fill out your profile so we know
+          your suburb, the clean you want and when suits you.</p>
+        <button class="btn solid" data-goto="profile" type="button">Complete your profile</button>
+      </div>`;
   },
 
   messages() {
@@ -510,63 +486,10 @@ const WIRE = {
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
   },
+  // Search disabled during the waitlist phase — only the "complete your profile"
+  // call-to-action is live.
   find() {
-    const form = panel.querySelector('#findForm');
-    const rate = panel.querySelector('#rate');
-    const rateOut = panel.querySelector('#rateOut');
-    rate.addEventListener('input', () => {
-      find.desiredRate = Number(rate.value);
-      rateOut.textContent = `$${find.desiredRate}/hr`;
-    });
-    panel.querySelector('#needProducts')?.addEventListener('change', (e) => {
-      find.products = e.target.checked;
-    });
-    wireCalendar(panel.querySelector('#cal'), find.slots);
-    panel.querySelectorAll('[data-extra]').forEach((c) =>
-      c.addEventListener('click', () => {
-        const slug = c.dataset.extra;
-        if (find.extras.includes(slug)) find.extras = find.extras.filter((s) => s !== slug);
-        else find.extras.push(slug);
-        c.classList.toggle('on', find.extras.includes(slug));
-      })
-    );
-    if (find.ran) wireResults(panel.querySelector('#findResults'));
-    panel.querySelector('#sortBy')?.addEventListener('change', (e) => {
-      find.sort = e.target.value;
-      const box = panel.querySelector('#findResults');
-      box.innerHTML = renderResults(find.results);
-      wireResults(box);
-    });
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      find.loc = form.loc.value;
-      find.service = form.service.value;
-      find.ran = true;
-      const parsed = parseLoc(find.loc);
-      find.locLabel = parsed.label;
-      const box = panel.querySelector('#findResults');
-      box.innerHTML = '<p class="muted">Searching…</p>';
-      try {
-        const data = await postJSON('/api/match', {
-          suburbs: parsed.suburbs,
-          services: [find.service, ...find.extras],
-          budgetMin: Math.max(0, find.desiredRate - 10),
-          budgetMax: find.desiredRate + 10,
-          verif: [],
-          products: needsProducts(),
-          baseService: find.service,
-          durationHours: 2,
-          slots: find.slots,
-        });
-        find.results = data.results || [];
-      } catch {
-        box.innerHTML = '<p class="muted">Search is unavailable right now. Please try again.</p>';
-        return;
-      }
-      panel.querySelector('.results-tools')?.removeAttribute('hidden');
-      box.innerHTML = renderResults(find.results);
-      wireResults(box);
-    });
+    panel.querySelector('[data-goto]')?.addEventListener('click', (e) => goTo(e.currentTarget.dataset.goto || 'profile'));
   },
   messages() {
     bindConvoButtons();
