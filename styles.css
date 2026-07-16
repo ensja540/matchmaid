@@ -1145,7 +1145,33 @@ a { color: inherit; text-decoration: none; }
   font-size: 0.82rem; font-weight: 600; color: var(--green);
   background: rgba(18,59,74,0.07); border: 1px solid rgba(18,59,74,0.18); border-radius: 999px;
 }
-.fee-bond { margin-top: 0.6rem; font-size: 0.9rem; }
+.fee-offer { margin: 0; }
+.fee-offer .fee-name { font-weight: 600; }
+/* Header referral-credit pill on the maid portal. */
+.ref-pill {
+  border: 1px solid var(--copper); background: rgba(20,184,166,0.08); color: var(--copper);
+  font-weight: 600; font-size: 0.82rem; padding: 0.3rem 0.7rem; border-radius: 999px; cursor: pointer;
+  white-space: nowrap; transition: background 0.12s ease;
+}
+.ref-pill:hover { background: rgba(20,184,166,0.16); }
+/* Boxed empty state (e.g. "No enquiries yet"). */
+.empty-state {
+  border: 1px dashed var(--line); border-radius: var(--radius); padding: 2rem 1.5rem;
+  text-align: center; background: var(--bg-tint);
+}
+.empty-state p { margin: 0; }
+/* Avatar upload/change/remove buttons. */
+.avatar-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+/* Highlighted "in short" summary on the Terms page. */
+.terms-summary {
+  background: rgba(20,184,166,0.07); border: 1px solid var(--copper); border-left-width: 4px;
+  border-radius: var(--radius); padding: 1.1rem 1.3rem; margin: 1.4rem 0; line-height: 1.6;
+}
+.fee-eol { margin-top: 0.7rem; font-size: 0.9rem; }
+.fee-bond { margin-top: 0.5rem; margin-left: 1.7rem; font-size: 0.9rem; }
+.fee-bond[hidden] { display: none; }
+/* End-of-lease + bond only make sense once the deep clean is actually offered. */
+.fee-row:not(.on) .fee-eol, .fee-row:not(.on) .fee-bond { display: none; }
 .auth-legal { text-align: center; margin: 0.6rem 0 0; font-size: 0.8rem; }
 .auth-legal a { color: var(--muted); }
 

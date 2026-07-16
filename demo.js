@@ -129,7 +129,7 @@ const DEMO = {
     baseSuburb: 'Riccarton',
     areas: ['Riccarton', 'Fendalton', 'Papanui'],
     services: ['regular', 'deep', 'end-of-tenancy'],
-    cleanRates: { regular: 38, deep: 48, 'end-of-tenancy': 240, bondGuaranteed: true },
+    cleanRates: { regular: 38, deep: 48, endOfLease: true, bondGuaranteed: true },
     bondGuaranteed: true,
     rate: 38,
     rateMin: 34,

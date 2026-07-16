@@ -427,7 +427,10 @@ const PANELS = {
       <form class="profile-form" id="profileForm">
         <div class="avatar-row">
           <div class="avatar" id="avatar">${cprof.photo ? `<img src="${cprof.photo}" alt="" />` : '<span>Photo</span>'}</div>
-          <label class="btn outline sm">Upload photo<input type="file" id="photoInput" accept="image/*" hidden /></label>
+          <div class="avatar-actions">
+            <label class="btn outline sm">${cprof.photo ? 'Change photo' : 'Upload photo'}<input type="file" id="photoInput" accept="image/*" hidden /></label>
+            <button type="button" class="btn ghost sm" id="removePhoto" ${cprof.photo ? '' : 'hidden'}>Remove</button>
+          </div>
         </div>
 
         <div class="field-row">
@@ -517,9 +520,13 @@ const WIRE = {
       const reader = new FileReader();
       reader.onload = () => {
         cprof.photo = reader.result;
-        avatar.innerHTML = `<img src="${cprof.photo}" alt="" />`;
+        render(); // refresh so Change/Remove appear
       };
       reader.readAsDataURL(file);
+    });
+    panel.querySelector('#removePhoto')?.addEventListener('click', () => {
+      cprof.photo = '';
+      render();
     });
     panel.querySelector('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();

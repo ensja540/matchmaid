@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Match Maid | Maid portal</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg" />
-    <link rel="stylesheet" href="styles.css?v=78" />
+    <link rel="stylesheet" href="styles.css?v=79" />
   </head>
   <body class="app-body">
     <div class="notice-bar">
@@ -17,6 +17,7 @@
       <a class="brand" href="/for-maids" title="How Match Maid works"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
       <div class="app-bar-right">
         <span id="who" class="who"></span>
+        <button class="ref-pill" id="refPill" type="button" hidden title="Your referral credit"></button>
         <a class="ulink cross-link" href="/for-customers">Need a clean?</a>
         <a class="ulink" href="/for-maids">Home</a>
         <a class="ulink" id="logout" href="#">Log out</a>
@@ -50,6 +51,8 @@
           <a href="/for-maids">For maids</a>
           <a href="/for-customers">For customers</a>
           <a href="/browse">Browse cleaners</a>
+          <a href="/terms">Terms</a>
+          <a href="/privacy">Privacy</a>
         </nav>
         <span class="pf-copy">© <span class="pf-year"></span> Match Maid · Christchurch, NZ</span>
       </div>
@@ -59,13 +62,13 @@
     <script>document.querySelector('.pf-year').textContent = new Date().getFullYear();</script>
 
     <script src="session.js?v=65"></script>
-    <script src="demo.js?v=69"></script>
+    <script src="demo.js?v=70"></script>
     <script src="rating.js?v=64"></script>
     <script src="badges.js?v=64"></script>
     <!-- Optional: in-browser OCR to read uploaded ID docs (loads on demand). -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
     <script src="remove-profile.js?v=65"></script>
-    <script src="maid.js?v=74"></script>
+    <script src="maid.js?v=75"></script>
     <script src="feedback.js?v=64"></script>
 
   </body>

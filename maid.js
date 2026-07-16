@@ -28,6 +28,14 @@ function loadVerif() {
   };
 }
 let referrals = null; // { code, creditDollars, earned, pending, referrals[] }
+// Header pill showing referral credit; clicking it jumps to the Subscription tab
+// (where the full referral card lives). Hidden until credit data loads.
+function updateRefPill() {
+  const pill = document.getElementById('refPill');
+  if (!pill || !referrals) return;
+  pill.textContent = `🎁 $${referrals.creditDollars} credit`;
+  pill.hidden = false;
+}
 let verif = loggedIn ? { id: 'none', police: 'none', insurance: 'none' } : loadVerif();
 let verifRead = {}; // OCR-extracted text per verification type (review aid)
 const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
@@ -72,34 +80,52 @@ function parseHome(addr) {
   return { city, suburb: (DEMO.towns[city] || []).includes(sub) ? sub : '' };
 }
 // Per-clean-type fee: { slug: dollars }. A type with a fee is one the maid
-// offers; no entry means they don't offer it. Regular/deep are hourly; end of
-// tenancy is a flat total. The bond-guaranteed flag rides alongside as a
-// separate boolean (not a fee), stored in the same clean_rates JSON.
+// offers; no entry means they don't offer it. Both regular and deep are hourly.
+// End-of-lease and its bond-back guarantee are capabilities of the deep clean,
+// stored as booleans in the same clean_rates JSON (not fees).
+const PRODUCT_OPTIONS = [
+  { value: 'own', label: 'I bring my own products and equipment' },
+  { value: 'supplied', label: 'The customer supplies products and equipment' },
+  { value: 'either', label: 'Either — I can bring them or use the customer’s' },
+];
 function extractRates(src) {
   const cr = src && typeof src === 'object' ? { ...src } : {};
   const bond = !!cr.bondGuaranteed;
+  const endOfLease = !!cr.endOfLease;
+  const productsOption = PRODUCT_OPTIONS.some((o) => o.value === cr.productsOption) ? cr.productsOption : 'own';
   delete cr.bondGuaranteed;
-  return { rates: cr, bond };
+  delete cr.endOfLease;
+  delete cr.productsOption;
+  return { rates: cr, bond, endOfLease, productsOption };
 }
 let mpCleanRates = loggedIn ? {} : extractRates(profile.cleanRates).rates;
 let mpBondGuaranteed = loggedIn ? false : extractRates(profile.cleanRates).bond;
+let mpEndOfLease = loggedIn ? false : extractRates(profile.cleanRates).endOfLease;
+let mpProductsOption = loggedIn ? 'own' : extractRates(profile.cleanRates).productsOption;
+// Which cleans the maid offers (a slug is offered once ticked). Kept separate
+// from the fee so a type can be "offered" while its price is still being typed.
+let mpOffers = new Set(Object.keys(mpCleanRates));
 const CLEAN_TYPES = [
   { slug: 'regular', name: 'Regular clean' },
-  { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash' },
-  { slug: 'end-of-tenancy', name: 'End of tenancy clean', flat: true },
+  { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash', endOfLeaseOption: true },
 ];
 
-// Per-clean-type fee rows. Hourly cleans show "/hr"; the end-of-tenancy row is a
-// flat total ("flat") and carries the optional bond-back guarantee toggle.
+// Per-clean-type fee rows. Each has an "I offer this" tick that reveals its
+// hourly fee. Both cleans are hourly. The deep-clean row also carries the
+// end-of-lease option and — only then — the bond-back guarantee.
 function cleanFeesHTML() {
   return CLEAN_TYPES.map((t) => {
+    const offered = mpOffers.has(t.slug);
     const val = mpCleanRates[t.slug];
-    return `<div class="fee-row" data-fee="${t.slug}">
-        <div class="fee-head"><span class="fee-name">${escapeHtml(t.name)}</span>
-          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="—" /><span class="fee-per">${t.flat ? 'flat' : '/hr'}</span></span>
+    return `<div class="fee-row ${offered ? 'on' : ''}" data-fee="${t.slug}">
+        <div class="fee-head">
+          <label class="check-inline fee-offer"><input type="checkbox" class="offer-toggle" ${offered ? 'checked' : ''} /> <span class="fee-name">${escapeHtml(t.name)}</span></label>
+          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="—" ${offered ? '' : 'disabled'} /><span class="fee-per">/hr</span></span>
         </div>
         ${t.includes ? `<p class="fee-includes">Includes: ${escapeHtml(t.includes)}</p>` : ''}
-        ${t.flat ? `<label class="check-inline fee-bond"><input type="checkbox" class="bond-toggle" ${mpBondGuaranteed ? 'checked' : ''} /> Bond-back guaranteed <span class="muted">— you'll put it right if the manager isn't satisfied</span></label>` : ''}
+        ${t.endOfLeaseOption ? `
+          <label class="check-inline fee-eol"><input type="checkbox" class="eol-toggle" ${mpEndOfLease ? 'checked' : ''} /> Also available for end-of-lease cleans <span class="muted">— based on your deep-clean rate, but may be subject to custom pricing</span></label>
+          <label class="check-inline fee-bond" ${mpEndOfLease ? '' : 'hidden'}><input type="checkbox" class="bond-toggle" ${mpBondGuaranteed ? 'checked' : ''} /> Bond-back guaranteed <span class="muted">— you'll put it right if the manager isn't satisfied</span></label>` : ''}
       </div>`;
   }).join('');
 }
@@ -138,15 +164,49 @@ function wireCleanFees(root) {
   root.querySelectorAll('[data-fee]').forEach((row) => {
     const slug = row.dataset.fee;
     const input = row.querySelector('.fee-input');
-    const sync = () => {
-      const raw = input.value.trim();
-      if (raw === '') { delete mpCleanRates[slug]; row.classList.remove('on'); return; }
-      const v = Math.max(0, Math.round(Number(raw) || 0));
-      if (v > 0) { mpCleanRates[slug] = v; row.classList.add('on'); }
-      else { delete mpCleanRates[slug]; row.classList.remove('on'); }
-    };
-    input.addEventListener('input', sync);
+    const offer = row.querySelector('.offer-toggle');
+    const eol = row.querySelector('.eol-toggle');
+    const bondLabel = row.querySelector('.fee-bond');
     const bond = row.querySelector('.bond-toggle');
+
+    const syncFee = () => {
+      const raw = input.value.trim();
+      const v = Math.max(0, Math.round(Number(raw) || 0));
+      if (raw !== '' && v > 0) mpCleanRates[slug] = v;
+      else delete mpCleanRates[slug];
+    };
+    input.addEventListener('input', syncFee);
+
+    // The offer tick is the source of truth for "do you do this clean". Ticking
+    // enables the fee; unticking clears the fee and any deep-clean extras.
+    if (offer) {
+      offer.addEventListener('change', () => {
+        if (offer.checked) {
+          mpOffers.add(slug);
+          input.disabled = false;
+          row.classList.add('on');
+          input.focus();
+        } else {
+          mpOffers.delete(slug);
+          input.disabled = true;
+          input.value = '';
+          delete mpCleanRates[slug];
+          row.classList.remove('on');
+          if (eol) { eol.checked = false; mpEndOfLease = false; }
+          if (bond) { bond.checked = false; }
+          if (bondLabel) bondLabel.hidden = true;
+          mpBondGuaranteed = false;
+        }
+      });
+    }
+    if (eol) {
+      eol.addEventListener('change', () => {
+        mpEndOfLease = eol.checked;
+        if (bondLabel) bondLabel.hidden = !mpEndOfLease;
+        // Bond guarantee only applies to end-of-lease work — clear it if that's off.
+        if (!mpEndOfLease && bond) { bond.checked = false; mpBondGuaranteed = false; }
+      });
+    }
     if (bond) bond.addEventListener('change', () => { mpBondGuaranteed = bond.checked; });
   });
 }
@@ -192,7 +252,7 @@ if (sessionUser?.id) {
       }
       mpCity = best;
       mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
-      { const ex = extractRates(data.cleanRates); mpCleanRates = ex.rates; mpBondGuaranteed = ex.bond; }
+      { const ex = extractRates(data.cleanRates); mpCleanRates = ex.rates; mpBondGuaranteed = ex.bond; mpEndOfLease = ex.endOfLease; mpProductsOption = ex.productsOption; mpOffers = new Set(Object.keys(mpCleanRates)); }
       { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       render();
       profileLoaded = true; tryAutoWizard();
@@ -213,7 +273,7 @@ if (sessionUser?.id) {
   // Referral code + earned credit.
   fetch(`/api/referrals?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((d) => { if (d) { referrals = d; render(); } })
+    .then((d) => { if (d) { referrals = d; updateRefPill(); render(); } })
     .catch(() => {});
 
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -311,6 +371,13 @@ tabs.addEventListener('click', (e) => {
   render();
 });
 
+// Header referral-credit pill → jump to the Subscription tab.
+document.getElementById('refPill')?.addEventListener('click', () => {
+  current = 'subscription';
+  tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'subscription'));
+  render();
+});
+
 function render() {
   panel.innerHTML = PANELS[current]();
   WIRE[current]?.();
@@ -336,7 +403,7 @@ const PANELS = {
           <span>Free while we build out our user base</span>
         </div>
         <p class="muted">Full access with no fees while we build out our user base. After that it's a flat
-          $30/month (or $50/month to be promoted to the top of results).</p>
+          $30/month (or $50/month for premium — top of the list).</p>
       </div>
 
       <div class="portal-note">
@@ -380,7 +447,7 @@ const PANELS = {
       <p class="wizard-lede">Each enquiry is exclusive to you, no bidding against anyone else.</p>
       <div id="enqList">${enquiries.length
         ? enquiries.map(enquiryCard).join('')
-        : '<p class="muted">No enquiries yet. When a client messages you from search, it lands here, exclusively yours.</p>'}</div>`;
+        : '<div class="empty-state"><p class="muted">No enquiries yet. When a client messages you from search, it lands here, exclusively yours.</p></div>'}</div>`;
   },
 
   messages() {
@@ -409,7 +476,10 @@ const PANELS = {
       <form class="profile-form" id="profileForm">
         <div class="avatar-row">
           <div class="avatar" id="avatar">${mp.photo ? `<img src="${escapeHtml(mp.photo)}" alt="" />` : '<span>Photo</span>'}</div>
-          <label class="btn outline sm">Upload photo<input type="file" id="photoInput" accept="image/*" hidden /></label>
+          <div class="avatar-actions">
+            <label class="btn outline sm">${mp.photo ? 'Change photo' : 'Upload photo'}<input type="file" id="photoInput" accept="image/*" hidden /></label>
+            <button type="button" class="btn ghost sm" id="removePhoto" ${mp.photo ? '' : 'hidden'}>Remove</button>
+          </div>
         </div>
         <label class="field"><span>Full name</span><input name="fullName" value="${escapeHtml(mp.fullName ?? '')}" placeholder="Your legal name" /></label>
         ${homeLocationHTML()}
@@ -417,13 +487,13 @@ const PANELS = {
         <label class="field"><span>Bio</span><textarea name="bio" rows="3">${escapeHtml(mp.bio ?? '')}</textarea></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
         ${locSectionHTML()}
-        <div class="field"><span>Cleaning products &amp; equipment</span>
-          <label class="check-inline"><input type="checkbox" name="products" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own cleaning products and equipment</label>
-          <p class="muted" style="margin:0.4rem 0 0">On by default. Untick it only if the customer needs to supply
-            products and equipment. Customers who need them supplied won't see you.</p>
-        </div>
+        <label class="field"><span>Cleaning products &amp; equipment</span>
+          <select name="productsOption">
+            ${PRODUCT_OPTIONS.map((o) => `<option value="${o.value}" ${mpProductsOption === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+          </select>
+        </label>
         <div class="field"><span>Your fees</span>
-          <p class="muted" style="margin:0.2rem 0 0.8rem">Regular and deep cleans are priced per hour; end-of-tenancy is a flat fee. Leave one blank if you don't offer it.</p>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Both cleans are priced per hour. Leave one blank if you don't offer it. End-of-lease cleans are an option under the deep clean.</p>
           <div class="addon-list">${cleanFeesHTML()}</div>
         </div>
         <div class="field"><span>Verification</span>
@@ -459,18 +529,19 @@ const PANELS = {
           <button class="btn outline full" type="button" disabled>Coming soon</button>
         </div>
         <div class="plan featured">
-          <p class="tag">Promoted</p>
+          <p class="tag">Premium</p>
           <p class="price">$50<span>/month</span></p>
           <ul class="checks">
             <li>Everything in Standard</li>
             <li><strong>Top of the list</strong> in your suburbs</li>
-            <li>Promoted badge on your profile</li>
+            <li>Premium badge on your profile</li>
           </ul>
           <button class="btn solid full" type="button" disabled>Coming soon</button>
         </div>
       </div>
       <p class="muted" style="max-width:62ch">We want to make a platform that's affordable for everyone
-        and that maximises profits for cleaners. As we grow, we'll lower monthly costs for our cleaners.</p>
+        and that maximises profits for cleaners. As we grow, we'll lower monthly costs for our cleaners.
+        <strong>Pricing is subject to fall at launch, depending on demand.</strong></p>
       <p class="save-msg" id="planMsg"></p>
       ${referralsHTML()}`;
   },
@@ -590,9 +661,14 @@ const WIRE = {
       const reader = new FileReader();
       reader.onload = () => {
         mp.photo = reader.result;
-        avatar.innerHTML = `<img src="${mp.photo}" alt="" />`;
+        render(); // refresh so Change/Remove appear
       };
       reader.readAsDataURL(file);
+    });
+    panel.querySelector('#removePhoto')?.addEventListener('click', () => {
+      mp.photo = '';
+      render();
+      setMsg('profMsg', 'Photo removed. Save your profile to confirm.', 'pending');
     });
     const pauseBtn = panel.querySelector('#pauseBtn');
     pauseBtn?.addEventListener('click', async () => {
@@ -651,7 +727,8 @@ const WIRE = {
       mp.fullName = f.fullName.value;
       mp.residentialAddress = mpHomeSuburb ? `${mpHomeSuburb}, ${mpHomeCity}` : mpHomeCity;
       mp.years = f.years.value;
-      mp.bringsProducts = f.products.checked;
+      mpProductsOption = f.productsOption.value;
+      mp.bringsProducts = mpProductsOption !== 'supplied';
       if (!sessionUser?.id) {
         setMsg('profMsg', 'Saved (demo: log in as a maid to save for real).', 'ok');
         return;
@@ -669,10 +746,12 @@ const WIRE = {
             residentialAddress: mp.residentialAddress,
             years: mp.years,
             bringsProducts: mp.bringsProducts,
-            photo: mp.photo || null,
+            productsOption: mpProductsOption,
+            photo: mp.photo,
             cleanRates: mpCleanRates,
             bondGuaranteed: mpBondGuaranteed,
-            services: Object.keys(mpCleanRates),
+            endOfLease: mpEndOfLease,
+            services: [...Object.keys(mpCleanRates), ...(mpEndOfLease ? ['end-of-tenancy'] : [])],
             areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
             listingStatus: 'active',
           }),
@@ -723,7 +802,7 @@ const HOWFLOW_STEPS = [
   { n: '03', h: 'Set your price', b: `Add your hourly rate. You set it, and it's shown openly; no race to the bottom.` },
   { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas near you.` },
   { n: '05', h: `Get <span class="hi">exclusive</span> enquiries`, b: `Clients who want your services at your times reach out to <span class="hi">you alone</span>. Reply and arrange directly; <span class="hi">you keep 100%</span>.` },
-  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$30/month</span> (or <span class="hi">$50 to be promoted</span>).` },
+  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$30/month</span> (or <span class="hi">$50 for premium</span>).` },
 ];
 
 function howflowHTML() {
@@ -806,7 +885,7 @@ function initHowflow(panel) {
 
 // Guided onboarding: do-this-first checklist, ticks off from real data.
 function gettingStartedHTML() {
-  const profileSet = !!(mp.businessName && mp.businessName.trim() && mpCleanRates.regular);
+  const profileSet = !!(mp.businessName && mp.businessName.trim() && (mpCleanRates.regular || mpCleanRates.deep));
   const availSet = avail.length > 0;
   const steps = [
     { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your fees.', tab: 'profile', done: profileSet },
@@ -1277,7 +1356,7 @@ const WIZ_STEPS = [
 // up before doesn't get the wizard again.
 function profileComplete() {
   if (mp.listingStatus === 'active') return true;
-  const set = !!(mp.businessName && String(mp.businessName).trim() && mpCleanRates.regular);
+  const set = !!(mp.businessName && String(mp.businessName).trim() && (mpCleanRates.regular || mpCleanRates.deep));
   return set && avail.length > 0;
 }
 function tryAutoWizard() {
@@ -1306,10 +1385,13 @@ const WIZ_CONTENT = {
     <p class="wiz-lede">Where will you take jobs? Christchurch-wide by default, or narrow to specific suburbs.</p>
     ${locSectionHTML()}`,
   pricing: () => `
-      <p class="wiz-lede">Regular and deep cleans are priced per hour; end-of-tenancy is a flat fee. Leave one blank if you don't offer it.</p>
+      <p class="wiz-lede">Both cleans are priced per hour. Leave one blank if you don't offer it. End-of-lease cleans are an option under the deep clean.</p>
       <div class="field"><span>Your fees</span>
         <div class="addon-list">${cleanFeesHTML()}</div></div>
-      <div class="field"><label class="check-inline"><input type="checkbox" id="wizProducts" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own products and equipment</label></div>`,
+      <label class="field"><span>Cleaning products &amp; equipment</span>
+        <select id="wizProducts">
+          ${PRODUCT_OPTIONS.map((o) => `<option value="${o.value}" ${mpProductsOption === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+        </select></label>`,
   availability: () => `
     <p class="wiz-lede">Tap the times you're usually free. This is what matches you to clients.</p>
     <div class="cal" id="wizCal">${calendarHTML(avail)}</div>`,
@@ -1420,8 +1502,9 @@ function captureWizStep(key) {
     return true;
   }
   if (key === 'pricing') {
-    mp.bringsProducts = wizEl.querySelector('#wizProducts')?.checked ?? mp.bringsProducts;
-    if (!mpCleanRates.regular) { wizSetMsg('Set at least a regular-clean hourly fee to continue.', 'err'); return false; }
+    const wp = wizEl.querySelector('#wizProducts');
+    if (wp) { mpProductsOption = wp.value; mp.bringsProducts = mpProductsOption !== 'supplied'; }
+    if (!mpCleanRates.regular && !mpCleanRates.deep) { wizSetMsg('Offer at least one clean and set its hourly fee to continue.', 'err'); return false; }
     return true;
   }
   if (key === 'availability') {
@@ -1457,7 +1540,8 @@ async function saveWizard() {
         photo: mp.photo || null,
         cleanRates: mpCleanRates,
         bondGuaranteed: mpBondGuaranteed,
-        services: Object.keys(mpCleanRates),
+        endOfLease: mpEndOfLease,
+        services: [...Object.keys(mpCleanRates), ...(mpEndOfLease ? ['end-of-tenancy'] : [])],
         areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
         listingStatus: 'active',
       }),

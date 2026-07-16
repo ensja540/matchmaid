@@ -632,33 +632,27 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, residentialAddress, fullName } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, endOfLease, productsOption, residentialAddress, fullName } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
 
-    // Per-clean-type fee model. Keep only known base clean types with a positive
-    // fee — a type with no fee is one they don't offer. Regular/deep are hourly;
-    // end-of-tenancy is a flat total. The bond-back guarantee is a boolean stored
-    // in the same JSON (not a fee), so it never pollutes the rate band below.
+    // Per-clean-type fee model: regular and deep, both hourly. End-of-lease and
+    // its bond-back guarantee are capabilities of the deep clean, stored as
+    // booleans in the same JSON (not fees), so they never pollute the rate band.
     let cleanRatesClean = null;
     const hourlyFeeVals = [];
     if (cleanRates && typeof cleanRates === 'object') {
       cleanRatesClean = {};
       for (const slug of BASE_SERVICE_SLUGS) {
         const v = Math.max(0, Math.round(Number(cleanRates[slug]) || 0));
-        if (v > 0) {
-          cleanRatesClean[slug] = v;
-          if (slug !== 'end-of-tenancy') hourlyFeeVals.push(v); // flat fee isn't a per-hour rate
-        }
+        if (v > 0) { cleanRatesClean[slug] = v; hourlyFeeVals.push(v); }
       }
-      if (bondGuaranteed) cleanRatesClean.bondGuaranteed = true;
+      if (endOfLease) cleanRatesClean.endOfLease = true;
+      if (endOfLease && bondGuaranteed) cleanRatesClean.bondGuaranteed = true;
+      if (['own', 'supplied', 'either'].includes(productsOption)) cleanRatesClean.productsOption = productsOption;
     }
-    // Rate band is derived from hourly fees only; if a maid offers nothing but the
-    // flat end-of-tenancy clean, fall back to that so search still has a number.
-    const feeVals = hourlyFeeVals.length
-      ? hourlyFeeVals
-      : (cleanRatesClean && cleanRatesClean['end-of-tenancy'] ? [cleanRatesClean['end-of-tenancy']] : []);
+    const feeVals = hourlyFeeVals;
 
     // Priced extras: keep only well-formed { slug, price } rows with a sane price.
     const cleanAddons = Array.isArray(addons)
@@ -706,7 +700,8 @@ app.put('/api/profile', async (req, res) => {
          listing_status = coalesce($8, listing_status),
          addons = coalesce($9, addons),
          brings_products = coalesce($10, brings_products),
-         profile_photo_url = coalesce($11, profile_photo_url),
+         profile_photo_url = case when $11::text is null then profile_photo_url
+                                  when $11 = '' then null else $11 end,
          service_surcharges = coalesce($12, service_surcharges),
          residential_address = coalesce($13, residential_address),
          clean_rates = coalesce($14, clean_rates), updated_at = now()
@@ -716,7 +711,7 @@ app.put('/api/profile', async (req, res) => {
         min, max, mid, listingStatus ?? null,
         cleanAddons != null ? JSON.stringify(cleanAddons) : null,
         typeof bringsProducts === 'boolean' ? bringsProducts : null,
-        photo || null,
+        photo === undefined ? null : photo, // '' clears the photo; null leaves it
         cleanSurcharges != null ? JSON.stringify(cleanSurcharges) : null,
         typeof residentialAddress === 'string' ? residentialAddress.slice(0, 300) : null,
         cleanRatesClean != null ? JSON.stringify(cleanRatesClean) : null,
@@ -826,11 +821,13 @@ app.put('/api/client-profile', async (req, res) => {
          address_line = $3, notes = $4, phone = $5,
          bedrooms = $6, bathrooms = $7, home_type = $8, has_stairs = $9,
          has_pets = $10, storeys = $11,
-         profile_photo_url = coalesce($12, profile_photo_url),
+         profile_photo_url = case when $12::text is null then profile_photo_url
+                                  when $12 = '' then null else $12 end,
          needs_products = $13
        where user_id = $1`,
       [userId, sub.rows[0]?.id ?? null, address ?? null, notes ?? null, phone ?? null,
-       bedrooms ?? null, bathrooms ?? null, homeType ?? null, !!stairs, !!pets, storeys ?? null, photo || null,
+       bedrooms ?? null, bathrooms ?? null, homeType ?? null, !!stairs, !!pets, storeys ?? null,
+       photo === undefined ? null : photo,
        !!needsProducts]
     );
     res.json({ ok: true });
