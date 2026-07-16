@@ -437,7 +437,7 @@ const PANELS = {
         </div>
       </form>
       ${pauseHTML()}
-      ${loggedIn ? RemoveProfile.html({ billingNote: true }) : ''}`;
+      ${loggedIn ? RemoveProfile.html({ billingNote: true, pauseOffer: mp.listingStatus !== 'paused' }) : ''}`;
   },
 
   subscription() {
@@ -576,7 +576,12 @@ const WIRE = {
     });
   },
   profile() {
-    if (loggedIn) RemoveProfile.bind(sessionUser.id);
+    if (loggedIn) RemoveProfile.bind(sessionUser.id, {
+      onPause: () => {
+        const pb = panel.querySelector('#pauseBtn');
+        if (pb) { pb.scrollIntoView({ behavior: 'smooth', block: 'center' }); pb.classList.add('flash'); setTimeout(() => pb.classList.remove('flash'), 1600); }
+      },
+    });
     // Photo is held as a data URL and saved with the rest of the profile.
     const avatar = panel.querySelector('#avatar');
     panel.querySelector('#photoInput')?.addEventListener('change', (e) => {

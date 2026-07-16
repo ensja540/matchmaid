@@ -105,17 +105,39 @@ async function awardReferralIfIdVerified(cleanerId) {
 // stay put for the other party — but cannot be used until the owner reactivates.
 // users.status is the single source of truth; the public directory filters on it.
 const REMOVED = 'removed';
+// Closing an account starts a cooling-off period before it can come back.
+const REACTIVATE_COOLDOWN_MONTHS = 2;
+function reactivateReadyDate(removedAt) {
+  const d = new Date(removedAt);
+  d.setMonth(d.getMonth() + REACTIVATE_COOLDOWN_MONTHS);
+  return d;
+}
 
 // Call only once credentials are verified, so we never leak account state to a
 // stranger. Returns an error body to send, or null to let the sign-in proceed.
 async function gateRemoved(user, reactivate) {
   if (user.status !== REMOVED) return null;
+  // The cooling-off period applies to cleaners only — customers can close and
+  // rejoin freely. removed_at can be null for accounts closed before this
+  // shipped, which also keeps the old immediate-reactivation behaviour.
+  const { rows } = await query('select removed_at from users where id = $1', [user.id]);
+  const removedAt = rows[0]?.removed_at ? new Date(rows[0].removed_at) : null;
+  if (user.role === 'cleaner' && removedAt) {
+    const readyAt = reactivateReadyDate(removedAt);
+    if (Date.now() < readyAt.getTime()) {
+      return {
+        error: `This account was closed and is in a ${REACTIVATE_COOLDOWN_MONTHS}-month cooling-off period. You can reactivate it from ${readyAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })}.`,
+        cooldown: true,
+        reactivateAfter: readyAt.toISOString(),
+      };
+    }
+  }
   if (!reactivate)
     return {
       error: 'This profile was removed. Reactivate it to get your account and data back.',
       deactivated: true,
     };
-  await query("update users set status = 'active', updated_at = now() where id = $1", [user.id]);
+  await query("update users set status = 'active', removed_at = null, updated_at = now() where id = $1", [user.id]);
   user.status = 'active';
   return null;
 }
@@ -434,11 +456,13 @@ app.post('/api/profile/remove', async (req, res) => {
     const { userId } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const { rowCount } = await query(
-      `update users set status = $2, updated_at = now() where id = $1 and status <> $2`,
+      `update users set status = $2, removed_at = now(), updated_at = now() where id = $1 and status <> $2`,
       [userId, REMOVED]
     );
     if (!rowCount) return res.status(404).json({ error: 'No active account for that user.' });
-    res.json({ ok: true });
+    // Tell the client when they'll be able to reactivate, so the confirmation
+    // message can be specific.
+    res.json({ ok: true, reactivateAfter: reactivateReadyDate(new Date()).toISOString(), cooldownMonths: REACTIVATE_COOLDOWN_MONTHS });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not remove the profile.' });

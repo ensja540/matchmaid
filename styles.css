@@ -1007,6 +1007,13 @@ a { color: inherit; text-decoration: none; }
 .danger-zone h2 { margin: 0 0 0.4rem; font-size: 1.4rem; color: #a3402f; }
 .danger-zone .muted { margin: 0 0 1.2rem; max-width: 60ch; }
 .danger-zone .field { max-width: 22rem; }
+/* "Pause instead" nudge inside the maid danger zone — a calmer alternative. */
+.pause-offer { background: #fff; border: 1px solid var(--copper); border-radius: var(--radius); padding: 1rem 1.2rem; margin: 0 0 1.4rem; }
+.pause-offer strong { color: var(--copper); display: block; margin-bottom: 0.25rem; }
+.pause-offer p { margin: 0 0 0.8rem; max-width: 56ch; font-size: 0.92rem; color: var(--ink); }
+/* Brief highlight when we jump the maid to the pause control. */
+@keyframes flashPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(20,184,166,0); } 30% { box-shadow: 0 0 0 4px rgba(20,184,166,0.35); } }
+.flash { animation: flashPulse 1.4s ease; }
 .btn.danger { background: #a3402f; border-color: #a3402f; color: var(--paper); }
 .btn.danger:hover:not(:disabled) { background: #8a3527; border-color: #8a3527; }
 .btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }

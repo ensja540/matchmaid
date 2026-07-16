@@ -137,7 +137,7 @@ function initHowflow(panel) {
 // are pre-filled; everything about their home is blank until they set it.
 const PROFILE_DEFAULTS = {
   photo: '', fullName: sessionUser?.fullName || '', email: sessionUser?.email || '', phone: '',
-  suburb: '', address: '', bedrooms: '', bathrooms: '', stairs: false, pets: false, needsProducts: false, storeys: '', homeType: '', notes: '',
+  suburb: '', address: '', bedrooms: '', bathrooms: '', stairs: false, pets: false, needsProducts: true, storeys: '', homeType: '', notes: '',
 };
 let cprof = { ...PROFILE_DEFAULTS };
 
