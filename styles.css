@@ -775,6 +775,11 @@ a { color: inherit; text-decoration: none; }
 .auth-msg { min-height: 1.2rem; margin: 0.9rem 0 0; font-size: 0.9rem; text-align: center; }
 .auth-msg.error { color: #a3402f; }
 .auth-msg.ok { color: var(--green); }
+/* Email-confirmation code entry: big, spaced, centred digits. */
+.code-input {
+  text-align: center; font-size: 1.5rem; letter-spacing: 0.4em; font-weight: 700;
+  font-variant-numeric: tabular-nums; padding-left: 0.4em; /* offset the trailing letter-spacing */
+}
 .auth-switch { text-align: center; font-size: 0.9rem; color: var(--muted); margin: 1.1rem 0 0; display: flex; flex-direction: column; gap: 0.3rem; align-items: center; }
 /* The switch links use the teal logo colour on both sides (navy accent on the
    customer page read as plain dark text, not green). */
@@ -1113,6 +1118,11 @@ a { color: inherit; text-decoration: none; }
 .fee-input { width: 4.2rem; padding: 0.35rem 0.5rem; text-align: right; }
 .fee-per { color: var(--muted); font-size: 0.82rem; }
 .fee-includes { margin: 0.45rem 0 0; font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+
+/* Cleaner base location: city + suburb dropdowns side by side. */
+.home-loc { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.4rem; }
+.home-loc select { width: 100%; }
+@media (max-width: 520px) { .home-loc { grid-template-columns: 1fr; } }
 
 /* Customer: price breakdown chips on result cards */
 .price-breakdown { display: flex; flex-wrap: wrap; gap: 0.35rem 0.45rem; margin: 0.5rem 0 0.2rem; }

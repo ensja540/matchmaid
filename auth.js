@@ -91,6 +91,9 @@ form.addEventListener('submit', async (e) => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
+    // Either a fresh signup (201) or a login onto an unconfirmed account (403)
+    // can ask for the emailed code before we let them in.
+    if (data.needsVerification) return showVerifyStep(data);
     if (!res.ok) {
       if (data.deactivated) return offerReactivate(data.error);
       msg.textContent = data.error || 'Something went wrong.';
@@ -146,6 +149,97 @@ function finishAuth(user) {
     user.role === 'cleaner' ? 'maid portal' : 'customer portal'
   }…`;
   setTimeout(() => { location.href = Session.homeFor(user.role); }, 700);
+}
+
+// ---- Email confirmation (hard gate) ---------------------------------------
+// The server sent a 6-digit code to the address and is holding the account
+// until it's entered. Swap the whole card for a code step; on success we log
+// them straight in.
+const card = document.querySelector('.auth-card');
+function showVerifyStep({ userId, email }) {
+  card.innerHTML = `
+    <p class="auth-role serif">Confirm your email</p>
+    <p class="auth-sub">We emailed a 6-digit code to <strong>${escapeHtml(email || 'your address')}</strong>.
+      Enter it below to finish. It expires in 15 minutes.</p>
+    <form id="verifyForm" novalidate>
+      <label class="field">
+        <span>Confirmation code</span>
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+               placeholder="123456" class="code-input" required />
+      </label>
+      <button class="btn solid lg full" type="submit" id="verifyBtn">Confirm &amp; continue</button>
+      <p class="auth-msg" id="verifyMsg" role="status"></p>
+    </form>
+    <p class="auth-switch">
+      <span>Didn't get it?</span>
+      <button type="button" class="linklike" id="resendCode">Resend code</button>
+    </p>
+    <p class="auth-switch">
+      <a class="linklike" href="/login?role=${role}">Use a different email</a>
+    </p>`;
+
+  const vForm = document.getElementById('verifyForm');
+  const vMsg = document.getElementById('verifyMsg');
+  const vBtn = document.getElementById('verifyBtn');
+  const codeInput = vForm.code;
+  codeInput.focus();
+
+  vForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = codeInput.value.trim();
+    if (!/^\d{6}$/.test(code)) {
+      vMsg.className = 'auth-msg error';
+      vMsg.textContent = 'Enter the 6-digit code from your email.';
+      return;
+    }
+    vBtn.disabled = true;
+    vMsg.className = 'auth-msg';
+    vMsg.textContent = 'Confirming…';
+    try {
+      const res = await fetch('/api/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, code }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        vBtn.disabled = false;
+        vMsg.className = 'auth-msg error';
+        vMsg.textContent = data.error || 'Could not confirm. Try again.';
+        return;
+      }
+      finishAuth(data.user);
+    } catch {
+      vBtn.disabled = false;
+      vMsg.className = 'auth-msg error';
+      vMsg.textContent = 'Could not reach the server.';
+    }
+  });
+
+  document.getElementById('resendCode').addEventListener('click', async (e) => {
+    const link = e.currentTarget;
+    link.disabled = true;
+    vMsg.className = 'auth-msg';
+    vMsg.textContent = 'Sending a new code…';
+    try {
+      const res = await fetch('/api/resend-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      vMsg.className = 'auth-msg ok';
+      vMsg.textContent = res.ok ? 'Sent — check your inbox.' : (data.error || 'Could not resend.');
+    } catch {
+      vMsg.className = 'auth-msg error';
+      vMsg.textContent = 'Could not reach the server.';
+    }
+    setTimeout(() => { link.disabled = false; }, 3000);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 // ---- Sign in with Google (Google Identity Services) ----

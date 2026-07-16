@@ -58,6 +58,19 @@ let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
 const areas = new Set(loggedIn ? [] : profile.areas); // specific suburbs (when narrowing)
 let mpCity = 'Christchurch'; // default city
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
+// The cleaner's own base location — a city + suburb picked from dropdowns (no
+// free-text street address). Stored back into residential_address as
+// "Suburb, City" so it needs no schema change.
+let mpHomeCity = 'Christchurch';
+let mpHomeSuburb = '';
+function parseHome(addr) {
+  const parts = String(addr || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const cities = Object.keys(DEMO.towns);
+  const last = parts[parts.length - 1];
+  const city = cities.includes(last) ? last : cities[0];
+  const sub = parts.length > 1 ? parts[parts.length - 2] : '';
+  return { city, suburb: (DEMO.towns[city] || []).includes(sub) ? sub : '' };
+}
 // Per-clean-type hourly fee: { slug: dollars }. A type with a fee is one the
 // maid offers; no entry means they don't offer it. Replaces the old single
 // rate + specialist surcharges + priced extras.
@@ -81,6 +94,37 @@ function cleanFeesHTML() {
       </div>`;
   }).join('');
 }
+// The cleaner's base location as two dropdowns: city, then a suburb from that
+// city. Changing the city repopulates the suburbs.
+function homeLocationHTML() {
+  const cityOpts = Object.keys(DEMO.towns)
+    .map((c) => `<option value="${escapeHtml(c)}" ${c === mpHomeCity ? 'selected' : ''}>${escapeHtml(c)}</option>`)
+    .join('');
+  return `
+    <div class="field"><span>Where you're based</span>
+      <div class="home-loc">
+        <select class="home-city" name="homeCity">${cityOpts}</select>
+        <select class="home-suburb" name="homeSuburb">${homeSuburbOptions()}</select>
+      </div>
+    </div>`;
+}
+function homeSuburbOptions() {
+  const subs = DEMO.towns[mpHomeCity] || [];
+  return `<option value="">Select suburb…</option>` +
+    subs.map((s) => `<option value="${escapeHtml(s)}" ${s === mpHomeSuburb ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
+}
+function wireHomeLocation(root) {
+  const city = root.querySelector('.home-city');
+  const suburb = root.querySelector('.home-suburb');
+  if (!city || !suburb) return;
+  city.addEventListener('change', () => {
+    mpHomeCity = city.value;
+    mpHomeSuburb = '';
+    suburb.innerHTML = homeSuburbOptions();
+  });
+  suburb.addEventListener('change', () => { mpHomeSuburb = suburb.value; });
+}
+
 function wireCleanFees(root) {
   root.querySelectorAll('[data-fee]').forEach((row) => {
     const slug = row.dataset.fee;
@@ -108,6 +152,7 @@ let mp = loggedIn
       fullName: profile.fullName || '',
       residentialAddress: profile.residentialAddress || '',
     };
+if (!loggedIn) { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
   fetch(`/api/profile?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -137,6 +182,7 @@ if (sessionUser?.id) {
       mpCity = best;
       mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
       mpCleanRates = data.cleanRates && typeof data.cleanRates === 'object' ? { ...data.cleanRates } : {};
+      { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       render();
       profileLoaded = true; tryAutoWizard();
     })
@@ -349,7 +395,7 @@ const PANELS = {
           <label class="btn outline sm">Upload photo<input type="file" id="photoInput" accept="image/*" hidden /></label>
         </div>
         <label class="field"><span>Full name</span><input name="fullName" value="${escapeHtml(mp.fullName ?? '')}" placeholder="Your legal name" /></label>
-        <label class="field"><span>Residential address</span><input name="residentialAddress" value="${escapeHtml(mp.residentialAddress ?? '')}" placeholder="Street, suburb, city" /></label>
+        ${homeLocationHTML()}
         <label class="field"><span>Business name</span><input name="business" value="${escapeHtml(mp.businessName ?? '')}" /></label>
         <label class="field"><span>Bio</span><textarea name="bio" rows="3">${escapeHtml(mp.bio ?? '')}</textarea></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
@@ -546,6 +592,7 @@ const WIRE = {
         setMsg('pauseMsg', 'Could not update your listing. Please try again.', 'err');
       }
     });
+    wireHomeLocation(panel);
     wireCleanFees(panel);
     wireLocSection();
     panel.querySelectorAll('[data-doc]').forEach((inp) =>
@@ -580,7 +627,7 @@ const WIRE = {
       mp.businessName = f.business.value;
       mp.bio = f.bio.value;
       mp.fullName = f.fullName.value;
-      mp.residentialAddress = f.residentialAddress.value;
+      mp.residentialAddress = mpHomeSuburb ? `${mpHomeSuburb}, ${mpHomeCity}` : mpHomeCity;
       mp.years = f.years.value;
       mp.bringsProducts = f.products.checked;
       if (!sessionUser?.id) {
@@ -1228,8 +1275,7 @@ const WIZ_CONTENT = {
     <p class="wiz-lede">The essentials clients see first. You can polish everything later in your profile.</p>
     <label class="field"><span>Full name</span>
       <input id="wizName" type="text" value="${escapeHtml(mp.fullName || '')}" placeholder="Your legal name" /></label>
-    <label class="field"><span>Residential address</span>
-      <input id="wizAddress" type="text" value="${escapeHtml(mp.residentialAddress || '')}" placeholder="Street, suburb, city" /></label>
+    ${homeLocationHTML()}
     <label class="field"><span>Business or display name</span>
       <input id="wizBiz" type="text" value="${escapeHtml(mp.businessName || '')}" placeholder="e.g. Alex's Cleaning" /></label>
     <label class="field"><span>Short bio <span class="muted">(optional)</span></span>
@@ -1252,6 +1298,7 @@ const WIZ_CONTENT = {
 };
 
 const WIZ_WIRE = {
+  about: (root) => wireHomeLocation(root),
   areas: (root) => wireLocSection(root),
   pricing: (root) => wireCleanFees(root),
   availability: (root) => {
@@ -1340,13 +1387,12 @@ function renderWizStep() {
 function captureWizStep(key) {
   if (key === 'about') {
     const name = wizEl.querySelector('#wizName').value.trim();
-    const address = wizEl.querySelector('#wizAddress').value.trim();
     const biz = wizEl.querySelector('#wizBiz').value.trim();
     if (!name) { wizSetMsg('Add your full name to continue.', 'err'); return false; }
-    if (!address) { wizSetMsg('Add your residential address to continue.', 'err'); return false; }
+    if (!mpHomeSuburb) { wizSetMsg('Pick the suburb you’re based in to continue.', 'err'); return false; }
     if (!biz) { wizSetMsg('Add a business or display name to continue.', 'err'); return false; }
     mp.fullName = name;
-    mp.residentialAddress = address;
+    mp.residentialAddress = `${mpHomeSuburb}, ${mpHomeCity}`;
     mp.businessName = biz;
     mp.bio = wizEl.querySelector('#wizBio').value;
     return true;

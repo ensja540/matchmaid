@@ -124,7 +124,7 @@ const DEMO = {
   maidProfile: {
     businessName: "Aroha's Home Care",
     fullName: 'Aroha Ngata',
-    residentialAddress: '12 Clyde Road, Fendalton, Christchurch',
+    residentialAddress: 'Fendalton, Christchurch',
     bio: 'Friendly, thorough home cleaner with 8 years experience. I love turning a busy household into a calm, fresh space.',
     baseSuburb: 'Riccarton',
     areas: ['Riccarton', 'Fendalton', 'Papanui'],
