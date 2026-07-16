@@ -162,9 +162,18 @@ app.post('/api/register', async (req, res) => {
     }
 
     if (gateOn) {
-      // Don't sign them in yet: they must confirm the code first.
-      sendVerificationEmail({ to: user.email, name: user.full_name, code }).catch(() => {});
-      return res.status(201).json({ needsVerification: true, userId: user.id, email: user.email });
+      // Only hold the account for a code if the email actually went out. If the
+      // send fails (e.g. the Resend domain isn't verified yet), don't strand
+      // them at a code screen with no code — confirm and sign them straight in.
+      const sent = await sendVerificationEmail({ to: user.email, name: user.full_name, code });
+      if (sent && sent.ok) {
+        return res.status(201).json({ needsVerification: true, userId: user.id, email: user.email });
+      }
+      await query(
+        'update users set email_verified = true, verify_code = null, verify_expires = null where id = $1',
+        [user.id]
+      );
+      return res.status(201).json({ user: publicUser({ ...user, email_verified: true }) });
     }
     res.status(201).json({ user: publicUser(user) });
   } catch (err) {
@@ -188,7 +197,7 @@ async function issueVerificationCode(user) {
     "update users set verify_code = $2, verify_expires = now() + interval '15 minutes', updated_at = now() where id = $1",
     [user.id, code]
   );
-  sendVerificationEmail({ to: user.email, name: user.full_name, code }).catch(() => {});
+  return sendVerificationEmail({ to: user.email, name: user.full_name, code });
 }
 
 app.post('/api/verify-email', async (req, res) => {
@@ -272,11 +281,18 @@ app.post('/api/login', async (req, res) => {
     if (gate) return res.status(403).json(gate);
 
     // An account that signed up but never confirmed its email can't log in until
-    // it does. Reissue a fresh code and hand the client the verify step. (Only
-    // when email works — otherwise there'd be no way to receive the code.)
+    // it does. Reissue a fresh code and hand the client the verify step — but
+    // only if the code actually sends. If it can't (unverified domain), confirm
+    // the account rather than lock the owner out of their own login.
     if (emailEnabled() && !user.email_verified) {
-      await issueVerificationCode(user);
-      return res.status(403).json({ needsVerification: true, userId: user.id, email: user.email });
+      const sent = await issueVerificationCode(user);
+      if (sent && sent.ok) {
+        return res.status(403).json({ needsVerification: true, userId: user.id, email: user.email });
+      }
+      await query(
+        'update users set email_verified = true, verify_code = null, verify_expires = null where id = $1',
+        [user.id]
+      );
     }
 
     await ensureProfile(user.id, user.role);
