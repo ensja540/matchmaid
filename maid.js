@@ -71,26 +71,35 @@ function parseHome(addr) {
   const sub = parts.length > 1 ? parts[parts.length - 2] : '';
   return { city, suburb: (DEMO.towns[city] || []).includes(sub) ? sub : '' };
 }
-// Per-clean-type hourly fee: { slug: dollars }. A type with a fee is one the
-// maid offers; no entry means they don't offer it. Replaces the old single
-// rate + specialist surcharges + priced extras.
-let mpCleanRates = loggedIn ? {} : { ...(profile.cleanRates || {}) };
+// Per-clean-type fee: { slug: dollars }. A type with a fee is one the maid
+// offers; no entry means they don't offer it. Regular/deep are hourly; end of
+// tenancy is a flat total. The bond-guaranteed flag rides alongside as a
+// separate boolean (not a fee), stored in the same clean_rates JSON.
+function extractRates(src) {
+  const cr = src && typeof src === 'object' ? { ...src } : {};
+  const bond = !!cr.bondGuaranteed;
+  delete cr.bondGuaranteed;
+  return { rates: cr, bond };
+}
+let mpCleanRates = loggedIn ? {} : extractRates(profile.cleanRates).rates;
+let mpBondGuaranteed = loggedIn ? false : extractRates(profile.cleanRates).bond;
 const CLEAN_TYPES = [
   { slug: 'regular', name: 'Regular clean' },
   { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash' },
-  { slug: 'end-of-tenancy', name: 'End of tenancy clean' },
+  { slug: 'end-of-tenancy', name: 'End of tenancy clean', flat: true },
 ];
 
-// Per-clean-type hourly fee rows. Each has a "$ __ /hr" box; leaving it blank
-// means the maid doesn't offer that clean. Deep clean shows what it bundles.
+// Per-clean-type fee rows. Hourly cleans show "/hr"; the end-of-tenancy row is a
+// flat total ("flat") and carries the optional bond-back guarantee toggle.
 function cleanFeesHTML() {
   return CLEAN_TYPES.map((t) => {
     const val = mpCleanRates[t.slug];
     return `<div class="fee-row" data-fee="${t.slug}">
         <div class="fee-head"><span class="fee-name">${escapeHtml(t.name)}</span>
-          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="—" /><span class="fee-per">/hr</span></span>
+          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="—" /><span class="fee-per">${t.flat ? 'flat' : '/hr'}</span></span>
         </div>
         ${t.includes ? `<p class="fee-includes">Includes: ${escapeHtml(t.includes)}</p>` : ''}
+        ${t.flat ? `<label class="check-inline fee-bond"><input type="checkbox" class="bond-toggle" ${mpBondGuaranteed ? 'checked' : ''} /> Bond-back guaranteed <span class="muted">— you'll put it right if the manager isn't satisfied</span></label>` : ''}
       </div>`;
   }).join('');
 }
@@ -137,6 +146,8 @@ function wireCleanFees(root) {
       else { delete mpCleanRates[slug]; row.classList.remove('on'); }
     };
     input.addEventListener('input', sync);
+    const bond = row.querySelector('.bond-toggle');
+    if (bond) bond.addEventListener('change', () => { mpBondGuaranteed = bond.checked; });
   });
 }
 let mp = loggedIn
@@ -181,7 +192,7 @@ if (sessionUser?.id) {
       }
       mpCity = best;
       mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
-      mpCleanRates = data.cleanRates && typeof data.cleanRates === 'object' ? { ...data.cleanRates } : {};
+      { const ex = extractRates(data.cleanRates); mpCleanRates = ex.rates; mpBondGuaranteed = ex.bond; }
       { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       render();
       profileLoaded = true; tryAutoWizard();
@@ -405,8 +416,8 @@ const PANELS = {
           <p class="muted" style="margin:0.4rem 0 0">On by default. Untick it only if the customer needs to supply
             products and equipment. Customers who need them supplied won't see you.</p>
         </div>
-        <div class="field"><span>Your hourly fees</span>
-          <p class="muted" style="margin:0.2rem 0 0.8rem">Set an hourly fee for each clean you offer. Leave one blank if you don't offer it.</p>
+        <div class="field"><span>Your fees</span>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Regular and deep cleans are priced per hour; end-of-tenancy is a flat fee. Leave one blank if you don't offer it.</p>
           <div class="addon-list">${cleanFeesHTML()}</div>
         </div>
         <div class="field"><span>Verification</span>
@@ -649,6 +660,7 @@ const WIRE = {
             bringsProducts: mp.bringsProducts,
             photo: mp.photo || null,
             cleanRates: mpCleanRates,
+            bondGuaranteed: mpBondGuaranteed,
             services: Object.keys(mpCleanRates),
             areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
             listingStatus: 'active',
@@ -786,7 +798,7 @@ function gettingStartedHTML() {
   const profileSet = !!(mp.businessName && mp.businessName.trim() && mpCleanRates.regular);
   const availSet = avail.length > 0;
   const steps = [
-    { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your hourly fees.', tab: 'profile', done: profileSet },
+    { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your fees.', tab: 'profile', done: profileSet },
     { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work. This is what matches you to clients.', tab: 'availability', done: availSet },
     { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: profileSet },
     { n: 4, label: 'Get verified', desc: 'Upload ID, a police check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
@@ -856,8 +868,8 @@ function referralBannerHTML() {
       <div class="rb-body">
         <span class="rb-kicker">Grow the network, get paid for it</span>
         <h2 class="rb-head">Refer a cleaner${per ? `, earn $${per} credit` : ''}</h2>
-        <p class="rb-copy">Know a great cleaner? Share your invite link. When they join and get fully
-          verified (ID, police check and insurance)${per ? `, you earn <strong>$${per}</strong> off your future payments` : ', you earn credit off your future payments'} —
+        <p class="rb-copy">Know a great cleaner? Share your invite link. When they join and get
+          ID-verified${per ? `, you earn <strong>$${per}</strong> off your future payments` : ', you earn credit off your future payments'} —
           and there's no cap on how many you can bring in.</p>
         ${referrals
           ? `<div class="rb-actions">
@@ -888,7 +900,7 @@ function wireRefCopy(root) {
 }
 
 // Referral card: your code, your credit, and who you've brought in. The credit
-// only lands once a referred cleaner is fully verified, so pending ones are
+// only lands once a referred cleaner is ID-verified, so pending ones are
 // shown as such rather than silently missing.
 function referralsHTML() {
   if (!loggedIn) return '';
@@ -902,7 +914,7 @@ function referralsHTML() {
         <span>${escapeHtml(r.name)}</span>
         ${r.credited
           ? `<span class="status status-accepted">+$${r.creditDollars} credited</span>`
-          : '<span class="status status-new">Awaiting full verification</span>'}
+          : '<span class="status status-new">Awaiting ID verification</span>'}
       </div>`
     )
     .join('');
@@ -910,9 +922,8 @@ function referralsHTML() {
   return `
     <div class="panel-card referral-card">
       <h2>Refer a cleaner</h2>
-      <p class="muted">Share your code. When a cleaner you refer becomes fully verified
-        (ID, police check and insurance), you earn <strong>$${per}</strong> of credit toward
-        your future payments.</p>
+      <p class="muted">Share your code. When a cleaner you refer becomes ID-verified,
+        you earn <strong>$${per}</strong> of credit toward your future payments.</p>
 
       <div class="ref-credit">
         <span class="ref-amount">$${referrals.creditDollars}</span>
@@ -924,7 +935,7 @@ function referralsHTML() {
         <button class="btn outline sm js-ref-copy" type="button" data-link="${escapeHtml(link)}">Copy invite link</button>
       </div>
       <p class="muted ref-counts">
-        ${referrals.earned} fully verified · ${referrals.pending} awaiting verification
+        ${referrals.earned} ID-verified · ${referrals.pending} awaiting verification
       </p>
 
       ${rows ? `<div class="ref-list">${rows}</div>` : '<p class="muted">No referrals yet. Share your code to get started.</p>'}
@@ -1284,8 +1295,8 @@ const WIZ_CONTENT = {
     <p class="wiz-lede">Where will you take jobs? Christchurch-wide by default, or narrow to specific suburbs.</p>
     ${locSectionHTML()}`,
   pricing: () => `
-      <p class="wiz-lede">Set an hourly fee for each clean you offer. Leave one blank if you don't offer it.</p>
-      <div class="field"><span>Your hourly fees</span>
+      <p class="wiz-lede">Regular and deep cleans are priced per hour; end-of-tenancy is a flat fee. Leave one blank if you don't offer it.</p>
+      <div class="field"><span>Your fees</span>
         <div class="addon-list">${cleanFeesHTML()}</div></div>
       <div class="field"><label class="check-inline"><input type="checkbox" id="wizProducts" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own products and equipment</label></div>`,
   availability: () => `
@@ -1434,6 +1445,7 @@ async function saveWizard() {
         bringsProducts: mp.bringsProducts,
         photo: mp.photo || null,
         cleanRates: mpCleanRates,
+        bondGuaranteed: mpBondGuaranteed,
         services: Object.keys(mpCleanRates),
         areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
         listingStatus: 'active',

@@ -76,7 +76,7 @@ const DEMO = {
   cleaners: [
     {
       id: 'c1', name: "Aroha's Home Care", areas: ['Riccarton', 'Fendalton', 'Papanui'],
-      services: ['regular', 'deep', 'end-of-tenancy'], rate: 38, rateMin: 34, rateMax: 42, rating: 4.9, reviews: 27,
+      services: ['regular', 'deep', 'end-of-tenancy'], rate: 38, rateMin: 34, rateMax: 42, rating: 4.9, reviews: 27, bondGuaranteed: true,
       badges: { id: true, police: true, insurance: true }, featured: true,
       availability: [
         { day: 0, slot: 'am' }, { day: 0, slot: 'pm' }, { day: 2, slot: 'am' },
@@ -129,7 +129,8 @@ const DEMO = {
     baseSuburb: 'Riccarton',
     areas: ['Riccarton', 'Fendalton', 'Papanui'],
     services: ['regular', 'deep', 'end-of-tenancy'],
-    cleanRates: { regular: 38, deep: 48, 'end-of-tenancy': 55 },
+    cleanRates: { regular: 38, deep: 48, 'end-of-tenancy': 240, bondGuaranteed: true },
+    bondGuaranteed: true,
     rate: 38,
     rateMin: 34,
     rateMax: 42,

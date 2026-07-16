@@ -182,6 +182,7 @@ function resultCard(r, p) {
         <p class="result-meta">${rateStr}${fairStr}${costStr} · ${p.locLabel}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
+    ${r.bondGuaranteed ? '<p class="bond-badge">✓ Bond-back guaranteed on end-of-tenancy cleans</p>' : ''}
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${offeredChips || missingChips ? `<div class="chips">${offeredChips}${missingChips}</div>` : ''}
     ${(r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
@@ -255,6 +256,7 @@ function cleanerCardHTML(c) {
       </div>
     </div>
     ${Badges.earned(c.badges, c.bringsProducts)}
+    ${c.bondGuaranteed ? '<p class="bond-badge">✓ Bond-back guaranteed on end-of-tenancy cleans</p>' : ''}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
     ${c.serviceSurcharges && c.serviceSurcharges.length

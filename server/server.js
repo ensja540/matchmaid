@@ -9,6 +9,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
+import { emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail } from './email.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, '..'); // project root holds index.html etc.
@@ -85,13 +86,14 @@ async function linkReferral(newCleanerId, code) {
 
 // Called after a verification is approved. Idempotent: the credit is only
 // stamped when credited_at is still null, so re-approving can't pay twice.
-async function awardReferralIfFullyVerified(cleanerId) {
+// The credit lands as soon as the referred cleaner is ID-verified — the police
+// check and insurance are no longer required to earn it.
+async function awardReferralIfIdVerified(cleanerId) {
   const { rows } = await query(
-    `select id_verified and police_verified and insurance_verified as full
-       from cleaner_profiles where id = $1`,
+    'select id_verified from cleaner_profiles where id = $1',
     [cleanerId]
   );
-  if (!rows[0]?.full) return;
+  if (!rows[0]?.id_verified) return;
   await query(
     `update referrals set credit_cents = $2, credited_at = now()
       where referred_cleaner_id = $1 and credited_at is null`,
@@ -135,11 +137,16 @@ app.post('/api/register', async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, 10);
 
+    // Email confirmation is a hard gate — but only when email actually works.
+    // With no provider configured the code could never arrive, so we skip the
+    // gate entirely and sign them straight in (the pre-email behaviour).
+    const gateOn = emailEnabled();
+    const code = gateOn ? makeCode() : null;
     const { rows } = await query(
-      `insert into users (email, role, full_name, password_hash)
-       values ($1, $2, $3, $4)
+      `insert into users (email, role, full_name, password_hash, email_verified, verify_code, verify_expires)
+       values ($1, $2, $3, $4, $5, $6, ${gateOn ? "now() + interval '15 minutes'" : 'null'})
        returning id, role, full_name, email`,
-      [email.toLowerCase().trim(), dbRole, fullName.trim(), password_hash]
+      [email.toLowerCase().trim(), dbRole, fullName.trim(), password_hash, !gateOn, code]
     );
     const user = rows[0];
 
@@ -154,6 +161,11 @@ app.post('/api/register', async (req, res) => {
       await query('insert into client_profiles (user_id) values ($1)', [user.id]);
     }
 
+    if (gateOn) {
+      // Don't sign them in yet: they must confirm the code first.
+      sendVerificationEmail({ to: user.email, name: user.full_name, code }).catch(() => {});
+      return res.status(201).json({ needsVerification: true, userId: user.id, email: user.email });
+    }
     res.status(201).json({ user: publicUser(user) });
   } catch (err) {
     // Unique is on (email, role), so this only fires for the side they asked
@@ -164,6 +176,62 @@ app.post('/api/register', async (req, res) => {
       });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });
+  }
+});
+
+// --- Auth: confirm email with a code ---------------------------------------
+// Issue a fresh code + expiry to a user and email it. Shared by resend and by
+// login when it meets an unverified account.
+async function issueVerificationCode(user) {
+  const code = makeCode();
+  await query(
+    "update users set verify_code = $2, verify_expires = now() + interval '15 minutes', updated_at = now() where id = $1",
+    [user.id, code]
+  );
+  sendVerificationEmail({ to: user.email, name: user.full_name, code }).catch(() => {});
+}
+
+app.post('/api/verify-email', async (req, res) => {
+  try {
+    const { userId, code } = req.body ?? {};
+    if (!userId || !code) return res.status(400).json({ error: 'Enter the code we emailed you.' });
+    const { rows } = await query(
+      'select id, role, full_name, email, email_verified, verify_code, verify_expires from users where id = $1',
+      [userId]
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+    if (user.email_verified) return res.json({ user: publicUser(user) }); // already done — let them in
+    if (!user.verify_code || !user.verify_expires || new Date(user.verify_expires) < new Date())
+      return res.status(400).json({ error: 'That code has expired. Send a new one.', expired: true });
+    if (String(code).trim() !== String(user.verify_code))
+      return res.status(400).json({ error: "That code doesn't match. Check it and try again." });
+
+    await query(
+      'update users set email_verified = true, verify_code = null, verify_expires = null, updated_at = now() where id = $1',
+      [user.id]
+    );
+    await ensureProfile(user.id, user.role);
+    res.json({ user: publicUser(user) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not confirm your email. Try again.' });
+  }
+});
+
+app.post('/api/resend-code', async (req, res) => {
+  try {
+    const { userId } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query('select id, full_name, email, email_verified from users where id = $1', [userId]);
+    const user = rows[0];
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+    if (user.email_verified) return res.json({ ok: true, alreadyVerified: true });
+    await issueVerificationCode(user);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not resend the code. Try again.' });
   }
 });
 
@@ -190,7 +258,7 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required.' });
 
     const { rows } = await query(
-      'select id, role, full_name, email, password_hash, status from users where email = $1 and role = $2',
+      'select id, role, full_name, email, password_hash, status, email_verified from users where email = $1 and role = $2',
       [email.toLowerCase().trim(), dbRole]
     );
     const user = rows[0];
@@ -202,6 +270,14 @@ app.post('/api/login', async (req, res) => {
 
     const gate = await gateRemoved(user, reactivate);
     if (gate) return res.status(403).json(gate);
+
+    // An account that signed up but never confirmed its email can't log in until
+    // it does. Reissue a fresh code and hand the client the verify step. (Only
+    // when email works — otherwise there'd be no way to receive the code.)
+    if (emailEnabled() && !user.email_verified) {
+      await issueVerificationCode(user);
+      return res.status(403).json({ needsVerification: true, userId: user.id, email: user.email });
+    }
 
     await ensureProfile(user.id, user.role);
     res.json({ user: publicUser(user) });
@@ -243,9 +319,11 @@ app.post('/api/auth/google', async (req, res) => {
       // unique index is on (email, role), so this insert stands on its own.
       // No password login for Google accounts — store an unusable random hash.
       const hash = await bcrypt.hash('google-' + credential.slice(0, 24) + Date.now(), 10);
+      // Google already verified this address, so the account is confirmed on
+      // creation — no code step for Google sign-ups.
       ({ rows } = await query(
-        `insert into users (email, role, full_name, password_hash)
-         values ($1, $2, $3, $4) returning id, role, full_name, email`,
+        `insert into users (email, role, full_name, password_hash, email_verified)
+         values ($1, $2, $3, $4, true) returning id, role, full_name, email`,
         [email, dbRole, info.name || email.split('@')[0], hash]
       ));
       user = rows[0];
@@ -273,7 +351,7 @@ app.get('/api/referrals', async (req, res) => {
     const { rows } = await query(
       `select r.credited_at, r.credit_cents,
               coalesce(nullif(cp.business_name, ''), u.full_name) as name,
-              cp.id_verified and cp.police_verified and cp.insurance_verified as fully_verified
+              cp.id_verified as id_verified
          from referrals r
          join cleaner_profiles cp on cp.id = r.referred_cleaner_id
          join users u on u.id = cp.user_id
@@ -292,7 +370,7 @@ app.get('/api/referrals', async (req, res) => {
       pending: rows.filter((r) => !r.credited_at).length,
       referrals: rows.map((r) => ({
         name: r.name,
-        fullyVerified: !!r.fully_verified,
+        idVerified: !!r.id_verified,
         credited: !!r.credited_at,
         creditDollars: (r.credit_cents || 0) / 100,
       })),
@@ -489,22 +567,33 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, residentialAddress, fullName } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, residentialAddress, fullName } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
 
-    // New pricing model: a per-clean-type hourly fee. Keep only known base clean
-    // types with a positive fee — a type with no fee is one they don't offer.
+    // Per-clean-type fee model. Keep only known base clean types with a positive
+    // fee — a type with no fee is one they don't offer. Regular/deep are hourly;
+    // end-of-tenancy is a flat total. The bond-back guarantee is a boolean stored
+    // in the same JSON (not a fee), so it never pollutes the rate band below.
     let cleanRatesClean = null;
+    const hourlyFeeVals = [];
     if (cleanRates && typeof cleanRates === 'object') {
       cleanRatesClean = {};
       for (const slug of BASE_SERVICE_SLUGS) {
         const v = Math.max(0, Math.round(Number(cleanRates[slug]) || 0));
-        if (v > 0) cleanRatesClean[slug] = v;
+        if (v > 0) {
+          cleanRatesClean[slug] = v;
+          if (slug !== 'end-of-tenancy') hourlyFeeVals.push(v); // flat fee isn't a per-hour rate
+        }
       }
+      if (bondGuaranteed) cleanRatesClean.bondGuaranteed = true;
     }
-    const feeVals = cleanRatesClean ? Object.values(cleanRatesClean) : [];
+    // Rate band is derived from hourly fees only; if a maid offers nothing but the
+    // flat end-of-tenancy clean, fall back to that so search still has a number.
+    const feeVals = hourlyFeeVals.length
+      ? hourlyFeeVals
+      : (cleanRatesClean && cleanRatesClean['end-of-tenancy'] ? [cleanRatesClean['end-of-tenancy']] : []);
 
     // Priced extras: keep only well-formed { slug, price } rows with a sane price.
     const cleanAddons = Array.isArray(addons)
@@ -840,8 +929,8 @@ app.post('/api/admin/verification-decision', async (req, res) => {
       await query("update verifications set status = 'verified', verified_at = now() where id = $1", [id]);
       const col = VERIF_COL[type];
       if (col) await query(`update cleaner_profiles set ${col} = true where id = $1`, [cleaner_id]);
-      // This approval may have been their last outstanding badge.
-      await awardReferralIfFullyVerified(cleaner_id);
+      // ID verification is all it takes to earn the referrer their credit.
+      await awardReferralIfIdVerified(cleaner_id);
     } else {
       await query("update verifications set status = 'failed' where id = $1", [id]);
     }
@@ -1045,6 +1134,28 @@ app.post('/api/favourites', async (req, res) => {
 });
 
 // --- Enquiries + messaging (real, cross-device) ----------------------------
+// Email the cleaner that a new enquiry arrived. Looks up the cleaner's address
+// and the customer's name; a friendly service label and suburb dress it up.
+async function notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, suburb, message }) {
+  const cleaner = await query(
+    `select u.email, coalesce(nullif(cp.business_name, ''), u.full_name) as name
+       from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1`,
+    [cleanerId]
+  );
+  const to = cleaner.rows[0]?.email;
+  if (!to) return;
+  const client = await query('select full_name from users where id = $1', [clientUserId]);
+  const svc = serviceSlug ? await query('select name from service_types where slug = $1', [serviceSlug]) : { rows: [] };
+  await sendEnquiryEmail({
+    to,
+    cleanerName: cleaner.rows[0].name,
+    clientName: client.rows[0]?.full_name || 'A customer',
+    service: svc.rows[0]?.name || '',
+    suburb: suburb || '',
+    message: message || '',
+  });
+}
+
 // Contact a cleaner: reuse the existing thread with them, or create an enquiry
 // + conversation, then (optionally) post the first message.
 app.post('/api/contact', async (req, res) => {
@@ -1072,6 +1183,10 @@ app.post('/api/contact', async (req, res) => {
         [enq.rows[0].id, clientId, cleanerId]
       );
       conversationId = conv.rows[0].id;
+
+      // Let the cleaner know a new enquiry landed. Fire-and-forget: an email
+      // hiccup must never fail the enquiry itself.
+      notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, suburb, message }).catch(() => {});
     }
     if (message) {
       await query('insert into messages (conversation_id, sender_user_id, body) values ($1, $2, $3)',

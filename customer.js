@@ -644,6 +644,7 @@ function resultCard(r) {
       </div>
     </div>
     ${breakdownHTML(r)}
+    ${r.bondGuaranteed ? '<p class="bond-badge">✓ Bond-back guaranteed on end-of-tenancy cleans</p>' : ''}
     ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
     ${reqSlots && (r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
     ${reqSlots && !(r.matched || []).length ? `<p class="no-overlap">Not free at your chosen times. Ask about other slots.</p>` : ''}
@@ -838,6 +839,7 @@ function cleanerCardHTML(c) {
       ${starBtn(c.id, c.name)}
     </div>
     ${Badges.earned(c.badges, c.bringsProducts)}
+    ${c.bondGuaranteed ? '<p class="bond-badge">✓ Bond-back guaranteed on end-of-tenancy cleans</p>' : ''}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
     ${c.serviceSurcharges && c.serviceSurcharges.length
