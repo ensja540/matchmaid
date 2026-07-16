@@ -339,6 +339,12 @@ const PANELS = {
           $30/month (or $50/month to be promoted to the top of results).</p>
       </div>
 
+      <div class="portal-note">
+        <strong>We're onboarding cleaners first.</strong> Right now we're only accepting cleaner
+        registrations while we build out the directory — households join once there's a strong network
+        of cleaners for them to choose from. Get your profile ready so you're first in line.
+      </div>
+
       <div class="dash-grid">
         <div class="stat-card"><span class="stat-num">${Number(mp.avgRating || 0).toFixed(1)}★</span><span class="stat-label">Rating (${mp.reviews || 0})</span></div>
         <div class="stat-card"><span class="stat-num">${newCount}</span><span class="stat-label">New enquiries</span></div>

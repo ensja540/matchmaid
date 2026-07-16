@@ -1072,6 +1072,13 @@ a { color: inherit; text-decoration: none; }
 .stat-num.cap { text-transform: capitalize; font-size: 1.25rem; font-weight: 600; color: var(--copper-dark); }
 .stat-label { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .trial-banner { background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.4rem; margin: 1rem 0 1.6rem; }
+/* Portal note: explains we're onboarding cleaners first (households on waitlist). */
+.portal-note {
+  background: rgba(20,184,166,0.07); border: 1px solid var(--copper); border-left-width: 4px;
+  border-radius: var(--radius); padding: 1rem 1.2rem; margin: 0 0 1.6rem;
+  font-size: 0.92rem; line-height: 1.55; color: var(--ink);
+}
+.portal-note strong { color: var(--copper); }
 .trial-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.6rem; }
 .trial-top strong { font-family: var(--serif); font-size: 1.4rem; font-weight: 500; }
 .trial-top span { color: var(--muted); font-size: 0.88rem; }
