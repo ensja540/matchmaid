@@ -16,6 +16,8 @@ document.getElementById('logout').addEventListener('click', (e) => {
 const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
 let current = 'overview';
+// Guided profile-setup wizard state.
+let cwizStep = 0, cwizEl = null, cwizAutoTried = false;
 
 // ---- Working state (all loaded from the API) ----
 // products: null = follow the saved profile preference; true/false = the
@@ -160,8 +162,8 @@ function loadDirectory() {
 }
 function loadProfile() {
   getJSON(`/api/client-profile?userId=${encodeURIComponent(uid)}`)
-    .then((data) => { cprof = { ...PROFILE_DEFAULTS, ...data }; reRenderIf('profile', 'find'); })
-    .catch(() => {});
+    .then((data) => { cprof = { ...PROFILE_DEFAULTS, ...data }; reRenderIf('profile', 'find'); maybeAutoOpenCwiz(); })
+    .catch(() => { maybeAutoOpenCwiz(); });
 }
 function loadEnquiries() {
   getJSON(`/api/enquiries?userId=${encodeURIComponent(uid)}`)
@@ -386,35 +388,29 @@ const PANELS = {
           available in your area.</p>
         <p class="muted">Want the best match when they arrive? Fill out your profile so we know
           your suburb, the clean you want and when suits you.</p>
-        <button class="btn solid" data-goto="profile" type="button">Complete your profile</button>
+        <button class="btn solid" data-open-cwiz type="button">Complete your profile</button>
       </div>`;
   },
 
   messages() {
     const convo = convos.find((c) => c.id === activeConvo) || convos[0] || null;
     if (convo) activeConvo = convo.id;
-    const contactedIds = new Set(convos.map((c) => c.cleanerId));
-    const pickable = directory.filter((c) => !contactedIds.has(c.id));
     return `
       <h1>Messages</h1>
-      <p class="wizard-lede">Chat directly with any cleaner on Match Maid. Your history is saved to your account.</p>
+      <p class="wizard-lede">Your conversations with cleaners. Your history is saved to your account.</p>
       <div class="msg-layout">
         <div class="convo-col">
-          <form class="new-chat" id="newChat">
-            <select id="newCleaner">${
-              pickable.length
-                ? pickable.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
-                : '<option value="">All cleaners messaged</option>'
-            }</select>
-            <button class="btn outline sm" type="submit" ${pickable.length ? '' : 'disabled'}>Enquire</button>
-          </form>
-          <div class="convo-list">${convoListHTML()}</div>
+          <div class="convo-list">${
+            convos.length
+              ? convoListHTML()
+              : '<p class="muted" style="padding:1rem 0.4rem">No messages yet. Once cleaners are available in your area and you enquire, your chats will appear here.</p>'
+          }</div>
         </div>
         <div class="thread">
           ${
             convo
               ? threadHTML(convo, msgCache[convo.id] ?? null)
-              : '<div class="bubbles"><p class="muted" style="margin:auto">Start a chat with any cleaner</p></div>'
+              : '<div class="bubbles"><p class="muted" style="margin:auto">No conversation selected</p></div>'
           }
         </div>
       </div>`;
@@ -486,22 +482,13 @@ const WIRE = {
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
   },
-  // Search disabled during the waitlist phase — only the "complete your profile"
-  // call-to-action is live.
+  // Search disabled during the waitlist phase — the CTA opens the guided
+  // profile setup (their waitlist entry).
   find() {
-    panel.querySelector('[data-goto]')?.addEventListener('click', (e) => goTo(e.currentTarget.dataset.goto || 'profile'));
+    panel.querySelector('[data-open-cwiz]')?.addEventListener('click', openCwiz);
   },
   messages() {
     bindConvoButtons();
-    const nc = panel.querySelector('#newChat');
-    nc?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const sel = panel.querySelector('#newCleaner');
-      const cleanerId = sel.value;
-      if (!cleanerId || !uid) return;
-      // Every new contact goes through the enquiry form so it carries details.
-      openEnquiryModal(cleanerId, sel.options[sel.selectedIndex]?.text || '');
-    });
     const composer = panel.querySelector('#composer');
     composer?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -969,6 +956,178 @@ function wireCalendar(container, selected) {
       cell.classList.toggle('on', on);
     })
   );
+}
+
+// ---------- Guided profile-setup wizard ----------
+// The customer analog of the maid setup wizard: a modal that walks a new
+// customer through their profile (their waitlist entry) and saves it in one
+// call. Lives on document.body so background re-renders can't wipe it, and
+// reuses the shared .wiz-* styles.
+const CWIZ_STEPS = [
+  { key: 'about', title: 'About you' },
+  { key: 'suburb', title: 'Your suburb' },
+  { key: 'home', title: 'Your home' },
+];
+
+function cprofComplete() {
+  return !!(cprof.fullName && String(cprof.fullName).trim() && cprof.email && String(cprof.email).trim() && cprof.suburb);
+}
+function maybeAutoOpenCwiz() {
+  if (cwizAutoTried || !uid) return;
+  cwizAutoTried = true;
+  let dismissed = false;
+  try { dismissed = !!sessionStorage.getItem('mm_cwiz_dismissed'); } catch {}
+  if (dismissed || cprofComplete()) return;
+  openCwiz();
+}
+
+const CWIZ_CONTENT = {
+  about: () => `
+    <p class="wiz-lede">Just the basics so a cleaner knows who they're helping. This is your place on the waitlist.</p>
+    <div class="avatar-row">
+      <div class="avatar" id="cwizAvatar">${cprof.photo ? `<img src="${cprof.photo}" alt="" />` : '<span>Photo</span>'}</div>
+      <label class="btn outline sm">Upload photo <span class="muted">(optional)</span><input type="file" id="cwizPhoto" accept="image/*" hidden /></label>
+    </div>
+    <label class="field"><span>Full name</span><input id="cwizName" type="text" value="${attr(cprof.fullName)}" placeholder="Jack Ensor" /></label>
+    <label class="field"><span>Email</span><input id="cwizEmail" type="email" value="${attr(cprof.email)}" placeholder="you@example.com" /></label>
+    <label class="field"><span>Phone <span class="muted">(optional)</span></span><input id="cwizPhone" type="text" value="${attr(cprof.phone)}" placeholder="Optional" /></label>`,
+  suburb: () => `
+    <p class="wiz-lede">Where's your home? We'll match you with cleaners who cover your area first.</p>
+    <label class="field"><span>Suburb</span><select id="cwizSuburb">${opt('', 'Select…', cprof.suburb)}${suburbList.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>`,
+  home: () => {
+    const ph = (sel) => opt('', 'Select…', sel);
+    const bedOpts = ph(cprof.bedrooms) + ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
+    const bathOpts = ph(cprof.bathrooms) + ['1', '2', '3', '4+'].map((v) => opt(v, v, cprof.bathrooms)).join('');
+    const typeOpts = ph(cprof.homeType) + ['House', 'Apartment', 'Townhouse', 'Unit'].map((v) => opt(v, v, cprof.homeType)).join('');
+    const storeyOpts = ph(cprof.storeys) + ['Single storey', 'Multi storey'].map((v) => opt(v, v, cprof.storeys)).join('');
+    return `
+      <p class="wiz-lede">A quick picture of your home helps cleaners quote accurately. All optional.</p>
+      <div class="field-row">
+        <label class="field"><span>Bedrooms</span><select id="cwizBed">${bedOpts}</select></label>
+        <label class="field"><span>Bathrooms</span><select id="cwizBath">${bathOpts}</select></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>Home type</span><select id="cwizType">${typeOpts}</select></label>
+        <label class="field"><span>Storeys</span><select id="cwizStorey">${storeyOpts}</select></label>
+      </div>
+      <div class="field-row">
+        <label class="check-inline" style="align-self:center"><input type="checkbox" id="cwizPets" ${cprof.pets ? 'checked' : ''} /> Pets at home</label>
+        <label class="check-inline" style="align-self:center"><input type="checkbox" id="cwizProducts" ${cprof.needsProducts ? 'checked' : ''} /> Cleaner brings products</label>
+      </div>
+      <label class="field"><span>Layout notes &amp; access</span><textarea id="cwizNotes" rows="3" placeholder="e.g. stairs to the upper floor, park in the driveway, friendly dog.">${text(cprof.notes)}</textarea></label>`;
+  },
+};
+
+const CWIZ_WIRE = {
+  about: (root) => {
+    root.querySelector('#cwizPhoto')?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        cprof.photo = reader.result;
+        const a = root.querySelector('#cwizAvatar');
+        if (a) a.innerHTML = `<img src="${cprof.photo}" alt="" />`;
+      };
+      reader.readAsDataURL(file);
+    });
+  },
+};
+
+function openCwiz() {
+  if (cwizEl) return;
+  cwizStep = 0;
+  cwizEl = document.createElement('div');
+  cwizEl.className = 'wiz-overlay';
+  cwizEl.innerHTML = `<div class="wiz" role="dialog" aria-modal="true" aria-label="Complete your profile">
+    <button class="wiz-close" type="button" aria-label="Close">×</button>
+    <div class="wiz-progress" id="cwizProgress"></div>
+    <div class="wiz-body" id="cwizBody"></div>
+    <p class="wiz-msg" id="cwizMsg" role="status"></p>
+    <div class="wiz-foot">
+      <button class="btn outline" id="cwizBack" type="button">Back</button>
+      <div class="wiz-foot-right"><button class="btn solid" id="cwizNext" type="button">Next</button></div>
+    </div>
+  </div>`;
+  document.body.appendChild(cwizEl);
+  cwizEl.querySelector('.wiz-close').addEventListener('click', dismissCwiz);
+  cwizEl.querySelector('#cwizBack').addEventListener('click', () => { if (cwizStep > 0) { cwizStep--; renderCwizStep(); } });
+  cwizEl.querySelector('#cwizNext').addEventListener('click', advanceCwiz);
+  renderCwizStep();
+}
+function dismissCwiz() {
+  try { sessionStorage.setItem('mm_cwiz_dismissed', '1'); } catch {}
+  closeCwiz();
+}
+function closeCwiz() {
+  if (cwizEl) { cwizEl.remove(); cwizEl = null; }
+}
+function cwizSetMsg(t, c) {
+  const m = cwizEl && cwizEl.querySelector('#cwizMsg');
+  if (m) { m.textContent = t || ''; m.className = 'wiz-msg ' + (c || ''); }
+}
+function renderCwizStep() {
+  if (!cwizEl) return;
+  const step = CWIZ_STEPS[cwizStep];
+  cwizEl.querySelector('#cwizProgress').innerHTML =
+    CWIZ_STEPS.map((s, i) => `<span class="wiz-dot ${i === cwizStep ? 'now' : ''} ${i < cwizStep ? 'done' : ''}"></span>`).join('') +
+    `<span class="wiz-step-count">Step ${cwizStep + 1} of ${CWIZ_STEPS.length}</span>`;
+  const body = cwizEl.querySelector('#cwizBody');
+  body.innerHTML = `<h2 class="wiz-title">${step.title}</h2>` + CWIZ_CONTENT[step.key]();
+  CWIZ_WIRE[step.key] && CWIZ_WIRE[step.key](body);
+  cwizSetMsg('');
+  cwizEl.querySelector('#cwizBack').style.visibility = cwizStep === 0 ? 'hidden' : 'visible';
+  cwizEl.querySelector('#cwizNext').textContent = cwizStep === CWIZ_STEPS.length - 1 ? 'Finish' : 'Next';
+}
+function captureCwizStep(key) {
+  if (key === 'about') {
+    const name = cwizEl.querySelector('#cwizName').value.trim();
+    const email = cwizEl.querySelector('#cwizEmail').value.trim();
+    if (!name) { cwizSetMsg('Add your name to continue.', 'err'); return false; }
+    if (!email) { cwizSetMsg('Add your email to continue.', 'err'); return false; }
+    cprof.fullName = name;
+    cprof.email = email;
+    cprof.phone = cwizEl.querySelector('#cwizPhone').value.trim();
+    return true;
+  }
+  if (key === 'suburb') {
+    const sub = cwizEl.querySelector('#cwizSuburb').value;
+    if (!sub) { cwizSetMsg('Pick your suburb to continue.', 'err'); return false; }
+    cprof.suburb = sub;
+    return true;
+  }
+  if (key === 'home') {
+    cprof.bedrooms = cwizEl.querySelector('#cwizBed').value;
+    cprof.bathrooms = cwizEl.querySelector('#cwizBath').value;
+    cprof.homeType = cwizEl.querySelector('#cwizType').value;
+    cprof.storeys = cwizEl.querySelector('#cwizStorey').value;
+    cprof.pets = cwizEl.querySelector('#cwizPets').checked;
+    cprof.needsProducts = cwizEl.querySelector('#cwizProducts').checked;
+    cprof.notes = cwizEl.querySelector('#cwizNotes').value;
+    return true;
+  }
+  return true;
+}
+async function advanceCwiz() {
+  const step = CWIZ_STEPS[cwizStep];
+  if (!captureCwizStep(step.key)) return;
+  if (cwizStep < CWIZ_STEPS.length - 1) { cwizStep++; renderCwizStep(); return; }
+  await saveCwiz();
+}
+async function saveCwiz() {
+  if (!uid) { dismissCwiz(); render(); return; }
+  const nextBtn = cwizEl.querySelector('#cwizNext');
+  nextBtn.disabled = true;
+  cwizSetMsg('Saving your profile…', 'pending');
+  try {
+    await putClientProfile({ userId: uid, ...cprof });
+    try { sessionStorage.setItem('mm_cwiz_dismissed', '1'); } catch {}
+    cwizSetMsg("You're all set — you're on the waitlist!", 'ok');
+    setTimeout(() => { closeCwiz(); render(); }, 1100);
+  } catch {
+    nextBtn.disabled = false;
+    cwizSetMsg('Could not save. Please try again.', 'err');
+  }
 }
 
 // First paint (data streams in from the API and re-renders as it arrives).
