@@ -41,6 +41,12 @@ const SIDE_NAME = { cleaner: 'maid', client: 'hirer' };
 // catalogue is a flat-priced "extra". Must match DEMO.baseServiceSlugs.
 const BASE_SERVICE_SLUGS = ['regular', 'deep', 'end-of-tenancy'];
 
+// Capacity throttle: once a cleaner has this many active (accepted, not yet
+// completed) jobs, they're treated as "at capacity" and drop below cleaners
+// with spare capacity in search — so no single listing can hoard every request.
+// A finite individual has a real ceiling; this makes everyone behave like one.
+const CAPACITY_LIMIT = Number(process.env.CAPACITY_LIMIT) || 10;
+
 // --- Referrals --------------------------------------------------------------
 // A cleaner earns $10 of credit toward future payments for every cleaner they
 // refer who goes on to become FULLY verified (ID + police + insurance). The
@@ -488,8 +494,8 @@ app.get('/api/cleaners', async (req, res) => {
       return res.status(400).json({ error: 'Pick a suburb and a service.' });
 
     let sql = await readFile(join(here, 'queries', 'search_cleaners.sql'), 'utf8');
-    sql = sql.replace(/:suburb/g, '$1').replace(/:service/g, '$2');
-    const { rows } = await query(sql, [suburb, service]);
+    sql = sql.replace(/:suburb/g, '$1').replace(/:service/g, '$2').replace(/:capacity/g, '$3');
+    const { rows } = await query(sql, [suburb, service, CAPACITY_LIMIT]);
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -1758,6 +1764,11 @@ app.post('/api/match', async (req, res) => {
         cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
         cp.service_surcharges,
         (cp.featured_until is not null and cp.featured_until > now()) as is_featured,
+        (
+          select count(*) from enquiries e
+          where e.cleaner_id = cp.id and e.status = 'accepted'
+            and (e.scheduled_on is null or e.scheduled_on >= current_date)
+        ) as active_load,
         coalesce(array_agg(distinct st.slug) filter (where st.slug is not null), array[]::text[]) as services,
         coalesce(
           array_agg(distinct (ar.day_of_week::text || '|' || to_char(ar.start_time,'HH24:MI')))
@@ -1819,9 +1830,11 @@ app.post('/api/match', async (req, res) => {
         }
         const ratingScore = (Number(r.avg_rating) || 0) / 5;
         const score = Math.round(100 * (0.35 * serviceScore + 0.3 * availScore + 0.2 * priceScore + 0.15 * ratingScore));
+        const atCapacity = Number(r.active_load) >= CAPACITY_LIMIT;
         return {
           id: r.id,
           name: r.name,
+          atCapacity,
           rateMin: cMin, rateMax: cMax, fair,
           estCost: fair != null ? Math.round(fair * duration) : null,
           rating: Number(r.avg_rating) || 0,
@@ -1844,7 +1857,13 @@ app.post('/api/match', async (req, res) => {
         };
       })
       .filter(Boolean)
-      .sort((a, b) => b.score - a.score || Number(b.featured) - Number(a.featured) || b.rating - a.rating);
+      // Cleaners with spare capacity come before those at capacity, so a busy
+      // listing can't keep hoovering up every request — others get a turn.
+      .sort((a, b) =>
+        Number(a.atCapacity) - Number(b.atCapacity) ||
+        b.score - a.score ||
+        Number(b.featured) - Number(a.featured) ||
+        b.rating - a.rating);
 
     res.json({ results });
   } catch (err) {

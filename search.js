@@ -415,6 +415,7 @@ function resultCard(r) {
         </div>
         <span class="tier tier-${r.tier}">${tierLabel}</span>
       </div>
+      ${r.atCapacity ? '<p class="capacity-note">Limited availability — this cleaner is close to fully booked, so they may be slower to take new work.</p>' : ''}
       ${badges.length ? `<p class="verif">${badges.map((b) => `<span class="chip">${b}</span>`).join('')}</p>` : ''}
       ${availLine}
       <div class="result-actions">

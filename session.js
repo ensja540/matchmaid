@@ -6,15 +6,17 @@ const Session = {
   get() {
     try {
       const user = JSON.parse(localStorage.getItem(KEY));
-      // Purge legacy "demo" sessions. A failed browse signup used to store a
-      // fake { id: 'demo' } user that never worked server-side; drop it so the
-      // visitor is cleanly logged out the next time any page loads.
-      if (user && user.id === 'demo') {
+      // A real session is an object with an id and a role. Anything else — the
+      // legacy { id: 'demo' } stub, or a half-written session from a signup that
+      // needed email confirmation (no user returned) — is not a login: purge it
+      // so the visitor is cleanly logged out the next time any page loads.
+      if (!user || typeof user !== 'object' || !user.id || !user.role || user.id === 'demo') {
         localStorage.removeItem(KEY);
         return null;
       }
       return user;
     } catch {
+      localStorage.removeItem(KEY);
       return null;
     }
   },

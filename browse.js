@@ -356,6 +356,14 @@ capForm.addEventListener('submit', async (e) => {
       capMsg.classList.add('error');
       return;
     }
+    // With email confirmation on, the account is created but not logged in until
+    // the code is entered. Don't store a half-session — send them to confirm.
+    if (data.needsVerification || !data.user) {
+      capMsg.classList.remove('error');
+      capMsg.textContent = 'Almost there — check your email for a confirmation code, then log in.';
+      setTimeout(() => { location.href = '/login?role=customer'; }, 2500);
+      return;
+    }
     Session.set(data.user);
     location.href = '/customer';
   } catch {
