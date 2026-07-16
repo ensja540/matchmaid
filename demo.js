@@ -124,10 +124,12 @@ const DEMO = {
   maidProfile: {
     businessName: "Aroha's Home Care",
     fullName: 'Aroha Ngata',
+    residentialAddress: '12 Clyde Road, Fendalton, Christchurch',
     bio: 'Friendly, thorough home cleaner with 8 years experience. I love turning a busy household into a calm, fresh space.',
     baseSuburb: 'Riccarton',
     areas: ['Riccarton', 'Fendalton', 'Papanui'],
     services: ['regular', 'deep', 'end-of-tenancy'],
+    cleanRates: { regular: 38, deep: 48, 'end-of-tenancy': 55 },
     rate: 38,
     rateMin: 34,
     rateMax: 42,

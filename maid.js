@@ -58,23 +58,55 @@ let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
 const areas = new Set(loggedIn ? [] : profile.areas); // specific suburbs (when narrowing)
 let mpCity = 'Christchurch'; // default city
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
-const svcSet = new Set(loggedIn ? [] : profile.services); // base service slugs offered
-let mpAddons = loggedIn ? [] : (profile.addons || []); // priced extras [{slug, price}]
-// Optional per-HOUR surcharge on specialist cleans [{slug, extra}]. Only the
-// genuinely harder jobs carry one — a regular clean is the advertised rate.
-let mpSurcharges = loggedIn ? [] : (profile.serviceSurcharges || []);
-const SURCHARGEABLE = ['deep', 'end-of-tenancy'];
+// Per-clean-type hourly fee: { slug: dollars }. A type with a fee is one the
+// maid offers; no entry means they don't offer it. Replaces the old single
+// rate + specialist surcharges + priced extras.
+let mpCleanRates = loggedIn ? {} : { ...(profile.cleanRates || {}) };
+const CLEAN_TYPES = [
+  { slug: 'regular', name: 'Regular clean' },
+  { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash' },
+  { slug: 'end-of-tenancy', name: 'End of tenancy clean' },
+];
+
+// Per-clean-type hourly fee rows. Each has a "$ __ /hr" box; leaving it blank
+// means the maid doesn't offer that clean. Deep clean shows what it bundles.
+function cleanFeesHTML() {
+  return CLEAN_TYPES.map((t) => {
+    const val = mpCleanRates[t.slug];
+    return `<div class="fee-row" data-fee="${t.slug}">
+        <div class="fee-head"><span class="fee-name">${escapeHtml(t.name)}</span>
+          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="—" /><span class="fee-per">/hr</span></span>
+        </div>
+        ${t.includes ? `<p class="fee-includes">Includes: ${escapeHtml(t.includes)}</p>` : ''}
+      </div>`;
+  }).join('');
+}
+function wireCleanFees(root) {
+  root.querySelectorAll('[data-fee]').forEach((row) => {
+    const slug = row.dataset.fee;
+    const input = row.querySelector('.fee-input');
+    const sync = () => {
+      const raw = input.value.trim();
+      if (raw === '') { delete mpCleanRates[slug]; row.classList.remove('on'); return; }
+      const v = Math.max(0, Math.round(Number(raw) || 0));
+      if (v > 0) { mpCleanRates[slug] = v; row.classList.add('on'); }
+      else { delete mpCleanRates[slug]; row.classList.remove('on'); }
+    };
+    input.addEventListener('input', sync);
+  });
+}
 let mp = loggedIn
-  ? { businessName: '', bio: '', rate: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0, bringsProducts: true, photo: '' }
+  ? { businessName: '', bio: '', years: '', listingStatus: 'draft', avgRating: 0, reviews: 0, bringsProducts: true, photo: '', fullName: '', residentialAddress: '' }
   : {
       businessName: profile.businessName,
       bio: profile.bio,
-      rate: profile.rate,
       years: profile.yearsExperience,
       listingStatus: profile.listingStatus,
       avgRating: profile.rating,
       reviews: profile.reviews,
       bringsProducts: !!profile.bringsProducts,
+      fullName: profile.fullName || '',
+      residentialAddress: profile.residentialAddress || '',
     };
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
@@ -85,13 +117,14 @@ if (sessionUser?.id) {
       mp = {
         businessName: data.businessName ?? '',
         bio: data.bio ?? '',
-        rate: data.rateMin ?? data.rateMax ?? '',
         years: data.years ?? '',
         listingStatus: data.listingStatus ?? 'draft',
         avgRating: data.avgRating ?? 0,
         reviews: data.reviews ?? 0,
         bringsProducts: !!data.bringsProducts,
         photo: data.photo ?? '',
+        fullName: data.fullName ?? '',
+        residentialAddress: data.residentialAddress ?? '',
       };
       areas.clear();
       (data.areas || []).forEach((a) => areas.add(a));
@@ -103,10 +136,7 @@ if (sessionUser?.id) {
       }
       mpCity = best;
       mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
-      svcSet.clear();
-      (data.services || []).forEach((s) => svcSet.add(s));
-      mpAddons = Array.isArray(data.addons) ? data.addons : [];
-      mpSurcharges = Array.isArray(data.serviceSurcharges) ? data.serviceSurcharges : [];
+      mpCleanRates = data.cleanRates && typeof data.cleanRates === 'object' ? { ...data.cleanRates } : {};
       render();
       profileLoaded = true; tryAutoWizard();
     })
@@ -309,20 +339,6 @@ const PANELS = {
   },
 
   profile() {
-    const svcChips = DEMO.services
-      .filter((s) => DEMO.baseServiceSlugs.includes(s.slug))
-      .map((s) => `<button type="button" class="chip select ${svcSet.has(s.slug) ? 'on' : ''}" data-svc="${s.slug}">${s.name}</button>`)
-      .join('');
-    const addonRows = DEMO.extraServices
-      .map((x) => {
-        const cur = mpAddons.find((a) => a.slug === x.slug);
-        const on = !!cur;
-        return `<div class="addon-row ${on ? 'on' : ''}" data-addon="${x.slug}">
-            <label class="check-inline"><input type="checkbox" class="addon-toggle" ${on ? 'checked' : ''} /> ${x.name}</label>
-            <span class="addon-price"><span class="addon-dollar">$</span><input type="number" class="addon-input" min="0" step="1" value="${cur ? cur.price : ''}" placeholder="0" ${on ? '' : 'disabled'} /><span class="addon-per">each</span></span>
-          </div>`;
-      })
-      .join('');
     return `
       <h1>Your profile</h1>
       <form class="profile-form" id="profileForm">
@@ -330,9 +346,10 @@ const PANELS = {
           <div class="avatar" id="avatar">${mp.photo ? `<img src="${escapeHtml(mp.photo)}" alt="" />` : '<span>Photo</span>'}</div>
           <label class="btn outline sm">Upload photo<input type="file" id="photoInput" accept="image/*" hidden /></label>
         </div>
-        <label class="field"><span>Business name</span><input name="business" value="${mp.businessName ?? ''}" /></label>
-        <label class="field"><span>Bio</span><textarea name="bio" rows="3">${mp.bio ?? ''}</textarea></label>
-        <label class="field"><span>Your desired hourly rate ($/hr)</span><input name="rate" type="number" value="${mp.rate ?? ''}" /></label>
+        <label class="field"><span>Full name</span><input name="fullName" value="${escapeHtml(mp.fullName ?? '')}" placeholder="Your legal name" /></label>
+        <label class="field"><span>Residential address</span><input name="residentialAddress" value="${escapeHtml(mp.residentialAddress ?? '')}" placeholder="Street, suburb, city" /></label>
+        <label class="field"><span>Business name</span><input name="business" value="${escapeHtml(mp.businessName ?? '')}" /></label>
+        <label class="field"><span>Bio</span><textarea name="bio" rows="3">${escapeHtml(mp.bio ?? '')}</textarea></label>
         <label class="field"><span>Years experience</span><input name="years" type="number" value="${mp.years ?? ''}" /></label>
         ${locSectionHTML()}
         <div class="field"><span>Cleaning products &amp; equipment</span>
@@ -340,16 +357,9 @@ const PANELS = {
           <p class="muted" style="margin:0.4rem 0 0">On by default. Untick it only if the customer needs to supply
             products and equipment. Customers who need them supplied won't see you.</p>
         </div>
-        <div class="field"><span>Type of clean you offer</span><div class="chip-select">${svcChips}</div></div>
-        <div class="field"><span>Specialist clean surcharge (optional)</span>
-          <p class="muted" style="margin:0.2rem 0 0.8rem">Deep cleans and end-of-lease jobs are harder work.
-            If you charge more per hour for them, set it here. It's added to your hourly rate and shown
-            openly. Leave blank to charge your normal rate.</p>
-          <div class="addon-list">${surchargeRows()}</div>
-        </div>
-        <div class="field"><span>Extras &amp; add-ons</span>
-          <p class="muted" style="margin:0.2rem 0 0.8rem">Tick the extras you offer and set a flat price for each. It's a one-off charge per item, added to the job total at checkout — not per hour.</p>
-          <div class="addon-list">${addonRows}</div>
+        <div class="field"><span>Your hourly fees</span>
+          <p class="muted" style="margin:0.2rem 0 0.8rem">Set an hourly fee for each clean you offer. Leave one blank if you don't offer it.</p>
+          <div class="addon-list">${cleanFeesHTML()}</div>
         </div>
         <div class="field"><span>Verification</span>
           <p class="muted" style="margin:0.2rem 0 0.8rem">Verified badges show on your listing and let clients filter for you. Add each one below. We review and approve it.</p>
@@ -533,50 +543,7 @@ const WIRE = {
         setMsg('pauseMsg', 'Could not update your listing. Please try again.', 'err');
       }
     });
-    panel.querySelectorAll('[data-svc]').forEach((c) =>
-      c.addEventListener('click', () => {
-        const slug = c.dataset.svc;
-        if (svcSet.has(slug)) svcSet.delete(slug);
-        else svcSet.add(slug);
-        c.classList.toggle('on', svcSet.has(slug));
-        // A surcharge can only be set for a clean type that's offered, so
-        // toggling the service enables/disables its surcharge row live.
-        const srow = panel.querySelector(`[data-surcharge="${slug}"]`);
-        if (srow) setSurchargeRow(srow, slug, svcSet.has(slug));
-      })
-    );
-    // Priced extras: ticking one enables its price box; both keep mpAddons in sync.
-    panel.querySelectorAll('[data-addon]').forEach((row) => {
-      const slug = row.dataset.addon;
-      const toggle = row.querySelector('.addon-toggle');
-      const price = row.querySelector('.addon-input');
-      const sync = () => {
-        if (toggle.checked) {
-          price.disabled = false;
-          const p = Math.max(0, Math.round(Number(price.value) || 0));
-          const cur = mpAddons.find((a) => a.slug === slug);
-          if (cur) cur.price = p;
-          else mpAddons.push({ slug, price: p });
-          row.classList.add('on');
-        } else {
-          price.disabled = true;
-          mpAddons = mpAddons.filter((a) => a.slug !== slug);
-          row.classList.remove('on');
-        }
-      };
-      toggle.addEventListener('change', sync);
-      price.addEventListener('input', () => { if (toggle.checked) sync(); });
-    });
-    // Specialist-clean surcharges: a blank or zero box means "normal rate".
-    panel.querySelectorAll('[data-surcharge]').forEach((row) => {
-      const slug = row.dataset.surcharge;
-      const input = row.querySelector('.surcharge-input');
-      input.addEventListener('input', () => {
-        const v = Math.max(0, Math.round(Number(input.value) || 0));
-        mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug);
-        if (v > 0) mpSurcharges.push({ slug, extra: v });
-      });
-    });
+    wireCleanFees(panel);
     wireLocSection();
     panel.querySelectorAll('[data-doc]').forEach((inp) =>
       inp.addEventListener('change', () => {
@@ -609,7 +576,8 @@ const WIRE = {
       const f = e.target;
       mp.businessName = f.business.value;
       mp.bio = f.bio.value;
-      mp.rate = f.rate.value;
+      mp.fullName = f.fullName.value;
+      mp.residentialAddress = f.residentialAddress.value;
       mp.years = f.years.value;
       mp.bringsProducts = f.products.checked;
       if (!sessionUser?.id) {
@@ -625,13 +593,13 @@ const WIRE = {
             userId: sessionUser.id,
             businessName: mp.businessName,
             bio: mp.bio,
+            fullName: mp.fullName,
+            residentialAddress: mp.residentialAddress,
             years: mp.years,
             bringsProducts: mp.bringsProducts,
             photo: mp.photo || null,
-            serviceSurcharges: mpSurcharges,
-            rate: mp.rate,
-            services: [...svcSet],
-            addons: mpAddons,
+            cleanRates: mpCleanRates,
+            services: Object.keys(mpCleanRates),
             areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
             listingStatus: 'active',
           }),
@@ -769,10 +737,10 @@ function initHowflow(panel) {
 
 // Guided onboarding: do-this-first checklist, ticks off from real data.
 function gettingStartedHTML() {
-  const profileSet = !!(mp.businessName && mp.businessName.trim() && mp.rate != null && String(mp.rate) !== '');
+  const profileSet = !!(mp.businessName && mp.businessName.trim() && mpCleanRates.regular);
   const availSet = avail.length > 0;
   const steps = [
-    { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your hourly rate.', tab: 'profile', done: profileSet },
+    { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your hourly fees.', tab: 'profile', done: profileSet },
     { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work. This is what matches you to clients.', tab: 'availability', done: availSet },
     { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: profileSet },
     { n: 4, label: 'Get verified', desc: 'Upload ID, a police check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
@@ -803,41 +771,6 @@ function enquiryRow(e) {
     <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.when}</span></div>
     <span class="status status-${e.status}">${e.status}</span>
   </div>`;
-}
-
-// One row per specialist clean type, each with an optional "+$X/hr". Only the
-// clean types the maid actually offers can be priced.
-const SURCHARGE_HINT = 'Offer this clean type above to price it';
-function surchargeRows() {
-  return SURCHARGEABLE.map((slug) => {
-    const offers = svcSet.has(slug);
-    const cur = mpSurcharges.find((s) => s.slug === slug);
-    return `<div class="addon-row surcharge-row ${offers ? 'on' : 'is-off'}" data-surcharge="${slug}">
-      <span class="surcharge-name">${escapeHtml(DEMO.serviceName(slug))}${
-        offers ? '' : `<span class="addon-hint">${SURCHARGE_HINT}</span>`
-      }</span>
-      <span class="addon-price">
-        <span class="addon-dollar">+$</span>
-        <input type="number" class="surcharge-input" min="0" step="1" value="${cur ? cur.extra : ''}"
-               placeholder="0" ${offers ? '' : 'disabled'} />
-        <span class="addon-per">/hr</span>
-      </span>
-    </div>`;
-  }).join('');
-}
-
-// Reflect whether a specialist clean is offered onto its surcharge row: the box
-// is only usable for a clean type the maid offers. Un-offering it clears any
-// surcharge that had been set.
-function setSurchargeRow(row, slug, offers) {
-  const name = row.querySelector('.surcharge-name');
-  const input = row.querySelector('.surcharge-input');
-  row.classList.toggle('on', offers);
-  row.classList.toggle('is-off', !offers);
-  input.disabled = !offers;
-  name.innerHTML = escapeHtml(DEMO.serviceName(slug)) +
-    (offers ? '' : `<span class="addon-hint">${SURCHARGE_HINT}</span>`);
-  if (!offers) { input.value = ''; mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug); }
 }
 
 // Pausing hides the listing from browse, search and matches. Nothing else
@@ -1216,7 +1149,7 @@ function wireCalendar(container, selected, onChange) {
 // A modal that walks a new maid through the settings that make them live in
 // search, then saves the profile and availability together. It lives on
 // document.body so a background re-render of the portal can't wipe it, and
-// reuses the same location picker, surcharge rows, calendar and verification
+// reuses the same location picker, fee rows, calendar and verification
 // UIs as the full profile tab.
 const WIZ_STEPS = [
   { key: 'about', title: 'About you' },
@@ -1226,9 +1159,12 @@ const WIZ_STEPS = [
   { key: 'verification', title: 'Verification' },
 ];
 
-// Live in search once they have the essentials: a name, a rate and some hours.
+// Live in search once they have the essentials: a name, a regular-clean fee and
+// some hours. An already-active listing is never re-prompted, so a maid who set
+// up before doesn't get the wizard again.
 function profileComplete() {
-  const set = !!(mp.businessName && String(mp.businessName).trim() && mp.rate != null && String(mp.rate) !== '');
+  if (mp.listingStatus === 'active') return true;
+  const set = !!(mp.businessName && String(mp.businessName).trim() && mpCleanRates.regular);
   return set && avail.length > 0;
 }
 function tryAutoWizard() {
@@ -1246,27 +1182,22 @@ function maybeAutoOpenWizard() {
 const WIZ_CONTENT = {
   about: () => `
     <p class="wiz-lede">The essentials clients see first. You can polish everything later in your profile.</p>
+    <label class="field"><span>Full name</span>
+      <input id="wizName" type="text" value="${escapeHtml(mp.fullName || '')}" placeholder="Your legal name" /></label>
+    <label class="field"><span>Residential address</span>
+      <input id="wizAddress" type="text" value="${escapeHtml(mp.residentialAddress || '')}" placeholder="Street, suburb, city" /></label>
     <label class="field"><span>Business or display name</span>
       <input id="wizBiz" type="text" value="${escapeHtml(mp.businessName || '')}" placeholder="e.g. Alex's Cleaning" /></label>
     <label class="field"><span>Short bio <span class="muted">(optional)</span></span>
-      <textarea id="wizBio" rows="3" placeholder="A sentence or two about you and your cleaning.">${escapeHtml(mp.bio || '')}</textarea></label>
-    <label class="field"><span>Your hourly rate ($/hr)</span>
-      <input id="wizRate" type="number" min="0" step="1" value="${mp.rate ?? ''}" placeholder="35" /></label>`,
+      <textarea id="wizBio" rows="3" placeholder="A sentence or two about you and your cleaning.">${escapeHtml(mp.bio || '')}</textarea></label>`,
   areas: () => `
     <p class="wiz-lede">Where will you take jobs? Christchurch-wide by default, or narrow to specific suburbs.</p>
     ${locSectionHTML()}`,
-  pricing: () => {
-    const chips = DEMO.services
-      .filter((s) => DEMO.baseServiceSlugs.includes(s.slug))
-      .map((s) => `<button type="button" class="chip select ${svcSet.has(s.slug) ? 'on' : ''}" data-svc="${s.slug}">${s.name}</button>`)
-      .join('');
-    return `
-      <p class="wiz-lede">Pick the cleans you offer, then set any specialist surcharge.</p>
-      <div class="field"><span>Types of clean you offer</span><div class="chip-select">${chips}</div></div>
-      <div class="field"><label class="check-inline"><input type="checkbox" id="wizProducts" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own products and equipment</label></div>
-      <div class="field"><span>Specialist clean surcharge <span class="muted">(optional, +$/hr)</span></span>
-        <div class="addon-list">${surchargeRows()}</div></div>`;
-  },
+  pricing: () => `
+      <p class="wiz-lede">Set an hourly fee for each clean you offer. Leave one blank if you don't offer it.</p>
+      <div class="field"><span>Your hourly fees</span>
+        <div class="addon-list">${cleanFeesHTML()}</div></div>
+      <div class="field"><label class="check-inline"><input type="checkbox" id="wizProducts" ${mp.bringsProducts ? 'checked' : ''} /> I bring my own products and equipment</label></div>`,
   availability: () => `
     <p class="wiz-lede">Tap the times you're usually free. This is what matches you to clients.</p>
     <div class="cal" id="wizCal">${calendarHTML(avail)}</div>`,
@@ -1278,26 +1209,7 @@ const WIZ_CONTENT = {
 
 const WIZ_WIRE = {
   areas: (root) => wireLocSection(root),
-  pricing: (root) => {
-    root.querySelectorAll('[data-svc]').forEach((c) =>
-      c.addEventListener('click', () => {
-        const slug = c.dataset.svc;
-        if (svcSet.has(slug)) svcSet.delete(slug); else svcSet.add(slug);
-        c.classList.toggle('on', svcSet.has(slug));
-        const srow = root.querySelector(`[data-surcharge="${slug}"]`);
-        if (srow) setSurchargeRow(srow, slug, svcSet.has(slug));
-      })
-    );
-    root.querySelectorAll('[data-surcharge]').forEach((row) => {
-      const input = row.querySelector('.surcharge-input');
-      input.addEventListener('input', () => {
-        const slug = row.dataset.surcharge;
-        const v = Math.max(0, Math.round(Number(input.value) || 0));
-        mpSurcharges = mpSurcharges.filter((s) => s.slug !== slug);
-        if (v > 0) mpSurcharges.push({ slug, extra: v });
-      });
-    });
-  },
+  pricing: (root) => wireCleanFees(root),
   availability: (root) => {
     const cal = root.querySelector('#wizCal');
     if (cal) wireCalendar(cal, avail, () => {});
@@ -1383,18 +1295,21 @@ function renderWizStep() {
 // Validate/capture the current step, then move on — or save on the last step.
 function captureWizStep(key) {
   if (key === 'about') {
+    const name = wizEl.querySelector('#wizName').value.trim();
+    const address = wizEl.querySelector('#wizAddress').value.trim();
     const biz = wizEl.querySelector('#wizBiz').value.trim();
-    const rate = wizEl.querySelector('#wizRate').value;
+    if (!name) { wizSetMsg('Add your full name to continue.', 'err'); return false; }
+    if (!address) { wizSetMsg('Add your residential address to continue.', 'err'); return false; }
     if (!biz) { wizSetMsg('Add a business or display name to continue.', 'err'); return false; }
-    if (!(Number(rate) > 0)) { wizSetMsg('Set your hourly rate to continue.', 'err'); return false; }
+    mp.fullName = name;
+    mp.residentialAddress = address;
     mp.businessName = biz;
     mp.bio = wizEl.querySelector('#wizBio').value;
-    mp.rate = rate;
     return true;
   }
   if (key === 'pricing') {
     mp.bringsProducts = wizEl.querySelector('#wizProducts')?.checked ?? mp.bringsProducts;
-    if (!svcSet.size) { wizSetMsg('Pick at least one type of clean you offer.', 'err'); return false; }
+    if (!mpCleanRates.regular) { wizSetMsg('Set at least a regular-clean hourly fee to continue.', 'err'); return false; }
     return true;
   }
   if (key === 'availability') {
@@ -1423,13 +1338,13 @@ async function saveWizard() {
         userId: sessionUser.id,
         businessName: mp.businessName,
         bio: mp.bio,
+        fullName: mp.fullName,
+        residentialAddress: mp.residentialAddress,
         years: mp.years,
         bringsProducts: mp.bringsProducts,
         photo: mp.photo || null,
-        serviceSurcharges: mpSurcharges,
-        rate: mp.rate,
-        services: [...svcSet],
-        addons: mpAddons,
+        cleanRates: mpCleanRates,
+        services: Object.keys(mpCleanRates),
         areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
         listingStatus: 'active',
       }),

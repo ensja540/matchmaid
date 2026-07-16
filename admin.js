@@ -88,6 +88,7 @@ function cardHTML(v) {
   // Details to check the document against — legal name first, it's what an ID shows.
   const info = [
     ['Legal name', v.fullName],
+    ['Address', v.residentialAddress],
     ['Business', v.businessName],
     ['Email', v.email],
     ['Phone', v.phone],

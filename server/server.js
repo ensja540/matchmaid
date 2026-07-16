@@ -444,6 +444,7 @@ app.get('/api/profile', async (req, res) => {
               cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified,
               cp.brings_products, cp.profile_photo_url, cp.service_surcharges,
+              cp.residential_address, cp.clean_rates,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.user_id = $1`,
@@ -477,6 +478,8 @@ app.get('/api/profile', async (req, res) => {
       areas: areas.rows.map((r) => r.name),
       fullName: cp.full_name,
       email: cp.email,
+      residentialAddress: cp.residential_address || '',
+      cleanRates: cp.clean_rates && typeof cp.clean_rates === 'object' ? cp.clean_rates : {},
     });
   } catch (err) {
     console.error(err);
@@ -486,10 +489,22 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, residentialAddress, fullName } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    // New pricing model: a per-clean-type hourly fee. Keep only known base clean
+    // types with a positive fee — a type with no fee is one they don't offer.
+    let cleanRatesClean = null;
+    if (cleanRates && typeof cleanRates === 'object') {
+      cleanRatesClean = {};
+      for (const slug of BASE_SERVICE_SLUGS) {
+        const v = Math.max(0, Math.round(Number(cleanRates[slug]) || 0));
+        if (v > 0) cleanRatesClean[slug] = v;
+      }
+    }
+    const feeVals = cleanRatesClean ? Object.values(cleanRatesClean) : [];
 
     // Priced extras: keep only well-formed { slug, price } rows with a sane price.
     const cleanAddons = Array.isArray(addons)
@@ -510,12 +525,20 @@ app.put('/api/profile', async (req, res) => {
           .slice(0, BASE_SERVICE_SLUGS.length)
       : null;
 
-    // Maids now set a single hourly rate; we mirror it into min/max/mid so the
-    // match + display keep working (and legacy min/max are still accepted).
+    // The per-type fees define the headline rate band (min/max/mid) so search,
+    // match and display keep working off the existing columns. Falls back to the
+    // legacy single-rate / min-max inputs when no fees are sent.
     const single = rate != null && rate !== '' ? Number(rate) : null;
-    const min = single != null ? single : rateMin != null && rateMin !== '' ? Number(rateMin) : null;
-    const max = single != null ? single : rateMax != null && rateMax !== '' ? Number(rateMax) : null;
-    const mid = single != null ? single : min != null && max != null ? (min + max) / 2 : min ?? max ?? null;
+    let min, max, mid;
+    if (feeVals.length) {
+      min = Math.min(...feeVals);
+      max = Math.max(...feeVals);
+      mid = cleanRatesClean.regular != null ? cleanRatesClean.regular : Math.round((min + max) / 2);
+    } else {
+      min = single != null ? single : rateMin != null && rateMin !== '' ? Number(rateMin) : null;
+      max = single != null ? single : rateMax != null && rateMax !== '' ? Number(rateMax) : null;
+      mid = single != null ? single : min != null && max != null ? (min + max) / 2 : min ?? max ?? null;
+    }
 
     // Note: verified badges are NOT set here — they're earned by submitting a
     // document (see /api/verification) and being approved, not self-claimed.
@@ -530,7 +553,9 @@ app.put('/api/profile', async (req, res) => {
          addons = coalesce($9, addons),
          brings_products = coalesce($10, brings_products),
          profile_photo_url = coalesce($11, profile_photo_url),
-         service_surcharges = coalesce($12, service_surcharges), updated_at = now()
+         service_surcharges = coalesce($12, service_surcharges),
+         residential_address = coalesce($13, residential_address),
+         clean_rates = coalesce($14, clean_rates), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
@@ -539,8 +564,16 @@ app.put('/api/profile', async (req, res) => {
         typeof bringsProducts === 'boolean' ? bringsProducts : null,
         photo || null,
         cleanSurcharges != null ? JSON.stringify(cleanSurcharges) : null,
+        typeof residentialAddress === 'string' ? residentialAddress.slice(0, 300) : null,
+        cleanRatesClean != null ? JSON.stringify(cleanRatesClean) : null,
       ]
     );
+
+    // The legal name lives on the account (users.full_name); let the maid confirm
+    // or correct it here so it matches their verification documents.
+    if (typeof fullName === 'string' && fullName.trim()) {
+      await query('update users set full_name = $2, updated_at = now() where id = $1', [userId, fullName.trim().slice(0, 120)]);
+    }
 
     if (Array.isArray(services)) {
       await query('delete from cleaner_services where cleaner_id = $1', [cleanerId]);
@@ -765,7 +798,7 @@ app.get('/api/admin/verifications', async (req, res) => {
               to_char(u.created_at, 'DD Mon YYYY') as joined,
               coalesce(cpf.business_name, u.full_name) as cleaner,
               u.full_name, u.email, u.phone,
-              cpf.business_name, cpf.years_experience,
+              cpf.business_name, cpf.years_experience, cpf.residential_address,
               cpf.hourly_rate_min, cpf.hourly_rate_max,
               (select coalesce(array_agg(distinct s.name) filter (where s.name is not null), array[]::text[])
                  from cleaner_service_areas csa join suburbs s on s.id = csa.suburb_id
@@ -783,6 +816,7 @@ app.get('/api/admin/verifications', async (req, res) => {
       // who the cleaner says they are.
       fullName: r.full_name || '', businessName: r.business_name || '',
       phone: r.phone || '', joined: r.joined || '',
+      residentialAddress: r.residential_address || '',
       years: r.years_experience != null ? r.years_experience : null,
       rateMin: r.hourly_rate_min != null ? Number(r.hourly_rate_min) : null,
       rateMax: r.hourly_rate_max != null ? Number(r.hourly_rate_max) : null,
