@@ -142,8 +142,10 @@ const RENDERERS = {
       Cleaners above your rate still show, just lower down.</p>
     <div class="slider-wrap">
       <output class="slider-value" id="rateOut">$${state.desiredRate}/hr</output>
+      <div class="rate-hist" id="rateHist" hidden aria-hidden="true"></div>
       <input type="range" id="rate" min="20" max="80" step="1" value="${state.desiredRate}" />
       <div class="slider-scale"><span>$20</span><span>$80</span></div>
+      <p class="hist-caption muted" id="histCaption"></p>
       <p class="est" id="estLine"></p>
     </div>`,
 
@@ -201,15 +203,67 @@ const wire = {
     const rate = host.querySelector('#rate');
     const out = host.querySelector('#rateOut');
     const est = host.querySelector('#estLine');
+    const hist = host.querySelector('#rateHist');
+    const caption = host.querySelector('#histCaption');
+    const MIN = 20, MAX = 80, BUCKET = 5;
+    const nBuckets = (MAX - MIN) / BUCKET; // 12 columns across the slider range
+    const bucketOf = (v) => Math.min(nBuckets - 1, Math.max(0, Math.floor((v - MIN) / BUCKET)));
+    let rates = [];
+    let loaded = false;
+
+    // Draw the histogram of where cleaners' rates sit, highlighting the buckets
+    // at or below the customer's chosen rate (i.e. within their budget).
+    const renderHist = () => {
+      if (!loaded) return;
+      if (!rates.length) { hist.hidden = true; return; }
+      hist.hidden = false;
+      const counts = new Array(nBuckets).fill(0);
+      rates.forEach((r) => { counts[bucketOf(r)]++; });
+      const maxC = Math.max(...counts, 1);
+      hist.innerHTML = counts
+        .map((c, i) => {
+          const lo = MIN + i * BUCKET;
+          const inBudget = lo + BUCKET / 2 <= state.desiredRate; // bucket midpoint within budget
+          const h = c ? Math.round((c / maxC) * 100) : 0;
+          return `<span class="hist-bar ${inBudget ? 'in' : ''}" style="height:${h}%" title="$${lo}–$${lo + BUCKET}/hr: ${c} cleaner${c === 1 ? '' : 's'}"></span>`;
+        })
+        .join('');
+    };
+    const updateCaption = () => {
+      if (!loaded) return;
+      if (!rates.length) {
+        caption.textContent = `Not enough cleaners in ${state.suburb} yet to show the price spread.`;
+        return;
+      }
+      const within = rates.filter((r) => r <= state.desiredRate).length;
+      caption.textContent = `${within} of ${rates.length} cleaner${rates.length === 1 ? '' : 's'} here ${
+        within === 1 ? 'is' : 'are'
+      } at or below $${state.desiredRate}/hr.`;
+    };
     const sync = () => {
       state.desiredRate = Number(rate.value);
       out.textContent = `$${state.desiredRate}/hr`;
       est.textContent = `About $${state.desiredRate * state.duration} for a ${
         DURATIONS.find((d) => d.h === state.duration).label.toLowerCase()
       } visit at this rate.`;
+      renderHist();
+      updateCaption();
     };
     rate.addEventListener('input', sync);
     sync();
+
+    // Pull the real spread of cleaner rates for this suburb + service.
+    if (state.suburb && state.service) {
+      fetch(`/api/cleaner-rates?suburb=${encodeURIComponent(state.suburb)}&service=${encodeURIComponent(state.service)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          loaded = true;
+          rates = d && Array.isArray(d.rates) ? d.rates : [];
+          renderHist();
+          updateCaption();
+        })
+        .catch(() => {});
+    }
   },
   when() {
     wireCalendar(host.querySelector('#cal'), state.slots, () => {

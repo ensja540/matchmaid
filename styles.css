@@ -979,6 +979,12 @@ a { color: inherit; text-decoration: none; }
 .slider-value { display: block; font-family: var(--serif); font-size: 2.2rem; margin-bottom: 0.4rem; }
 .slider-wrap input[type=range], .find-form input[type=range] { width: 100%; accent-color: var(--copper); }
 .slider-scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.85rem; }
+/* Supply histogram behind the price slider: where cleaners' rates actually sit.
+   Bars within the chosen rate are highlighted; the rest are faint. */
+.rate-hist { display: flex; align-items: flex-end; gap: 3px; height: 46px; margin: 0 0 0.35rem; }
+.rate-hist .hist-bar { flex: 1; min-height: 3px; background: var(--line); border-radius: 3px 3px 0 0; transition: background 0.12s ease, height 0.12s ease; }
+.rate-hist .hist-bar.in { background: var(--copper); }
+.hist-caption { font-size: 0.84rem; margin: 0.3rem 0 0; }
 .est { margin-top: 1rem; color: var(--muted); background: var(--paper-2); padding: 0.75rem 0.9rem; border-radius: var(--radius); }
 
 /* Calendar */

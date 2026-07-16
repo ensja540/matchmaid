@@ -473,6 +473,31 @@ app.get('/api/cleaners', async (req, res) => {
   }
 });
 
+// The hourly rates of every active cleaner covering a suburb + service, so the
+// search slider can show where the actual supply of cleaners sits on the price
+// scale. Just the numbers — the client buckets them into a histogram.
+app.get('/api/cleaner-rates', async (req, res) => {
+  try {
+    const { suburb, service } = req.query;
+    if (!suburb || !service) return res.status(400).json({ error: 'Pick a suburb and a service.' });
+    const { rows } = await query(
+      `select cp.hourly_rate as rate
+         from cleaner_profiles cp
+         join cleaner_service_areas csa on csa.cleaner_id = cp.id
+         join suburbs s on s.id = csa.suburb_id
+         join cleaner_services cs on cs.cleaner_id = cp.id
+         join service_types st on st.id = cs.service_type_id
+        where cp.listing_status = 'active'
+          and s.name = $1 and st.slug = $2 and cp.hourly_rate is not null`,
+      [suburb, service]
+    );
+    res.json({ rates: rows.map((r) => Number(r.rate)).filter((n) => Number.isFinite(n)) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load rates.' });
+  }
+});
+
 // --- Cleaner availability -------------------------------------------------
 // The maid's weekly grid of AM/Lunch/PM slots, stored in availability_rules.
 async function cleanerIdForUser(userId) {
