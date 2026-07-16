@@ -11,7 +11,7 @@
 window.Badges = (function () {
   const ITEMS = [
     { key: 'id', label: 'ID verified' },
-    { key: 'police', label: 'Police checked' },
+    { key: 'police', label: 'Criminal checked' },
     { key: 'insurance', label: 'Insured' },
   ];
 

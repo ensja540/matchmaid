@@ -15,7 +15,7 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://matchmaid.co.nz/og-image.png" />
-    <link rel="stylesheet" href="styles.css?v=81" />
+    <link rel="stylesheet" href="styles.css?v=82" />
   </head>
   <body class="app-body role-customer">
     <div class="notice-bar">
@@ -60,7 +60,7 @@
             <span class="bf-label">Verification: only show cleaners who are</span>
             <div class="chip-select" id="verif">
               <button type="button" class="chip select" data-badge="id">ID verified</button>
-              <button type="button" class="chip select" data-badge="police">Police checked</button>
+              <button type="button" class="chip select" data-badge="police">Criminal checked</button>
               <button type="button" class="chip select" data-badge="insurance">Insured</button>
             </div>
           </div>
@@ -76,8 +76,10 @@
             <span class="bf-label">Your ideal hourly rate</span>
             <div class="slider-wrap">
               <output class="slider-value" id="rateOut">$35/hr</output>
+              <div class="rate-hist" id="rateHist" hidden aria-hidden="true"></div>
               <input type="range" id="rate" min="20" max="80" step="1" value="35" />
               <div class="slider-scale"><span>$20</span><span>$80</span></div>
+              <p class="hist-caption muted" id="histCaption"></p>
             </div>
           </div>
 
@@ -148,9 +150,9 @@
     <script src="reveal.js?v=64"></script>
     <script src="demo.js?v=70"></script>
     <script src="rating.js?v=64"></script>
-    <script src="badges.js?v=64"></script>
+    <script src="badges.js?v=82"></script>
     <script src="review.js?v=64"></script>
-    <script src="browse.js?v=67"></script>
+    <script src="browse.js?v=82"></script>
     <script src="feedback.js?v=64"></script>
 
   </body>

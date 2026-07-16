@@ -633,7 +633,7 @@ function breakdownHTML(r) {
 
 function resultCard(r) {
   const tierLabel = r.tier === 'great' ? 'Strong match' : r.tier === 'good' ? 'Good match' : 'Also available';
-  const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured', r.bringsProducts && 'Brings products'].filter(Boolean);
+  const badges = [r.badges.id && 'ID', r.badges.police && 'Criminal check', r.badges.insurance && 'Insured', r.bringsProducts && 'Brings products'].filter(Boolean);
   const slotChips = (r.matched || [])
     .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');

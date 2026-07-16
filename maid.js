@@ -13,7 +13,7 @@ const loggedIn = !!sessionUser?.id;
 const VERIF_KEY = 'mm_maid_verif';
 const VERIF_ITEMS = [
   { key: 'id', label: 'ID verified', desc: 'Upload a photo of your driver licence or passport.' },
-  { key: 'police', label: 'Police check', desc: 'Upload your NZ Police vetting result.' },
+  { key: 'police', label: 'Criminal check', desc: 'Upload your criminal record (Ministry of Justice) check.', extra: `Don't have a criminal check? <a href="https://checkplease.co.nz/" target="_blank" rel="noopener">Get one here</a>.` },
   { key: 'insurance', label: 'Insured', desc: 'Upload your public-liability insurance certificate.' },
 ];
 function loadVerif() {
@@ -921,7 +921,7 @@ function gettingStartedHTML() {
     { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your fees.', tab: 'profile', done: profileSet },
     { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work. This is what matches you to clients.', tab: 'availability', done: availSet },
     { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: profileSet },
-    { n: 4, label: 'Get verified', desc: 'Upload ID, a police check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
+    { n: 4, label: 'Get verified', desc: 'Upload ID, a criminal check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
   ];
   // Once the profile itself is fully set up (details, availability and areas),
   // retire the whole get-started card — verification is a separate optional nudge.
@@ -1249,7 +1249,7 @@ function verifRow(item) {
     ? `<p class="verif-read muted">Scanned from your document: “${escapeHtml(readTxt)}”. If that looks wrong, upload a clearer photo.</p>`
     : '';
   return `<div class="verif-item">
-    <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span>${readNote}</div>
+    <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span>${item.extra ? `<br /><span class="muted verif-extra">${item.extra}</span>` : ''}${readNote}</div>
     <div class="verif-item-right">${pill}${action}</div>
   </div>`;
 }

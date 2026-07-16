@@ -5,7 +5,7 @@ const body = document.getElementById('adminBody');
 const who = document.getElementById('who');
 if (who && sessionUser) who.textContent = sessionUser.name || sessionUser.email || '';
 
-const TYPE_LBL = { id: 'Identity document', police: 'Police check', insurance: 'Insurance' };
+const TYPE_LBL = { id: 'Identity document', police: 'Criminal check', insurance: 'Insurance' };
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

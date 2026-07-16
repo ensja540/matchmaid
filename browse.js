@@ -56,7 +56,53 @@ extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('cl
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 productsBox?.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 
-rateEl.addEventListener('input', () => (rateOut.textContent = `$${rateEl.value}/hr`));
+rateEl.addEventListener('input', () => { rateOut.textContent = `$${rateEl.value}/hr`; renderHist(); });
+
+// ---- Price-supply histogram: show where local cleaners' rates actually sit,
+// highlighting the buckets at or below the chosen rate (i.e. within budget).
+const rateHist = document.getElementById('rateHist');
+const histCaption = document.getElementById('histCaption');
+const H_MIN = 20, H_MAX = 80, H_BUCKET = 5;
+const H_N = (H_MAX - H_MIN) / H_BUCKET; // 12 columns across the slider range
+const bucketOf = (v) => Math.min(H_N - 1, Math.max(0, Math.floor((v - H_MIN) / H_BUCKET)));
+let supplyRates = [];
+let supplyLoaded = false;
+
+function renderHist() {
+  if (!supplyLoaded) return;
+  const rate = Number(rateEl.value);
+  if (!supplyRates.length) { rateHist.hidden = true; histCaption.textContent = ''; return; }
+  rateHist.hidden = false;
+  const counts = new Array(H_N).fill(0);
+  supplyRates.forEach((r) => { counts[bucketOf(r)]++; });
+  const maxC = Math.max(...counts, 1);
+  rateHist.innerHTML = counts
+    .map((c, i) => {
+      const lo = H_MIN + i * H_BUCKET;
+      const inBudget = lo + H_BUCKET / 2 <= rate; // bucket midpoint within budget
+      const h = c ? Math.round((c / maxC) * 100) : 0;
+      return `<span class="hist-bar ${inBudget ? 'in' : ''}" style="height:${h}%" title="$${lo}–$${lo + H_BUCKET}/hr: ${c} cleaner${c === 1 ? '' : 's'}"></span>`;
+    })
+    .join('');
+  const within = supplyRates.filter((r) => r <= rate).length;
+  histCaption.textContent = `${within} of ${supplyRates.length} cleaner${supplyRates.length === 1 ? '' : 's'} here ${within === 1 ? 'is' : 'are'} at or below $${rate}/hr.`;
+}
+
+function loadSupply() {
+  const parsed = parseLoc(suburbSel.value);
+  const service = serviceSel.value;
+  supplyLoaded = false;
+  rateHist.hidden = true;
+  histCaption.textContent = '';
+  if (!parsed.suburbs.length || !service) return;
+  fetch(`/api/cleaner-rates?suburbs=${encodeURIComponent(parsed.suburbs.join(','))}&service=${encodeURIComponent(service)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { supplyLoaded = true; supplyRates = d && Array.isArray(d.rates) ? d.rates : []; renderHist(); })
+    .catch(() => {});
+}
+suburbSel.addEventListener('change', loadSupply);
+serviceSel.addEventListener('change', loadSupply);
+loadSupply();
 
 cal.innerHTML = calendarHTML(slots);
 wireCalendar(cal, slots);
@@ -166,7 +212,7 @@ function paintResults() {
 
 function resultCard(r, p) {
   const tierLabel = r.tier === 'great' ? 'Strong match' : r.tier === 'good' ? 'Good match' : 'Also available';
-  const badges = [r.badges.id && 'ID', r.badges.police && 'Police', r.badges.insurance && 'Insured', r.bringsProducts && 'Brings products'].filter(Boolean);
+  const badges = [r.badges.id && 'ID', r.badges.police && 'Criminal check', r.badges.insurance && 'Insured', r.bringsProducts && 'Brings products'].filter(Boolean);
   const offeredChips = (r.offered || []).map((s) => `<span class="chip on">${SVC_NAME[s] || s}</span>`).join('');
   const missingChips = (r.missing || []).map((s) => `<span class="chip off">no ${SVC_NAME[s] || s}</span>`).join('');
   const slotChips = (r.matched || [])

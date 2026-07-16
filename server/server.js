@@ -508,18 +508,24 @@ app.get('/api/cleaners', async (req, res) => {
 // scale. Just the numbers — the client buckets them into a histogram.
 app.get('/api/cleaner-rates', async (req, res) => {
   try {
-    const { suburb, service } = req.query;
-    if (!suburb || !service) return res.status(400).json({ error: 'Pick a suburb and a service.' });
+    const { suburb, suburbs, service } = req.query;
+    // Accept a single suburb or a comma-separated list (a whole-city search).
+    const subList = suburbs
+      ? String(suburbs).split(',').map((s) => s.trim()).filter(Boolean)
+      : suburb ? [suburb] : [];
+    if (!subList.length || !service) return res.status(400).json({ error: 'Pick a suburb and a service.' });
     const { rows } = await query(
-      `select cp.hourly_rate as rate
+      // distinct on the cleaner: covering several of the listed suburbs must not
+      // count their rate more than once in the histogram.
+      `select distinct cp.id, cp.hourly_rate as rate
          from cleaner_profiles cp
          join cleaner_service_areas csa on csa.cleaner_id = cp.id
          join suburbs s on s.id = csa.suburb_id
          join cleaner_services cs on cs.cleaner_id = cp.id
          join service_types st on st.id = cs.service_type_id
         where cp.listing_status = 'active'
-          and s.name = $1 and st.slug = $2 and cp.hourly_rate is not null`,
-      [suburb, service]
+          and s.name = any($1) and st.slug = $2 and cp.hourly_rate is not null`,
+      [subList, service]
     );
     res.json({ rates: rows.map((r) => Number(r.rate)).filter((n) => Number.isFinite(n)) });
   } catch (err) {
