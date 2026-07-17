@@ -93,6 +93,11 @@ form.addEventListener('submit', async (e) => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
+    // A successful registration is our key conversion — count it even if email
+    // confirmation is still pending, since the account was created.
+    if (mode === 'signup' && (res.ok || data.needsVerification)) {
+      window.mmTrack && mmTrack('sign_up', { method: role });
+    }
     // Either a fresh signup (201) or a login onto an unconfirmed account (403)
     // can ask for the emailed code before we let them in.
     if (data.needsVerification) return showVerifyStep(data);

@@ -402,6 +402,8 @@ capForm.addEventListener('submit', async (e) => {
       capMsg.classList.add('error');
       return;
     }
+    // Account created from the browse capture modal — count the conversion.
+    window.mmTrack && mmTrack('sign_up', { method: 'customer' });
     // With email confirmation on, the account is created but not logged in until
     // the code is entered. Don't store a half-session — send them to confirm.
     if (data.needsVerification || !data.user) {
