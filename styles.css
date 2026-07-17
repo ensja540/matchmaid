@@ -1362,6 +1362,16 @@ a { color: inherit; text-decoration: none; }
 .verif-item-right { display: flex; align-items: center; gap: 0.7rem; flex: none; }
 .verif-extra { display: inline-block; margin-top: 0.35rem; font-size: 0.86rem; }
 .verif-extra a { color: var(--copper); font-weight: 600; }
+
+/* Suburb landing pages (/cleaners/*) */
+.faq-list { display: grid; gap: 0; max-width: 760px; }
+.faq-item { padding: 1.3rem 0; border-top: 1px solid var(--line); }
+.faq-item:last-child { border-bottom: 1px solid var(--line); }
+.faq-item h3 { margin: 0 0 0.4rem; font-size: 1.12rem; }
+.faq-item p { margin: 0; color: var(--muted); }
+.area-links { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.5rem; }
+.area-link { display: inline-block; padding: 0.5rem 1.05rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--ink); background: var(--paper); transition: border-color 0.15s ease, color 0.15s ease; }
+.area-link:hover { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 560px) { .verif-item { flex-direction: column; align-items: flex-start; } }
 .convo { position: relative; text-align: left; background: transparent; border: none; border-bottom: 1px solid var(--line); padding: 0.9rem 1rem; cursor: pointer; display: flex; flex-direction: column; gap: 0.15rem; }
 .convo:last-child { border-bottom: none; }
