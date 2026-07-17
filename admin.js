@@ -85,7 +85,7 @@ function cardHTML(v) {
     ? (v.rateMax && v.rateMax !== v.rateMin ? `$${v.rateMin}–$${v.rateMax}/hr` : `$${v.rateMin}/hr`)
     : '';
   const areas = Array.isArray(v.areas) && v.areas.length ? v.areas.join(', ') : '';
-  // Details to check the document against — legal name first, it's what an ID shows.
+  // Details to check the document against - legal name first, it's what an ID shows.
   const info = [
     ['Legal name', v.fullName],
     ['Based in', v.residentialAddress],

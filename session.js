@@ -6,9 +6,9 @@ const Session = {
   get() {
     try {
       const user = JSON.parse(localStorage.getItem(KEY));
-      // A real session is an object with an id and a role. Anything else — the
+      // A real session is an object with an id and a role. Anything else - the
       // legacy { id: 'demo' } stub, or a half-written session from a signup that
-      // needed email confirmation (no user returned) — is not a login: purge it
+      // needed email confirmation (no user returned) - is not a login: purge it
       // so the visitor is cleanly logged out the next time any page loads.
       if (!user || typeof user !== 'object' || !user.id || !user.role || user.id === 'demo') {
         localStorage.removeItem(KEY);
@@ -55,11 +55,16 @@ function reflectAuthNav() {
   if (!user) return;
 
   // In-page CTAs ("Log in", "Find a cleaner", "Create account") point at /login.
-  // Once you're logged in those are wrong — send them to your portal, and rename
-  // the plain "Log in" ones so nothing on the page still invites you to log in.
+  // Once you're logged in, the ones for YOUR OWN role are wrong, so send them to
+  // your portal. Leave the OTHER role's signup/login CTAs alone: a logged-in
+  // customer must still be able to create a maid account from /for-maids, and
+  // vice versa. Otherwise those cross-role buttons dump you in the wrong portal.
   const portalHref = Session.homeFor(user.role);
   const portalLabel = user.role === 'cleaner' ? 'Maid portal' : 'Customer portal';
+  const myRoleWord = user.role === 'cleaner' ? 'maid' : 'customer';
   document.querySelectorAll('main a[href*="/login"]').forEach((el) => {
+    const m = (el.getAttribute('href') || '').match(/[?&]role=(maid|customer)/);
+    if (m && m[1] !== myRoleWord) return; // a cross-role CTA - don't touch it
     const wasLogin = /log\s?in/i.test(el.textContent);
     el.href = portalHref;
     if (wasLogin) el.textContent = portalLabel;

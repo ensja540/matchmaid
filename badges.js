@@ -1,11 +1,11 @@
-// Trust badges — one per verification a cleaner has passed.
+// Trust badges - one per verification a cleaner has passed.
 //
 // A badge is never self-claimed: the server only sets id_verified /
 // police_verified / insurance_verified once an uploaded document is approved,
 // so anything rendered here is earned.
 //
 // Two shapes for two audiences. `earned()` shows a customer only what a cleaner
-// actually holds — an unearned badge would read as a mark against them. `strip()`
+// actually holds - an unearned badge would read as a mark against them. `strip()`
 // shows a cleaner all three, unearned ones greyed, because the gaps are the
 // point: it's the checklist that gets them to upload the next document.
 window.Badges = (function () {

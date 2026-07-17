@@ -1,4 +1,4 @@
-// Google Analytics 4 — single source of truth for the Measurement ID.
+// Google Analytics 4 - single source of truth for the Measurement ID.
 // Loaded in the <head> of every page. The heavy gtag library is fetched
 // asynchronously so it never blocks rendering; the small setup below runs
 // synchronously so window.gtag / window.mmTrack exist before other scripts.

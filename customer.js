@@ -1,4 +1,4 @@
-// Customer portal — fully backed by the real API (no demo data).
+// Customer portal - fully backed by the real API (no demo data).
 // Reference constants (calendar labels, service catalogue) still come from DEMO.
 const { DAYS, SLOTS } = DEMO;
 
@@ -48,7 +48,7 @@ let myEnquiries = []; // enquiries this customer has sent (My enquiries tab)
 let starredIds = new Set(); // cleaner ids this customer has starred
 let starredList = []; // starred cleaners with details (for the My cleaners tab)
 
-// "How Match Maid works" — customer steps as a scroll-driven zigzag timeline
+// "How Match Maid works" - customer steps as a scroll-driven zigzag timeline
 // (same component as the maid side, customer copy).
 const HOWFLOW_STEPS = [
   { n: '01', h: 'Search your area', b: `Choose your suburb and the type of clean to see local maids, <span class="hi">best match first</span>.` },
@@ -133,7 +133,7 @@ function initHowflow(panel) {
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(updateLine);
 }
 
-// New accounts start clean — only the name/email (the user's own account data)
+// New accounts start clean - only the name/email (the user's own account data)
 // are pre-filled; everything about their home is blank until they set it.
 const PROFILE_DEFAULTS = {
   photo: '', fullName: sessionUser?.fullName || '', email: sessionUser?.email || '', phone: '',
@@ -275,7 +275,7 @@ async function initMessages() {
   if (!activeConvo && convos[0]) activeConvo = convos[0].id;
   if (activeConvo) await loadMsgs(activeConvo);
   render();
-  // Came from browse via "Contact" — open the official enquiry form for them.
+  // Came from browse via "Contact" - open the official enquiry form for them.
   if (pendingContact && pendingContact.id) openEnquiryModal(pendingContact.id, pendingContact.name);
 }
 
@@ -323,7 +323,7 @@ const PANELS = {
       <div class="cta-card">
         <div>
           <h2>Cleaner search is coming soon</h2>
-          <p class="muted">We're building our network of local cleaners first. You're on the waitlist — we'll email you the moment they're available in your area.</p>
+          <p class="muted">We're building our network of local cleaners first. You're on the waitlist - we'll email you the moment they're available in your area.</p>
         </div>
         <button class="btn solid" data-goto="find" type="button">Learn more</button>
       </div>
@@ -331,7 +331,7 @@ const PANELS = {
       ${howflowHTML()}`;
   },
 
-  // Only the cleaners this customer has starred. Empty until they star someone —
+  // Only the cleaners this customer has starred. Empty until they star someone -
   // people they've merely messaged live in the Messages tab, not here.
   mycleaners() {
     return `
@@ -382,7 +382,7 @@ const PANELS = {
         <span class="waitlist-badge">Coming soon</span>
         <h2>We're building our network of cleaners first.</h2>
         <p class="wizard-lede">Match Maid is brand new. We're signing up trusted local cleaners
-          in your area right now — search switches on the moment there are cleaners near you to
+          in your area right now - search switches on the moment there are cleaners near you to
           match with.</p>
         <p><strong>You're on the waitlist.</strong> We'll email you the moment cleaners are
           available in your area.</p>
@@ -485,7 +485,7 @@ const WIRE = {
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
   },
-  // Search disabled during the waitlist phase — the CTA opens the guided
+  // Search disabled during the waitlist phase - the CTA opens the guided
   // profile setup (their waitlist entry).
   find() {
     panel.querySelector('[data-open-cwiz]')?.addEventListener('click', openCwiz);
@@ -824,14 +824,14 @@ function openReviewModal(conversationId) {
 }
 
 function rateLabel(min, max) {
-  // Single price only — never a range.
+  // Single price only - never a range.
   const r = min ?? max;
   return r == null ? 'rate on enquiry' : `$${r}/hr`;
 }
 function cleanerCardHTML(c) {
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
-  const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
+  const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">-</span>';
   const SLOTLBL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
   const avail = c.availability.length
     ? c.availability.slice().sort((a, b) => a.day - b.day).map((a) => `<span class="chip on">${DAYS[a.day]} ${SLOTLBL[a.slot] || a.slot}</span>`).join('')
@@ -859,7 +859,7 @@ function cleanerCardHTML(c) {
           .map((a) => `<li><span>${escapeHtml(DEMO.serviceName(a.slug))}</span><span class="addon-cost">+$${Math.max(0, Math.round(Number(a.price) || 0))}</span></li>`)
           .join('')}</ul></div>`
       : ''}
-    <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
+    <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '-'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
     ${Review.barsHTML(c.breakdown)}
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${attr(c.id)}">Message ${first}</button></div>`;
@@ -1131,7 +1131,7 @@ async function saveCwiz() {
   try {
     await putClientProfile({ userId: uid, ...cprof });
     try { sessionStorage.setItem('mm_cwiz_dismissed', '1'); } catch {}
-    cwizSetMsg("You're all set — you're on the waitlist!", 'ok');
+    cwizSetMsg("You're all set - you're on the waitlist!", 'ok');
     setTimeout(() => { closeCwiz(); render(); }, 1100);
   } catch {
     nextBtn.disabled = false;

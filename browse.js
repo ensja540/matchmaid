@@ -1,4 +1,4 @@
-// Public, ungated cleaner browse — now backed by the real /api/match endpoint.
+// Public, ungated cleaner browse - now backed by the real /api/match endpoint.
 // Signup only appears at the "Contact" peak (or the always-present hook).
 const { DAYS, SLOTS } = DEMO;
 
@@ -123,7 +123,7 @@ function currentPrefs() {
     verif: [...verifBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.badge),
     products: !!productsBox?.querySelector('.chip.select.on'),
     hours: Number(hoursSel.value),
-    // One rate in, a fair window out — same +/- $10 band the wizard uses.
+    // One rate in, a fair window out - same +/- $10 band the wizard uses.
     budgetMin: Math.max(0, Number(rateEl.value) - 10),
     budgetMax: Number(rateEl.value) + 10,
     slots,
@@ -277,7 +277,7 @@ async function openCleanerModal(id) {
   }
 }
 function rateLabel(min, max) {
-  // Single price only — never a range.
+  // Single price only - never a range.
   const r = min ?? max;
   return r == null ? 'rate on enquiry' : `$${r}/hr`;
 }
@@ -288,7 +288,7 @@ function escapeHtml(s) {
 function cleanerCardHTML(c) {
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
   const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
-  const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">—</span>';
+  const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">-</span>';
   const SLOTLBL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
   const avail = c.availability.length
     ? c.availability.slice().sort((a, b) => a.day - b.day).map((a) => `<span class="chip on">${DAYS[a.day]} ${SLOTLBL[a.slot] || a.slot}</span>`).join('')
@@ -310,7 +310,7 @@ function cleanerCardHTML(c) {
           .map((s) => `<li><span>${escapeHtml(SVC_NAME[s.slug] || s.slug)}</span><span class="addon-cost">+$${Math.max(0, Math.round(Number(s.extra) || 0))}/hr</span></li>`)
           .join('')}</ul></div>`
       : ''}
-    <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '—'}</p></div>
+    <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '-'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
     ${Review.barsHTML(c.breakdown)}
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${escapeHtml(c.id)}" data-cpname="${escapeHtml(c.name)}">Message ${first}</button></div>`;
@@ -396,19 +396,19 @@ capForm.addEventListener('submit', async (e) => {
     });
     const data = await res.json();
     if (!res.ok) {
-      // A real failure — most often "that email already has an account". Show
+      // A real failure - most often "that email already has an account". Show
       // the server's own message; never fake a session or a success redirect.
       capMsg.textContent = data.error || 'Could not create your account.';
       capMsg.classList.add('error');
       return;
     }
-    // Account created from the browse capture modal — count the conversion.
+    // Account created from the browse capture modal - count the conversion.
     window.mmTrack && mmTrack('sign_up', { method: 'customer' });
     // With email confirmation on, the account is created but not logged in until
-    // the code is entered. Don't store a half-session — send them to confirm.
+    // the code is entered. Don't store a half-session - send them to confirm.
     if (data.needsVerification || !data.user) {
       capMsg.classList.remove('error');
-      capMsg.textContent = 'Almost there — check your email for a confirmation code, then log in.';
+      capMsg.textContent = 'Almost there - check your email for a confirmation code, then log in.';
       setTimeout(() => { location.href = '/login?role=customer'; }, 2500);
       return;
     }

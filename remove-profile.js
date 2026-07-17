@@ -4,10 +4,10 @@
 // back in (confirming the prompt) restores the account exactly as it was.
 window.RemoveProfile = (function () {
   const PHRASE = 'REMOVE';
-  const COOLDOWN_MONTHS = 2; // cleaners only — must match the server
+  const COOLDOWN_MONTHS = 2; // cleaners only - must match the server
 
   // opts.billingNote: only the maid side pays, so only they see the billing line.
-  // opts.pauseOffer: maid whose listing is live — nudge them to pause instead.
+  // opts.pauseOffer: maid whose listing is live - nudge them to pause instead.
   function html(opts) {
     const billing = opts && opts.billingNote
       ? `<p class="danger-billing">
@@ -17,11 +17,11 @@ window.RemoveProfile = (function () {
            straight away if it's been more than a month.
          </p>`
       : '';
-    // Pause is the softer, reversible alternative — and cheaper than starting over.
+    // Pause is the softer, reversible alternative - and cheaper than starting over.
     const pauseOffer = opts && opts.pauseOffer
       ? `<div class="pause-offer">
            <strong>Is your calendar full?</strong>
-           <p>Put your account on pause instead — stay on Match Maid for half the monthly
+           <p>Put your account on pause instead - stay on Match Maid for half the monthly
              fee and switch back on the moment you want more work. No cooling-off period.</p>
            <button class="btn outline sm" id="dzPause" type="button">Pause my account instead</button>
          </div>`
@@ -31,7 +31,7 @@ window.RemoveProfile = (function () {
       ? `Your profile leaves Match Maid straight away and you lose access to your
          account and its data. Nothing is deleted, but there's a
          <strong>${COOLDOWN_MONTHS}-month cooling-off period</strong> before you can
-         reactivate it — so only remove it if you're sure.`
+         reactivate it - so only remove it if you're sure.`
       : `Your profile leaves Match Maid straight away and you lose access to your
          account and its data. Nothing is deleted. Sign back in any time to restore
          everything.`;

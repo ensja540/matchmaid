@@ -1,5 +1,5 @@
 // Star-rating badge shown beside a cleaner's name once they have reviews.
-// Nothing renders for an unrated cleaner — an empty row of stars reads worse
+// Nothing renders for an unrated cleaner - an empty row of stars reads worse
 // than no stars at all.
 //
 // The stars are one greyed row with a gold row clipped over it, so a 4.3 shows

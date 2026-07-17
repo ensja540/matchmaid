@@ -93,7 +93,7 @@ form.addEventListener('submit', async (e) => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    // A successful registration is our key conversion — count it even if email
+    // A successful registration is our key conversion - count it even if email
     // confirmation is still pending, since the account was created.
     if (mode === 'signup' && (res.ok || data.needsVerification)) {
       window.mmTrack && mmTrack('sign_up', { method: role });
@@ -236,7 +236,7 @@ function showVerifyStep({ userId, email }) {
       });
       const data = await res.json();
       vMsg.className = 'auth-msg ok';
-      vMsg.textContent = res.ok ? 'Sent — check your inbox.' : (data.error || 'Could not resend.');
+      vMsg.textContent = res.ok ? 'Sent - check your inbox.' : (data.error || 'Could not resend.');
     } catch {
       vMsg.className = 'auth-msg error';
       vMsg.textContent = 'Could not reach the server.';

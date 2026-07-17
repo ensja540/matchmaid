@@ -1,14 +1,14 @@
-// Transactional email via Resend's HTTP API (no SDK — Node 18+ global fetch).
+// Transactional email via Resend's HTTP API (no SDK - Node 18+ global fetch).
 // Everything is gated on RESEND_API_KEY: with no key set, sends are a logged
 // no-op, so local dev and un-configured deploys keep working and never crash a
 // request. Set on Render:
-//   RESEND_API_KEY  — from resend.com
-//   EMAIL_FROM      — e.g. "Match Maid <hello@matchmaid.co.nz>" (verified domain)
-//   APP_URL         — e.g. "https://matchmaid.co.nz" (for links in emails)
+//   RESEND_API_KEY  - from resend.com
+//   EMAIL_FROM      - e.g. "Match Maid <hello@matchmaid.co.nz>" (verified domain)
+//   APP_URL         - e.g. "https://matchmaid.co.nz" (for links in emails)
 import { randomBytes } from 'node:crypto';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-// resend.dev only delivers to the account owner — fine for testing before the
+// resend.dev only delivers to the account owner - fine for testing before the
 // real domain is verified. Swap EMAIL_FROM to your domain address in prod.
 const EMAIL_FROM = process.env.EMAIL_FROM || 'Match Maid <onboarding@resend.dev>';
 const APP_URL = process.env.APP_URL || 'https://matchmaid.co.nz';
@@ -27,7 +27,7 @@ export function makeCode() {
 // user-facing action that triggered it.
 export async function sendEmail({ to, subject, html, text }) {
   if (!RESEND_API_KEY) {
-    console.warn(`[email] RESEND_API_KEY not set — skipped "${subject}" to ${to}`);
+    console.warn(`[email] RESEND_API_KEY not set - skipped "${subject}" to ${to}`);
     return { skipped: true };
   }
   try {
@@ -82,7 +82,7 @@ export async function sendEnquiryEmail({ to, cleanerName, clientName, service, s
     .filter(Boolean).join(' ');
   const html = shell(`
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
-    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">Good news — <strong>${escapeHtml(clientName || 'a customer')}</strong> has sent you a new enquiry${bits ? ' for ' + bits : ''} on Match Maid. It's exclusively yours.</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">Good news - <strong>${escapeHtml(clientName || 'a customer')}</strong> has sent you a new enquiry${bits ? ' for ' + bits : ''} on Match Maid. It's exclusively yours.</p>
     ${message ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#f4f1ea;border-left:3px solid #14b8a6;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333">"${escapeHtml(message)}"</blockquote>` : ''}
     <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Reply in your portal</a></p>
     <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">Replying quickly keeps you at the top of search results.</p>`);

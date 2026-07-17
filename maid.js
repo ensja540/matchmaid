@@ -4,7 +4,7 @@ const { DAYS, SLOTS } = DEMO;
 const profile = DEMO.maidProfile;
 let enquiries = []; // real enquiries load from the API when logged in
 
-// A logged-in maid always starts CLEAN and loads their own data from the API —
+// A logged-in maid always starts CLEAN and loads their own data from the API -
 // the demo profile is only a fallback for the standalone (not-logged-in) view.
 const sessionUser = Session.get();
 const loggedIn = !!sessionUser?.id;
@@ -45,7 +45,7 @@ const displayName = sessionUser?.fullName || profile.fullName;
 const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpperCase());
 document.getElementById('who').textContent = `Hi, ${firstName}`;
 // Admin dashboard is reached directly at /admin (server-gated to the operator's
-// email) — no header button, to keep the portal chrome clean.
+// email) - no header button, to keep the portal chrome clean.
 document.getElementById('logout').addEventListener('click', (e) => {
   e.preventDefault();
   Session.clear();
@@ -66,7 +66,7 @@ let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
 const areas = new Set(loggedIn ? [] : profile.areas); // specific suburbs (when narrowing)
 let mpCity = 'Christchurch'; // default city
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
-// The cleaner's own base location — a city + suburb picked from dropdowns (no
+// The cleaner's own base location - a city + suburb picked from dropdowns (no
 // free-text street address). Stored back into residential_address as
 // "Suburb, City" so it needs no schema change.
 let mpHomeCity = 'Christchurch';
@@ -86,7 +86,7 @@ function parseHome(addr) {
 const PRODUCT_OPTIONS = [
   { value: 'own', label: 'I bring my own products and equipment' },
   { value: 'supplied', label: 'The customer supplies products and equipment' },
-  { value: 'either', label: 'Either — I can bring them or use the customer’s' },
+  { value: 'either', label: 'Either - I can bring them or use the customer’s' },
 ];
 const PAYMENT_OPTIONS = [
   { value: 'bank', label: 'Bank transfer' },
@@ -136,7 +136,7 @@ const CLEAN_TYPES = [
 
 // Per-clean-type fee rows. Each has an "I offer this" tick that reveals its
 // hourly fee. Both cleans are hourly. The deep-clean row also carries the
-// end-of-lease option and — only then — the bond-back guarantee.
+// end-of-lease option and - only then - the bond-back guarantee.
 function cleanFeesHTML() {
   return CLEAN_TYPES.map((t) => {
     const offered = mpOffers.has(t.slug);
@@ -144,12 +144,12 @@ function cleanFeesHTML() {
     return `<div class="fee-row ${offered ? 'on' : ''}" data-fee="${t.slug}">
         <div class="fee-head">
           <label class="check-inline fee-offer"><input type="checkbox" class="offer-toggle" ${offered ? 'checked' : ''} /> <span class="fee-name">${escapeHtml(t.name)}</span></label>
-          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="—" ${offered ? '' : 'disabled'} /><span class="fee-per">/hr</span></span>
+          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="-" ${offered ? '' : 'disabled'} /><span class="fee-per">/hr</span></span>
         </div>
         ${t.includes ? `<p class="fee-includes">Includes: ${escapeHtml(t.includes)}</p>` : ''}
         ${t.endOfLeaseOption ? `
-          <label class="check-inline fee-eol"><input type="checkbox" class="eol-toggle" ${mpEndOfLease ? 'checked' : ''} /> Also available for end-of-lease cleans <span class="muted">— based on your deep-clean rate, but may be subject to custom pricing</span></label>
-          <label class="check-inline fee-bond" ${mpEndOfLease ? '' : 'hidden'}><input type="checkbox" class="bond-toggle" ${mpBondGuaranteed ? 'checked' : ''} /> Bond-back guaranteed <span class="muted">— you'll put it right if the manager isn't satisfied</span></label>` : ''}
+          <label class="check-inline fee-eol"><input type="checkbox" class="eol-toggle" ${mpEndOfLease ? 'checked' : ''} /> Also available for end-of-lease cleans <span class="muted">- based on your deep-clean rate, but may be subject to custom pricing</span></label>
+          <label class="check-inline fee-bond" ${mpEndOfLease ? '' : 'hidden'}><input type="checkbox" class="bond-toggle" ${mpBondGuaranteed ? 'checked' : ''} /> Bond-back guaranteed <span class="muted">- you'll put it right if the manager isn't satisfied</span></label>` : ''}
       </div>`;
   }).join('');
 }
@@ -227,7 +227,7 @@ function wireCleanFees(root) {
       eol.addEventListener('change', () => {
         mpEndOfLease = eol.checked;
         if (bondLabel) bondLabel.hidden = !mpEndOfLease;
-        // Bond guarantee only applies to end-of-lease work — clear it if that's off.
+        // Bond guarantee only applies to end-of-lease work - clear it if that's off.
         if (!mpEndOfLease && bond) { bond.checked = false; mpBondGuaranteed = false; }
       });
     }
@@ -430,12 +430,12 @@ const PANELS = {
           <span>Free while we build out our user base</span>
         </div>
         <p class="muted">Full access with no fees while we build out our user base. After that it's a flat
-          $30/month (or $50/month for premium — top of the list).</p>
+          $30/month (or $50/month for premium - top of the list).</p>
       </div>
 
       <div class="portal-note">
         <strong>We're onboarding cleaners first.</strong> Right now we're only accepting cleaner
-        registrations while we build out the directory — households join once there's a strong network
+        registrations while we build out the directory - households join once there's a strong network
         of cleaners for them to choose from. Get your profile ready so you're first in line.
       </div>
 
@@ -731,7 +731,7 @@ const WIRE = {
           const doc = inp.dataset.doc;
           verif[doc] = 'pending';
           render();
-          // Read the document in the browser (never on the server — a corrupt
+          // Read the document in the browser (never on the server - a corrupt
           // image can crash the OCR worker) so we can show what was scanned.
           const scanned = await ocrDocument(reader.result, file.type);
           if (scanned) { verifRead[doc] = scanned.slice(0, 160); render(); }
@@ -795,7 +795,7 @@ const WIRE = {
     });
   },
   subscription() {
-    // Plans aren't purchasable yet — buttons show "Coming soon" (disabled).
+    // Plans aren't purchasable yet - buttons show "Coming soon" (disabled).
     wireRefCopy(panel);
     panel.querySelectorAll('[data-start]').forEach((b) =>
       b.addEventListener('click', () => {
@@ -824,7 +824,7 @@ async function ocrDocument(dataUrl, fileType) {
   }
 }
 
-// "How Match Maid works" — six steps rendered as a scroll-driven zigzag
+// "How Match Maid works" - six steps rendered as a scroll-driven zigzag
 // timeline. Copy is fixed; emphasis (.hi) on exclusivity and the prices.
 const HOWFLOW_STEPS = [
   { n: '01', h: 'Complete your profile', b: `Add your name, photo and a short bio so clients know who they're inviting in.` },
@@ -875,7 +875,7 @@ function initHowflow(panel) {
   // Opt in to the hidden start state only now that JS is driving the reveal.
   section.classList.add('js-anim');
   // Steps already revealed must not re-hide when the overview re-renders on
-  // data loads — show those instantly, only observe the rest.
+  // data loads - show those instantly, only observe the rest.
   stepArr.forEach((s, i) => { if (howflowSeen.has(i)) s.classList.add('in-view'); });
   if (howObserver) howObserver.disconnect();
   howObserver = new IntersectionObserver(
@@ -924,7 +924,7 @@ function gettingStartedHTML() {
     { n: 4, label: 'Get verified', desc: 'Upload ID, a criminal check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
   ];
   // Once the profile itself is fully set up (details, availability and areas),
-  // retire the whole get-started card — verification is a separate optional nudge.
+  // retire the whole get-started card - verification is a separate optional nudge.
   if (profileSet && availSet) return '';
   const doneCount = steps.filter((s) => s.done).length;
   return `<div class="panel-card getting-started">
@@ -952,7 +952,7 @@ function enquiryRow(e) {
 }
 
 // Pausing hides the listing from browse, search and matches. Nothing else
-// changes — it's the reversible middle ground between staying live and removing
+// changes - it's the reversible middle ground between staying live and removing
 // the account entirely.
 function pauseHTML() {
   if (!loggedIn) return '';
@@ -975,7 +975,7 @@ function pauseHTML() {
 }
 
 // Prominent, hard-to-miss referral pitch for the overview. Grows the network
-// (our whole mission) and rewards the maid for it — so it earns top billing on
+// (our whole mission) and rewards the maid for it - so it earns top billing on
 // the dashboard, not just a card buried in the subscription tab.
 function referralBannerHTML() {
   if (!loggedIn) return '';
@@ -989,7 +989,7 @@ function referralBannerHTML() {
         <span class="rb-kicker">Grow the network, get paid for it</span>
         <h2 class="rb-head">Refer a cleaner${per ? `, earn $${per} credit` : ''}</h2>
         <p class="rb-copy">Know a great cleaner? Share your invite link. When they join and get
-          ID-verified${per ? `, you earn <strong>$${per}</strong> off your future payments` : ', you earn credit off your future payments'} —
+          ID-verified${per ? `, you earn <strong>$${per}</strong> off your future payments` : ', you earn credit off your future payments'} -
           and there's no cap on how many you can bring in.</p>
         ${referrals
           ? `<div class="rb-actions">
@@ -1063,7 +1063,7 @@ function referralsHTML() {
 }
 
 // Accepting books a date. That date, not the cleaner remembering to press a
-// button afterwards, is what asks the customer for a review — so it is part of
+// button afterwards, is what asks the customer for a review - so it is part of
 // the accept rather than an afterthought, and there is no way to skip it.
 function openAcceptForm(button, enq) {
   const actions = button.parentElement;
@@ -1427,7 +1427,7 @@ const WIZ_CONTENT = {
     <p class="wiz-lede">Tap the times you're usually free. This is what matches you to clients.</p>
     <div class="cal" id="wizCal">${calendarHTML(avail)}</div>`,
   verification: () => `
-    <p class="wiz-lede">Optional — but verified badges win trust and let clients filter for you. Add them now or skip and do it later.</p>
+    <p class="wiz-lede">Optional - but verified badges win trust and let clients filter for you. Add them now or skip and do it later.</p>
     ${Badges.strip(verif)}
     <div class="verif-list" style="margin-top:1rem">${VERIF_ITEMS.map(verifRow).join('')}</div>`,
 };
@@ -1518,7 +1518,7 @@ function renderWizStep() {
   wizEl.querySelector('#wizSkip').hidden = step.key !== 'verification';
   wizEl.querySelector('#wizNext').textContent = wizStep === WIZ_STEPS.length - 1 ? 'Finish' : 'Next';
 }
-// Validate/capture the current step, then move on — or save on the last step.
+// Validate/capture the current step, then move on - or save on the last step.
 function captureWizStep(key) {
   if (key === 'about') {
     const name = wizEl.querySelector('#wizName').value.trim();
@@ -1589,7 +1589,7 @@ async function saveWizard() {
       });
     }
     try { sessionStorage.setItem('mm_wizard_dismissed', '1'); } catch {}
-    wizSetMsg("You're all set — you're now live in search!", 'ok');
+    wizSetMsg("You're all set - you're now live in search!", 'ok');
     setTimeout(() => { closeWizard(); render(); }, 1100);
   } catch {
     nextBtn.disabled = false;
@@ -1597,5 +1597,5 @@ async function saveWizard() {
   }
 }
 
-// Everything above is defined — safe to do the first render now.
+// Everything above is defined - safe to do the first render now.
 render();

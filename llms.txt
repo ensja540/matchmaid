@@ -1,6 +1,6 @@
 # Match Maid
 
-> Match Maid is a New Zealand marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge — Match Maid never takes a commission on a job. Currently serving Christchurch and Auckland.
+> Match Maid is a New Zealand marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge - Match Maid never takes a commission on a job. Currently serving Christchurch and Auckland.
 
 ## What it is
 - A directory / marketplace, not a cleaning company. Match Maid introduces households to independent cleaners and does not employ cleaners, take bookings, or handle payments.

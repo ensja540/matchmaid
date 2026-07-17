@@ -2,7 +2,7 @@
 //
 // The contract is fail-safe by design: the markup is fully visible on its own,
 // and the hidden start state only exists under `.js-anim`, which this script
-// adds to <html>. No script, no hiding — a broken bundle can never blank the
+// adds to <html>. No script, no hiding - a broken bundle can never blank the
 // page. Reduced motion and browsers without IntersectionObserver skip straight
 // to the visible state.
 //
@@ -10,7 +10,7 @@
 // re-hides it. A container marked `.stagger` cascades its revealed children.
 //
 // Note: `.js-anim` here sits on <html>, while `.howflow.js-anim` is on the
-// section itself — both classes must land on the same element to match, so the
+// section itself - both classes must land on the same element to match, so the
 // two never collide.
 (function () {
   var items = [].slice.call(document.querySelectorAll('.reveal'));
