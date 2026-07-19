@@ -193,18 +193,9 @@ function paintResults() {
   results.innerHTML = cards.join('');
 
   results.querySelectorAll('[data-contact]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const name = b.dataset.contact;
-      const cid = b.dataset.cid;
-      if (window.Session && Session.get()) {
-        localStorage.setItem('mm_pending_contact', JSON.stringify({ id: cid, name }));
-        location.href = '/customer';
-        return;
-      }
-      openModal(name, cid);
-    })
+    b.addEventListener('click', () => goWaitlist(b.dataset.contact))
   );
-  results.querySelectorAll('[data-hook]').forEach((b) => b.addEventListener('click', () => openModal(null)));
+  results.querySelectorAll('[data-hook]').forEach((b) => b.addEventListener('click', () => goWaitlist(null)));
   results.querySelectorAll('[data-cleaner]').forEach((b) =>
     b.addEventListener('click', () => openCleanerModal(b.dataset.cleaner))
   );
@@ -233,15 +224,15 @@ function resultCard(r, p) {
     ${offeredChips || missingChips ? `<div class="chips">${offeredChips}${missingChips}</div>` : ''}
     ${(r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
     <div class="result-actions">
-      <button class="btn solid sm" type="button" data-contact="${r.name}" data-cid="${r.id}">Contact ${first}</button>
+      <button class="btn solid sm" type="button" data-contact="${r.name}">Contact ${first}</button>
     </div>
   </article>`;
 }
 
 function hookCard() {
   return `<div class="hook-card">
-    <div><h3>Found someone you like?</h3><p>Create a free account to message your maid. Takes seconds, no card needed.</p></div>
-    <button class="btn solid create" type="button" data-hook>Create free account</button>
+    <div><h3>Found someone you like?</h3><p>Cleaners aren't taking enquiries yet. Join the waitlist and we'll email you the moment they go live in your area.</p></div>
+    <button class="btn solid create" type="button" data-hook>Join the waitlist</button>
   </div>`;
 }
 
@@ -263,14 +254,7 @@ async function openCleanerModal(id) {
     const btn = cleanerModalBody.querySelector('[data-cpcontact]');
     btn?.addEventListener('click', () => {
       cleanerModal.hidden = true;
-      const name = btn.dataset.cpname;
-      const cid = btn.dataset.cpcontact;
-      if (window.Session && Session.get()) {
-        localStorage.setItem('mm_pending_contact', JSON.stringify({ id: cid, name }));
-        location.href = '/customer';
-        return;
-      }
-      openModal(name, cid);
+      goWaitlist(btn.dataset.cpname);
     });
   } catch {
     cleanerModalBody.innerHTML = '<p class="muted">Could not load this profile.</p>';
@@ -349,29 +333,45 @@ const modalTitle = document.getElementById('modalTitle');
 const modalSub = document.getElementById('modalSub');
 const capForm = document.getElementById('capForm');
 const capMsg = document.getElementById('capMsg');
+const capBody = document.getElementById('capBody');
+const capNotice = document.getElementById('capNotice');
 let pendingCleaner = null;
-let pendingCleanerId = null;
 
-document.getElementById('signupHook')?.addEventListener('click', () => openModal(null));
+document.getElementById('signupHook')?.addEventListener('click', () => goWaitlist(null));
+document.getElementById('capNoticeOk')?.addEventListener('click', closeModal);
 document.getElementById('modalClose').addEventListener('click', closeModal);
 modal.addEventListener('click', (e) => {
   if (e.target === modal) closeModal();
 });
 
-function openModal(cleanerName, cleanerId) {
+// Messaging is switched off while we build the cleaner network, so no contact
+// CTA on browse can reach an enquiry. Customers already on the waitlist just
+// get told to sit tight; everyone else is offered the signup that puts them on
+// it. Either way they stay on browse - no handoff to the portal.
+function goWaitlist(cleanerName) {
+  openModal(cleanerName || null, !!(window.Session && Session.get()));
+}
+
+function openModal(cleanerName, alreadyOnWaitlist) {
   pendingCleaner = cleanerName;
-  pendingCleanerId = cleanerId || null;
-  if (cleanerName) {
-    modalTitle.textContent = `Message ${cleanerName}`;
-    modalSub.textContent = "You're one step away. Create your free account to send a message.";
+  const who = cleanerName ? `message ${cleanerName}` : 'message your cleaner';
+  capBody.hidden = !!alreadyOnWaitlist;
+  capNotice.hidden = !alreadyOnWaitlist;
+  if (alreadyOnWaitlist) {
+    modalTitle.textContent = 'Not open just yet';
+    modalSub.textContent = `Once we open up the service you'll be able to ${who}. You're on the waitlist - we'll email you the moment cleaners go live in your area.`;
+  } else if (cleanerName) {
+    modalTitle.textContent = 'Not open just yet';
+    modalSub.textContent = `Once we open up the service you'll be able to ${who}. Join the waitlist and we'll email you the moment cleaners go live in your area.`;
   } else {
-    modalTitle.textContent = 'Create your free account';
-    modalSub.textContent = 'Free forever, and about 20 seconds.';
+    modalTitle.textContent = 'Join the waitlist';
+    modalSub.textContent = "Free forever, about 20 seconds, and we'll email you the moment cleaners go live near you.";
   }
   capMsg.textContent = '';
   capMsg.className = 'auth-msg';
   modal.hidden = false;
-  setTimeout(() => capForm.fullName.focus(), 30);
+  // Don't focus a field that isn't there - the notice variant has no form.
+  setTimeout(() => (alreadyOnWaitlist ? capNotice.querySelector('button') : capForm.fullName)?.focus(), 30);
 }
 function closeModal() {
   modal.hidden = true;
@@ -387,7 +387,6 @@ capForm.addEventListener('submit', async (e) => {
     email: capForm.email.value,
     password: capForm.password.value,
   };
-  if (pendingCleanerId) localStorage.setItem('mm_pending_contact', JSON.stringify({ id: pendingCleanerId, name: pendingCleaner }));
   try {
     const res = await fetch('/api/register', {
       method: 'POST',
@@ -413,7 +412,7 @@ capForm.addEventListener('submit', async (e) => {
       return;
     }
     Session.set(data.user);
-    location.href = '/customer';
+    location.href = '/customer#find';
   } catch {
     capMsg.textContent = 'Could not reach the server. Please try again.';
     capMsg.classList.add('error');

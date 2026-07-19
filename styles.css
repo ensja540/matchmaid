@@ -841,10 +841,12 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ---------- Review prompt bubble in chat ---------- */
-.bubble.review-prompt { background: var(--bg-cream); border: 1px solid var(--gold); cursor: pointer; text-align: left; width: 100%; font: inherit; }
-.bubble.review-prompt:hover { background: #fdf2dc; }
-.bubble.review-prompt .rp-cta { display: block; margin-top: 0.35rem; font-weight: 700; color: var(--copper); }
-.bubble.review-done { background: var(--bg-mist); border: 1px solid var(--line); }
+/* These carry .them too, so they need to out-specify the .bubble.them tint
+   further down - otherwise the review prompt loses its gold/cream treatment. */
+.bubble.them.review-prompt { background: var(--bg-cream); border: 1px solid var(--gold); cursor: pointer; text-align: left; width: 100%; font: inherit; }
+.bubble.them.review-prompt:hover { background: #fdf2dc; }
+.bubble.them.review-prompt .rp-cta { display: block; margin-top: 0.35rem; font-weight: 700; color: var(--copper); }
+.bubble.them.review-done { background: var(--paper); border: 1px solid var(--line); }
 
 .enq-right { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
 
@@ -1381,12 +1383,15 @@ a { color: inherit; text-decoration: none; }
 .unread { position: absolute; top: 0.7rem; right: 0.7rem; background: var(--copper); color: var(--paper); font-size: 0.66rem; font-weight: 700; border-radius: 999px; padding: 0.05rem 0.42rem; }
 .thread { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .thread-head { padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--line); font-family: var(--serif); }
-.bubbles { flex: 1; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; overflow-y: auto; }
+/* Faint canvas so the white "me" bubbles read as objects on a white portal. */
+.bubbles { flex: 1; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; overflow-y: auto; background: var(--bg-mist); }
 .bubble { max-width: 78%; padding: 0.6rem 0.85rem; border-radius: var(--radius); border: 1px solid var(--line); }
 .bubble p { margin: 0; }
 .bubble span { font-size: 0.7rem; color: var(--muted); }
-.bubble.them { align-self: flex-start; background: var(--paper-2); }
-.bubble.me { align-self: flex-end; background: rgba(183,110,77,0.1); border-color: rgba(183,110,77,0.4); }
+/* Incoming reads as the coloured one, your own as plain white paper - so your
+   eye lands on what the other person said. */
+.bubble.them { align-self: flex-start; background: var(--bg-tint); border-color: rgba(20,184,166,0.35); }
+.bubble.me { align-self: flex-end; background: var(--paper); border-color: var(--line); }
 .composer { display: flex; gap: 0.5rem; padding: 0.7rem; border-top: 1px solid var(--line); }
 .composer input { flex: 1; padding: 0.65rem 0.85rem; border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--sans); font-size: 0.95rem; background: var(--paper); }
 

@@ -15,7 +15,10 @@ document.getElementById('logout').addEventListener('click', (e) => {
 
 const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
-let current = 'overview';
+// Deep link: /customer#find lands straight on a tab (browse sends waitlist
+// traffic to #find). Anything unrecognised falls back to the overview.
+const TABS = ['overview', 'mycleaners', 'enquiries', 'find', 'messages', 'profile'];
+let current = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
 // Guided profile-setup wizard state.
 let cwizStep = 0, cwizEl = null, cwizAutoTried = false;
 
@@ -729,9 +732,24 @@ const enquiryModalBody = document.getElementById('enquiryModalBody');
 document.getElementById('enquiryModalClose')?.addEventListener('click', () => { if (enquiryModal) enquiryModal.hidden = true; });
 enquiryModal?.addEventListener('click', (e) => { if (e.target === enquiryModal) enquiryModal.hidden = true; });
 
+// Enquiries are switched off for the waitlist phase: every contact CTA opens a
+// "not open yet" notice instead of the form. Delete this block (and restore the
+// "Message X" button labels) to switch messaging back on.
 function openEnquiryModal(cleanerId, cleanerName) {
   if (!uid) { location.href = '/login?role=customer'; return; }
   if (!enquiryModal) return;
+  enquiryModalBody.innerHTML = `
+    <h2 style="margin-top:0">Not open just yet</h2>
+    <p>Once we open up the service you'll be able to message
+      ${escapeHtml(cleanerName || 'this cleaner')}.</p>
+    <p class="muted">You're on the waitlist - we'll email you the moment cleaners are
+      available in your area.</p>
+    <div class="cp-actions"><button class="btn solid full" type="button" data-enq-ok>Got it</button></div>`;
+  enquiryModal.hidden = false;
+  enquiryModalBody.querySelector('[data-enq-ok]')?.addEventListener('click', () => { enquiryModal.hidden = true; });
+}
+
+function openEnquiryFormDisabled(cleanerId, cleanerName) {
   const first = escapeHtml((cleanerName || 'them').split(/['\s]/)[0]);
   const svcOpts = DEMO.services.map((s) => `<option value="${s.slug}" ${s.slug === find.service ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
   const home = [cprof.bedrooms && `${cprof.bedrooms} bed`, cprof.bathrooms && `${cprof.bathrooms} bath`, cprof.homeType, cprof.storeys, cprof.stairs && 'stairs', cprof.pets && 'pets'].filter(Boolean).join(' · ');
@@ -1140,4 +1158,5 @@ async function saveCwiz() {
 }
 
 // First paint (data streams in from the API and re-renders as it arrives).
-render();
+// goTo, not render, so a #tab deep link also highlights the right tab.
+goTo(current);
