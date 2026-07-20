@@ -12,6 +12,7 @@ const files = [
   join(here, 'migrations', '001_init.sql'),
   join(here, 'migrations', '002_seed.sql'),
   join(here, 'migrations', '003_availability_seed.sql'),
+  join(here, 'migrations', '004_nz_locations.sql'),
 ];
 
 async function run() {

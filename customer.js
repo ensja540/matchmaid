@@ -40,7 +40,10 @@ function parseLoc(val) {
   if (val && val.startsWith('town:')) { const t = val.slice(5); return { label: `${t} (all)`, suburbs: DEMO.towns[t] || [] }; }
   return { label: val, suburbs: val ? [val] : [] };
 }
-let suburbList = DEMO.suburbs.slice();
+// [{id, name, region, territorial_authority}] from /api/suburbs. Objects, not
+// names: nationwide the same name exists in several regions, so every write
+// sends the id.
+let suburbList = [];
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
 let pendingReviews = []; // cleans the customer has been asked to rate, and hasn't
@@ -140,7 +143,7 @@ function initHowflow(panel) {
 // are pre-filled; everything about their home is blank until they set it.
 const PROFILE_DEFAULTS = {
   photo: '', fullName: sessionUser?.fullName || '', email: sessionUser?.email || '', phone: '',
-  suburb: '', address: '', bedrooms: '', bathrooms: '', stairs: false, pets: false, needsProducts: true, storeys: '', homeType: '', notes: '',
+  suburb: '', suburbId: null, suburbRegion: '', address: '', bedrooms: '', bathrooms: '', stairs: false, pets: false, needsProducts: true, storeys: '', homeType: '', notes: '',
 };
 let cprof = { ...PROFILE_DEFAULTS };
 
@@ -157,7 +160,7 @@ const postJSON = (url, body) =>
 
 function loadSuburbs() {
   getJSON('/api/suburbs')
-    .then((list) => { suburbList = list.map((s) => s.name); reRenderIf('find', 'profile'); })
+    .then((list) => { suburbList = Array.isArray(list) ? list : []; reRenderIf('find', 'profile'); })
     .catch(() => {});
 }
 function loadDirectory() {
@@ -442,7 +445,7 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="field"><span>Phone</span><input name="phone" value="${attr(cprof.phone)}" placeholder="Optional" /></label>
-          <label class="field"><span>Suburb</span><select name="suburb">${ph(cprof.suburb)}${suburbList.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>
+          <label class="field"><span>Suburb</span><select name="suburb">${opt('', 'Select…', cprof.suburbId ? '' : '')}${NZLoc.options(suburbList, cprof.suburbId)}</select></label>
         </div>
         <span class="bf-label" style="margin-top:1.4rem">Your home</span>
         <div class="field-row">
@@ -534,9 +537,9 @@ const WIRE = {
     panel.querySelector('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
+      setSuburb(f.suburb.value);
       Object.assign(cprof, {
         fullName: f.fullName.value, email: f.email.value, phone: f.phone.value,
-        suburb: f.suburb.value,
         bedrooms: f.bedrooms.value, bathrooms: f.bathrooms.value,
         homeType: f.homeType.value,
         pets: f.pets.checked, needsProducts: f.needsProducts.checked, storeys: f.storeys.value, notes: f.notes.value,
@@ -553,6 +556,7 @@ const WIRE = {
         await putClientProfile({ userId: uid, ...cprof });
         el.textContent = 'Saved to your account.';
         el.className = 'save-msg ok';
+        maybeShowAreaNotice();
       } catch {
         el.textContent = 'Could not save. Please try again.';
         el.className = 'save-msg err';
@@ -560,6 +564,50 @@ const WIRE = {
     });
   },
 };
+// The suburb <select> carries ids, not names - nationwide the same name lives
+// in several regions. Record all three so the API gets the id and the launch
+// check gets the region.
+function setSuburb(id) {
+  const s = suburbList.find((x) => String(x.id) === String(id));
+  cprof.suburbId = s ? s.id : null;
+  cprof.suburb = s ? s.name : '';
+  cprof.suburbRegion = s ? s.region : '';
+}
+
+// Match Maid is only live in some areas. Everywhere else, say so plainly rather
+// than letting someone set up a profile expecting cleaners to appear.
+let areaNoticeShownFor = null;
+function maybeShowAreaNotice() {
+  if (!cprof.suburb) return;
+  const key = `${cprof.suburb}|${cprof.suburbRegion}`;
+  if (areaNoticeShownFor === key) return; // once per suburb per session
+  if (NZLoc.isLaunched(cprof.suburb, cprof.suburbRegion)) return;
+  areaNoticeShownFor = key;
+  showAreaNotice(cprof.suburb);
+}
+
+document.getElementById('areaModalClose')?.addEventListener('click', () => {
+  document.getElementById('areaModal').hidden = true;
+});
+document.getElementById('areaModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'areaModal') e.target.hidden = true;
+});
+
+function showAreaNotice(suburbName) {
+  const modal = document.getElementById('areaModal');
+  const body = document.getElementById('areaModalBody');
+  if (!modal || !body) return;
+  body.innerHTML = `
+    <h2 style="margin-top:0">Not in your area yet</h2>
+    <p>Match Maid is currently unavailable in ${escapeHtml(suburbName)}.
+      We'll notify you as soon as we launch.</p>
+    <p class="muted">Your profile is saved, so you're first in line when cleaners
+      start joining near you.</p>
+    <div class="cp-actions"><button class="btn solid full" type="button" data-area-ok>Got it</button></div>`;
+  modal.hidden = false;
+  body.querySelector('[data-area-ok]')?.addEventListener('click', () => { modal.hidden = true; });
+}
+
 // PUT via fetch (postJSON is POST; client-profile needs PUT).
 function putClientProfile(body) {
   if (!HAS_FETCH) return Promise.reject();
@@ -1020,7 +1068,7 @@ const CWIZ_CONTENT = {
     <label class="field"><span>Phone <span class="muted">(optional)</span></span><input id="cwizPhone" type="text" value="${attr(cprof.phone)}" placeholder="Optional" /></label>`,
   suburb: () => `
     <p class="wiz-lede">Where's your home? We'll match you with cleaners who cover your area first.</p>
-    <label class="field"><span>Suburb</span><select id="cwizSuburb">${opt('', 'Select…', cprof.suburb)}${suburbList.map((s) => opt(s, s, cprof.suburb)).join('')}</select></label>`,
+    <label class="field"><span>Suburb</span><select id="cwizSuburb">${opt('', 'Select…', '')}${NZLoc.options(suburbList, cprof.suburbId)}</select></label>`,
   home: () => {
     const ph = (sel) => opt('', 'Select…', sel);
     const bedOpts = ph(cprof.bedrooms) + ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
@@ -1120,7 +1168,9 @@ function captureCwizStep(key) {
   if (key === 'suburb') {
     const sub = cwizEl.querySelector('#cwizSuburb').value;
     if (!sub) { cwizSetMsg('Pick your suburb to continue.', 'err'); return false; }
-    cprof.suburb = sub;
+    setSuburb(sub);
+    // Outside a launch area? Say so now rather than after they finish.
+    maybeShowAreaNotice();
     return true;
   }
   if (key === 'home') {

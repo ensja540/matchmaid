@@ -32,6 +32,27 @@ app.use(
 // stops Render's free tier idling out is as cheap as a request can be.
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 
+// --- Geo gate on signup ----------------------------------------------------
+// Match Maid only operates in New Zealand, so accounts are only created from NZ
+// IPs. Cloudflare sits in front of Render and stamps every request with the
+// two-letter country in CF-IPCountry (needs "IP Geolocation" enabled in the
+// Cloudflare dashboard under Network).
+//
+// Deliberately FAILS OPEN. If the header is missing - geolocation switched off,
+// or someone reaching the Render origin directly rather than through Cloudflare
+// - we let the signup through rather than locking every real user out. This is
+// a spam speed bump, not a security control: any VPN defeats it in one click.
+// Set GEO_BLOCK=off to disable (useful for testing from overseas).
+const GEO_ALLOWED = new Set(['NZ']);
+function geoBlockReason(req) {
+  if (String(process.env.GEO_BLOCK || '').toLowerCase() === 'off') return null;
+  const cc = String(req.headers['cf-ipcountry'] || '').toUpperCase();
+  if (!cc) return null; // no Cloudflare header -> cannot tell -> allow
+  if (cc === 'XX' || cc === 'T1') return null; // unknown / Tor -> allow
+  if (GEO_ALLOWED.has(cc)) return null;
+  return 'Match Maid is only available in New Zealand. If you are in NZ and seeing this, turn off your VPN and try again.';
+}
+
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
 const ROLE_MAP = { maid: 'cleaner', customer: 'client' };
 // How each side is named to the person reading the error.
@@ -157,6 +178,9 @@ const START_TO_SLOT = { '08:00': 'morning', '12:00': 'afternoon', '17:00': 'even
 // --- Auth: register ---------------------------------------------------------
 app.post('/api/register', async (req, res) => {
   try {
+    const geo = geoBlockReason(req);
+    if (geo) return res.status(403).json({ error: geo });
+
     const { role, fullName, email, password, referralCode } = req.body ?? {};
     const dbRole = ROLE_MAP[role];
     if (!dbRole) return res.status(400).json({ error: 'Choose maid or customer.' });
@@ -359,6 +383,11 @@ app.post('/api/auth/google', async (req, res) => {
     );
     let user = rows[0];
     if (!user) {
+      // Creating an account, so the NZ-only gate applies. Existing users fall
+      // through to the else branch and can still sign in from anywhere - we
+      // only block new signups, not travelling customers.
+      const geo = geoBlockReason(req);
+      if (geo) return res.status(403).json({ error: geo });
       // No account on THIS side yet. One on the other side is irrelevant: the
       // unique index is on (email, role), so this insert stands on its own.
       // No password login for Google accounts — store an unusable random hash.
@@ -476,10 +505,30 @@ app.post('/api/profile/remove', async (req, res) => {
 });
 
 // --- Directory data (used later by the search screen) -----------------------
+// Region comes back too: nationwide, suburb names repeat (Richmond, Bishopdale
+// and Hillsborough all exist in more than one region), so the picker groups by
+// region and callers should send the id rather than the bare name.
 app.get('/api/suburbs', async (_req, res) => {
-  const { rows } = await query('select id, name from suburbs order by name');
+  const { rows } = await query(
+    'select id, name, region, territorial_authority from suburbs order by region, name'
+  );
   res.json(rows);
 });
+
+// Resolve a suburb to its id. Prefer an explicit id from the client: with the
+// nationwide list a bare name is ambiguous (four Richmonds), and the old
+// `where name = $1 limit 1` would silently attach someone to another region's
+// suburb of the same name. Name lookup stays as a fallback for older callers.
+async function resolveSuburbId(suburbId, name) {
+  const id = Number(suburbId);
+  if (Number.isInteger(id) && id > 0) {
+    const byId = await query('select id from suburbs where id = $1', [id]);
+    if (byId.rows[0]) return byId.rows[0].id;
+  }
+  if (!name) return null;
+  const byName = await query('select id from suburbs where name = $1 order by id limit 1', [name]);
+  return byName.rows[0]?.id ?? null;
+}
 
 app.get('/api/services', async (_req, res) => {
   const { rows } = await query('select id, name, slug from service_types order by name');
@@ -749,11 +798,17 @@ app.put('/api/profile', async (req, res) => {
     }
     if (Array.isArray(areas)) {
       await query('delete from cleaner_service_areas where cleaner_id = $1', [cleanerId]);
-      for (const name of areas) {
+      // Areas may arrive as ids (current client) or names (older callers).
+      for (const area of areas) {
+        const areaId = await resolveSuburbId(
+          typeof area === 'object' ? area?.id : area,
+          typeof area === 'object' ? area?.name : area
+        );
+        if (!areaId) continue;
         await query(
           `insert into cleaner_service_areas (cleaner_id, suburb_id)
-           select $1, id from suburbs where name = $2 limit 1 on conflict do nothing`,
-          [cleanerId, name]
+           values ($1, $2) on conflict do nothing`,
+          [cleanerId, areaId]
         );
       }
     }
@@ -786,7 +841,7 @@ app.get('/api/client-profile', async (req, res) => {
       `select u.full_name, u.email, cp.phone, cp.address_line, cp.notes,
               cp.bedrooms, cp.bathrooms, cp.home_type, cp.has_stairs, cp.has_pets, cp.storeys, cp.profile_photo_url,
               cp.needs_products,
-              s.name as suburb
+              s.name as suburb, s.id as suburb_id, s.region as suburb_region
          from users u
          left join client_profiles cp on cp.user_id = u.id
          left join suburbs s on s.id = cp.default_suburb_id
@@ -800,6 +855,8 @@ app.get('/api/client-profile', async (req, res) => {
       email: r.email,
       phone: r.phone || '',
       suburb: r.suburb || '',
+      suburbId: r.suburb_id ?? null,
+      suburbRegion: r.suburb_region || '',
       address: r.address_line || '',
       notes: r.notes || '',
       bedrooms: r.bedrooms || '3',
@@ -819,7 +876,7 @@ app.get('/api/client-profile', async (req, res) => {
 
 app.put('/api/client-profile', async (req, res) => {
   try {
-    const { userId, fullName, email, phone, suburb, address, notes, bedrooms, bathrooms, homeType, stairs, pets, needsProducts, storeys, photo } = req.body ?? {};
+    const { userId, fullName, email, phone, suburb, suburbId, address, notes, bedrooms, bathrooms, homeType, stairs, pets, needsProducts, storeys, photo } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     await ensureClientProfile(userId);
     await query(
@@ -827,7 +884,8 @@ app.put('/api/client-profile', async (req, res) => {
               email = coalesce($3, email), updated_at = now() where id = $1`,
       [userId, fullName ?? null, email ? email.toLowerCase().trim() : null]
     );
-    const sub = suburb ? await query('select id from suburbs where name = $1 limit 1', [suburb]) : { rows: [] };
+    const subId = await resolveSuburbId(suburbId, suburb);
+    const sub = { rows: subId ? [{ id: subId }] : [] };
     await query(
       `update client_profiles set
          default_suburb_id = coalesce($2, default_suburb_id),
@@ -1246,7 +1304,8 @@ app.post('/api/contact', async (req, res) => {
     let conversationId = existing.rows[0]?.id;
     if (!conversationId) {
       const svc = serviceSlug ? await query('select id from service_types where slug = $1', [serviceSlug]) : { rows: [] };
-      const sub = suburb ? await query('select id from suburbs where name = $1 limit 1', [suburb]) : { rows: [] };
+      const subId = await resolveSuburbId(req.body?.suburbId, suburb);
+      const sub = { rows: subId ? [{ id: subId }] : [] };
       const enq = await query(
         `insert into enquiries (client_id, cleaner_id, service_type_id, suburb_id, message)
          values ($1, $2, $3, $4, $5) returning id`,

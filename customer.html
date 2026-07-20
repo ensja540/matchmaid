@@ -58,6 +58,15 @@
       </div>
     </div>
 
+    <!-- "Match Maid isn't live in your area yet" - fires when a customer picks
+         a suburb outside a launch area. -->
+    <div class="modal-overlay" id="areaModal" hidden>
+      <div class="modal">
+        <button class="modal-close" id="areaModalClose" aria-label="Close">×</button>
+        <div id="areaModalBody"></div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="reviewModal" hidden>
       <div class="modal">
         <button class="modal-close" id="reviewModalClose" aria-label="Close">×</button>
@@ -84,11 +93,12 @@
 
     <script src="session.js?v=87"></script>
     <script src="demo.js?v=70"></script>
+    <script src="nz-locations.js?v=1"></script>
     <script src="rating.js?v=87"></script>
     <script src="badges.js?v=87"></script>
     <script src="review.js?v=64"></script>
     <script src="remove-profile.js?v=87"></script>
-    <script src="customer.js?v=87"></script>
+    <script src="customer.js?v=88"></script>
     <script src="feedback.js?v=64"></script>
 
   </body>
