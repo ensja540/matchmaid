@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Offline | Match Maid</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <meta name="theme-color" content="#14B8A6" />
+    <!-- No ?v= here on purpose: this page is only ever shown offline, and the
+         cache lookup must match the precached /styles.css exactly. -->
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="app-body">
+    <main class="app-main" style="display:flex; align-items:center; justify-content:center; padding:2rem">
+      <div class="panel-card" style="max-width:34rem; text-align:center">
+        <img src="/assets/logo-mark.svg" alt="Match Maid" style="width:64px; margin:0 auto 1.2rem" />
+        <h1 style="font-family:var(--serif); font-size:1.9rem; margin:0 0 0.6rem">You're offline</h1>
+        <p class="muted">Match Maid needs a connection to show cleaners and messages.
+          Check your signal and try again.</p>
+        <button class="btn solid" type="button" onclick="location.reload()" style="margin-top:1rem">Try again</button>
+      </div>
+    </main>
+  </body>
+</html>
