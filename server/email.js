@@ -90,6 +90,51 @@ export async function sendEnquiryEmail({ to, cleanerName, clientName, service, s
   return sendEmail({ to, subject: `New Match Maid enquiry from ${clientName || 'a customer'}`, html, text });
 }
 
+// --- Email: your document was approved / declined (to the cleaner) ---------
+const VERIF_LABEL = { id: 'ID', police: 'criminal check', insurance: 'insurance' };
+const VERIF_BADGE = { id: 'ID verified', police: 'Criminal checked', insurance: 'Insured' };
+
+export async function sendVerificationDecisionEmail({ to, name, type, approved }) {
+  const hi = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const what = VERIF_LABEL[type] || 'document';
+  const badge = VERIF_BADGE[type] || 'verified';
+  const html = approved
+    ? shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">Your <strong>${escapeHtml(what)}</strong> has been approved. The <strong>${escapeHtml(badge)}</strong> badge is now showing on your Match Maid profile.</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">Verified profiles get chosen more often - customers can see at a glance who has been checked.</p>
+    <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">View your profile</a></p>`)
+    : shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">We couldn't approve your <strong>${escapeHtml(what)}</strong> this time. Usually it's because the photo is blurry, cropped, or the details are hard to read.</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">Upload a clearer photo and we'll take another look - there's no limit on tries.</p>
+    <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Upload again</a></p>`);
+  const greet = name ? `${name},\n\n` : '';
+  const text = approved
+    ? `${greet}Your ${what} has been approved and the "${badge}" badge is now on your Match Maid profile.\n\n${APP_URL}/maid`
+    : `${greet}We couldn't approve your ${what} this time - usually a blurry or cropped photo. Upload a clearer one and we'll review it again.\n\n${APP_URL}/maid`;
+  return sendEmail({
+    to,
+    subject: approved ? `Your ${what} is verified` : `Your ${what} needs another look`,
+    html,
+    text,
+  });
+}
+
+// --- Email: a document is waiting for review (to the admin) ----------------
+// Goes to ADMIN_EMAIL so there is no need to keep checking the admin page.
+export async function sendVerificationPendingEmail({ to, cleanerName, cleanerEmail, type, hasSelfie }) {
+  const what = VERIF_LABEL[type] || 'document';
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px"><strong>${escapeHtml(cleanerName || 'A cleaner')}</strong> has uploaded ${escapeHtml(what === 'ID' ? 'an' : 'a')} <strong>${escapeHtml(what)}</strong> document for review.</p>
+    <p style="font-size:14px;line-height:1.6;color:#6a6a6a;margin:0 0 20px">${escapeHtml(cleanerEmail || '')}${type === 'id' ? (hasSelfie ? ' · selfie attached' : ' · <strong>no selfie yet</strong>') : ''}</p>
+    <p style="margin:0 0 8px"><a href="${APP_URL}/admin" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Review it</a></p>`);
+  const text = `${cleanerName || 'A cleaner'} uploaded a ${what} document for review${type === 'id' ? (hasSelfie ? ' (selfie attached)' : ' (no selfie yet)') : ''}.
+
+${APP_URL}/admin`;
+  return sendEmail({ to, subject: `Match Maid: ${what} to verify from ${cleanerName || 'a cleaner'}`, html, text });
+}
+
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }

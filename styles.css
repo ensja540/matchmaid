@@ -1525,3 +1525,30 @@ a { color: inherit; text-decoration: none; }
 .sg-table th { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 /* Columns of numbers do align vertically, so tabular figures are right here. */
 .sg-table td:not(:first-child) { font-variant-numeric: tabular-nums; }
+
+/* ---------- Admin: ID selfie beside the document ---------- */
+.admin-vdoc { display: flex; gap: 0.8rem; flex-wrap: wrap; align-items: flex-start; }
+.admin-selfie { margin: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.admin-selfie figcaption { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.admin-noselfie { font-size: 0.8rem; align-self: center; }
+/* The maid-side reminder that an ID check needs both halves. */
+.verif-selfie { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--copper-dark); font-weight: 600; }
+.verif-selfie.ok { color: var(--muted); font-weight: 400; }
+
+/* ---------- Type-to-search location picker ---------- */
+/* The list is pinned under the field and absolutely positioned, so it always
+   opens downward - a native <select> popup near the foot of a form flips up. */
+.combo { position: relative; }
+.combo-input { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); font: inherit; background: var(--paper); color: var(--ink); }
+.combo-input:focus { outline: none; border-color: var(--copper); box-shadow: 0 0 0 3px rgba(20,184,166,0.15); }
+.combo-list {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+  margin: 0; padding: 0.25rem; list-style: none; max-height: 16rem; overflow-y: auto;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 12px 28px rgba(18,59,74,0.12);
+}
+.combo-opt { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.5rem 0.6rem; border-radius: 6px; cursor: pointer; }
+.combo-opt.on, .combo-opt:hover { background: var(--bg-tint); }
+.combo-name { font-weight: 600; color: var(--ink); font-size: 0.9rem; }
+.combo-sub { font-size: 0.74rem; color: var(--muted); }
+.combo-none { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }

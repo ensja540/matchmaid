@@ -445,7 +445,7 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="field"><span>Phone</span><input name="phone" value="${attr(cprof.phone)}" placeholder="Optional" /></label>
-          <label class="field"><span>Suburb</span><select name="suburb">${opt('', 'Select…', cprof.suburbId ? '' : '')}${NZLoc.options(suburbList, cprof.suburbId)}</select></label>
+          <label class="field"><span>Suburb</span><div id="profSuburbCombo"></div></label>
         </div>
         <span class="bf-label" style="margin-top:1.4rem">Your home</span>
         <div class="field-row">
@@ -519,6 +519,7 @@ const WIRE = {
   },
   profile() {
     if (uid) RemoveProfile.bind(uid);
+    mountSuburbCombo(panel.querySelector('#profSuburbCombo'));
     const avatar = panel.querySelector('#avatar');
     panel.querySelector('#photoInput').addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -537,7 +538,6 @@ const WIRE = {
     panel.querySelector('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
-      setSuburb(f.suburb.value);
       Object.assign(cprof, {
         fullName: f.fullName.value, email: f.email.value, phone: f.phone.value,
         bedrooms: f.bedrooms.value, bathrooms: f.bathrooms.value,
@@ -564,14 +564,21 @@ const WIRE = {
     });
   },
 };
-// The suburb <select> carries ids, not names - nationwide the same name lives
-// in several regions. Record all three so the API gets the id and the launch
-// check gets the region.
-function setSuburb(id) {
-  const s = suburbList.find((x) => String(x.id) === String(id));
-  cprof.suburbId = s ? s.id : null;
-  cprof.suburb = s ? s.name : '';
-  cprof.suburbRegion = s ? s.region : '';
+// One mount for both the profile form and the wizard. Picking writes straight
+// into cprof, so nothing has to read a <select> back out at save time.
+let suburbCombo = null;
+function mountSuburbCombo(root) {
+  if (!root) return;
+  suburbCombo = Combo.attach(root, suburbList, {
+    selectedId: cprof.suburbId,
+    onPick: (item) => {
+      if (!item) { cprof.suburbId = null; cprof.suburb = ''; cprof.suburbRegion = ''; return; }
+      cprof.suburbId = item.id;
+      cprof.suburb = item.name;
+      cprof.suburbRegion = item.region;
+      maybeShowAreaNotice();
+    },
+  });
 }
 
 // Match Maid is only live in some areas. Everywhere else, say so plainly rather
@@ -1068,7 +1075,7 @@ const CWIZ_CONTENT = {
     <label class="field"><span>Phone <span class="muted">(optional)</span></span><input id="cwizPhone" type="text" value="${attr(cprof.phone)}" placeholder="Optional" /></label>`,
   suburb: () => `
     <p class="wiz-lede">Where's your home? We'll match you with cleaners who cover your area first.</p>
-    <label class="field"><span>Suburb</span><select id="cwizSuburb">${opt('', 'Select…', '')}${NZLoc.options(suburbList, cprof.suburbId)}</select></label>`,
+    <label class="field"><span>Suburb</span><div id="cwizSuburbCombo"></div></label>`,
   home: () => {
     const ph = (sel) => opt('', 'Select…', sel);
     const bedOpts = ph(cprof.bedrooms) + ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
@@ -1094,6 +1101,9 @@ const CWIZ_CONTENT = {
 };
 
 const CWIZ_WIRE = {
+  suburb: (root) => {
+    mountSuburbCombo(root.querySelector('#cwizSuburbCombo'));
+  },
   about: (root) => {
     root.querySelector('#cwizPhoto')?.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -1166,11 +1176,9 @@ function captureCwizStep(key) {
     return true;
   }
   if (key === 'suburb') {
-    const sub = cwizEl.querySelector('#cwizSuburb').value;
-    if (!sub) { cwizSetMsg('Pick your suburb to continue.', 'err'); return false; }
-    setSuburb(sub);
-    // Outside a launch area? Say so now rather than after they finish.
-    maybeShowAreaNotice();
+    // The combo writes into cprof as soon as something is picked, so there is
+    // no field to read back - just check something actually was picked.
+    if (!cprof.suburbId) { cwizSetMsg('Pick your suburb to continue.', 'err'); return false; }
     return true;
   }
   if (key === 'home') {

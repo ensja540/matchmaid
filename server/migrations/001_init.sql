@@ -216,6 +216,9 @@ create table verifications (
   type         verification_type not null,
   status       verification_status not null default 'pending',
   document_url text,
+  -- ID checks also carry a selfie so a reviewer can compare the face against
+  -- the document photo. Null for the police and insurance types.
+  selfie_url   text,
   provider     text,
   verified_at  timestamptz,
   expires_at   timestamptz,

@@ -9,7 +9,10 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
-import { emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail } from './email.js';
+import {
+  emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail,
+  sendVerificationDecisionEmail, sendVerificationPendingEmail,
+} from './email.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, '..'); // project root holds index.html etc.
@@ -923,11 +926,13 @@ app.get('/api/verifications', async (req, res) => {
       [cleanerId]
     );
     const subRows = await query(
-      `select distinct on (type) type, status, extracted_text from verifications where cleaner_id = $1 order by type, created_at desc`,
+      `select distinct on (type) type, status, extracted_text, selfie_url is not null as has_selfie
+         from verifications where cleaner_id = $1 order by type, created_at desc`,
       [cleanerId]
     );
     const submitted = Object.fromEntries(subRows.rows.map((r) => [r.type, r.status]));
     const ocr = Object.fromEntries(subRows.rows.map((r) => [r.type, r.extracted_text]));
+    const selfies = Object.fromEntries(subRows.rows.map((r) => [r.type, r.has_selfie]));
     const p = prof.rows[0] || {};
     const status = {};
     const read = {};
@@ -938,7 +943,9 @@ app.get('/api/verifications', async (req, res) => {
       else status[t] = 'none';
       if (ocr[t]) read[t] = String(ocr[t]).slice(0, 160);
     }
-    res.json({ ...status, read });
+    // hasSelfie lets the maid portal show the ID check as half-done: document
+    // in, selfie still missing.
+    res.json({ ...status, read, hasSelfie: !!selfies.id });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load verifications.' });
@@ -947,22 +954,59 @@ app.get('/api/verifications', async (req, res) => {
 
 app.post('/api/verification', async (req, res) => {
   try {
-    const { userId, type, documentDataUrl, extractedText } = req.body ?? {};
+    const { userId, type, documentDataUrl, selfieDataUrl, extractedText } = req.body ?? {};
     if (!userId || !VERIF_TYPES.includes(type)) return res.status(400).json({ error: 'userId and a valid type are required.' });
-    if (!documentDataUrl) return res.status(400).json({ error: 'Please attach a document.' });
+    // The document and the selfie arrive as separate uploads, so either one on
+    // its own is a valid submission - we just need at least one of them.
+    if (!documentDataUrl && !selfieDataUrl) return res.status(400).json({ error: 'Please attach a document.' });
+    if (selfieDataUrl && type !== 'id') return res.status(400).json({ error: 'A selfie only applies to ID verification.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
     // OCR text is scanned in the maid's browser (keeps this endpoint — and the
     // server — safe from malformed-image decode crashes) and stored to aid review.
     const text = typeof extractedText === 'string' ? extractedText.replace(/[ \t]+\n/g, '\n').trim().slice(0, 2000) || null : null;
+
+    // Carry forward whichever half is not being replaced. Without this, the
+    // delete-and-reinsert below would silently drop the selfie every time the
+    // document was re-uploaded, and vice versa.
+    const prev = await query(
+      'select document_url, selfie_url, extracted_text from verifications where cleaner_id = $1 and type = $2 order by created_at desc limit 1',
+      [cleanerId, type]
+    );
+    const kept = prev.rows[0] || {};
+    const doc = documentDataUrl || kept.document_url || null;
+    const selfie = type === 'id' ? (selfieDataUrl || kept.selfie_url || null) : null;
+    if (!doc) return res.status(400).json({ error: 'Please attach your ID document as well.' });
+
     // One active submission per type: clear old, insert fresh as pending.
     await query('delete from verifications where cleaner_id = $1 and type = $2', [cleanerId, type]);
     await query(
-      `insert into verifications (cleaner_id, type, status, document_url, provider, extracted_text)
-       values ($1, $2, 'pending', $3, 'self-upload', $4)`,
-      [cleanerId, type, documentDataUrl, text]
+      `insert into verifications (cleaner_id, type, status, document_url, selfie_url, provider, extracted_text)
+       values ($1, $2, 'pending', $3, $4, 'self-upload', $5)`,
+      [cleanerId, type, doc, selfie, text || kept.extracted_text || null]
     );
-    res.json({ ok: true, status: 'pending', read: text ? text.slice(0, 160) : '' });
+    // Nudge the admin that something is waiting, so the review queue does not
+    // need watching. Fire-and-forget - never fails the upload.
+    const who = await query(
+      'select u.email, u.full_name from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
+      [cleanerId]
+    );
+    sendVerificationPendingEmail({
+      to: ADMIN_EMAIL,
+      cleanerName: who.rows[0]?.full_name || '',
+      cleanerEmail: who.rows[0]?.email || '',
+      type,
+      hasSelfie: !!selfie,
+    }).catch((e) => console.error('[email] verification pending:', e));
+
+    res.json({
+      ok: true,
+      status: 'pending',
+      read: text ? text.slice(0, 160) : '',
+      hasSelfie: !!selfie,
+      // Tells the maid the ID check is not finished until both are in.
+      needsSelfie: type === 'id' && !selfie,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not submit document.' });
@@ -1076,7 +1120,7 @@ app.get('/api/admin/verifications', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
     const { rows } = await query(
-      `select v.id, v.type, v.status, v.document_url, v.extracted_text,
+      `select v.id, v.type, v.status, v.document_url, v.selfie_url, v.extracted_text,
               to_char(v.created_at, 'DD Mon YYYY, HH24:MI') as when,
               to_char(u.created_at, 'DD Mon YYYY') as joined,
               coalesce(cpf.business_name, u.full_name) as cleaner,
@@ -1093,7 +1137,8 @@ app.get('/api/admin/verifications', async (req, res) => {
         order by v.created_at`
     );
     res.json(rows.map((r) => ({
-      id: r.id, type: r.type, documentUrl: r.document_url, extractedText: r.extracted_text || '',
+      id: r.id, type: r.type, documentUrl: r.document_url, selfieUrl: r.selfie_url || null,
+      extractedText: r.extracted_text || '',
       when: r.when, cleaner: r.cleaner, email: r.email,
       // Basic identity details so the reviewer can check the document against
       // who the cleaner says they are.
@@ -1128,6 +1173,23 @@ app.post('/api/admin/verification-decision', async (req, res) => {
     } else {
       await query("update verifications set status = 'failed' where id = $1", [id]);
     }
+
+    // Tell the cleaner either way. Fire-and-forget: a failed send must never
+    // undo a decision that is already recorded.
+    const who = await query(
+      'select u.email, u.full_name from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
+      [cleaner_id]
+    );
+    const c = who.rows[0];
+    if (c?.email) {
+      sendVerificationDecisionEmail({
+        to: c.email,
+        name: c.full_name,
+        type,
+        approved: decision === 'approve',
+      }).catch((e) => console.error('[email] verification decision:', e));
+    }
+
     res.json({ ok: true });
   } catch (err) {
     console.error(err);

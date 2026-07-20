@@ -12,7 +12,7 @@ const loggedIn = !!sessionUser?.id;
 // Verification process state (demo: persisted in localStorage).
 const VERIF_KEY = 'mm_maid_verif';
 const VERIF_ITEMS = [
-  { key: 'id', label: 'ID verified', desc: 'Upload a photo of your driver licence or passport.' },
+  { key: 'id', label: 'ID verified', desc: 'Upload a photo of your driver licence or passport, plus a selfie so we can check it is you.', selfie: true },
   { key: 'police', label: 'Criminal check', desc: 'Upload your criminal record (Ministry of Justice) check.', extra: `Don't have a criminal check? <a href="https://checkplease.co.nz/" target="_blank" rel="noopener">Get one here</a>.` },
   { key: 'insurance', label: 'Insured', desc: 'Upload your public-liability insurance certificate.' },
 ];
@@ -38,6 +38,7 @@ function updateRefPill() {
 }
 let verif = loggedIn ? { id: 'none', police: 'none', insurance: 'none' } : loadVerif();
 let verifRead = {}; // OCR-extracted text per verification type (review aid)
+let verifSelfie = false; // ID check also needs a selfie to compare against the document
 const saveVerif = () => localStorage.setItem(VERIF_KEY, JSON.stringify(verif));
 
 const displayName = sessionUser?.fullName || profile.fullName;
@@ -289,6 +290,7 @@ if (sessionUser?.id) {
     .then((s) => {
       if (!s) return;
       verifRead = s.read || {};
+      verifSelfie = !!s.hasSelfie;
       ['id', 'police', 'insurance'].forEach((k) => { if (s[k]) verif[k] = s[k]; });
       render();
     })
@@ -723,30 +725,10 @@ const WIRE = {
     wireCleanFees(panel);
     wireLocSection();
     panel.querySelectorAll('[data-doc]').forEach((inp) =>
-      inp.addEventListener('change', () => {
-        const file = inp.files[0];
-        if (!file || !sessionUser?.id) return;
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const doc = inp.dataset.doc;
-          verif[doc] = 'pending';
-          render();
-          // Read the document in the browser (never on the server - a corrupt
-          // image can crash the OCR worker) so we can show what was scanned.
-          const scanned = await ocrDocument(reader.result, file.type);
-          if (scanned) { verifRead[doc] = scanned.slice(0, 160); render(); }
-          try {
-            const res = await fetch('/api/verification', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: sessionUser.id, type: doc, documentDataUrl: reader.result, extractedText: scanned || '' }),
-            });
-            const data = await res.json();
-            if (data && data.read) { verifRead[doc] = data.read; render(); }
-          } catch {}
-        };
-        reader.readAsDataURL(file);
-      })
+      inp.addEventListener('change', () => submitVerificationFile(inp.files[0], inp.dataset.doc, 'doc', render))
+    );
+    panel.querySelectorAll('[data-selfie]').forEach((inp) =>
+      inp.addEventListener('change', () => submitVerificationFile(inp.files[0], inp.dataset.selfie, 'selfie', render))
     );
     panel.querySelector('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -812,6 +794,62 @@ const WIRE = {
 // on purpose: a corrupt image can crash the OCR worker, and we'd rather that
 // happen in one tab than take down the server. Returns null on anything but a
 // readable image, and never throws.
+// One uploader for both halves of a verification, used by the profile tab and
+// the setup wizard. `kind` is 'doc' or 'selfie'; the selfie skips OCR (there is
+// no text on a face) and is only ever attached to the ID check.
+async function submitVerificationFile(file, type, kind, refresh) {
+  if (!file || !sessionUser?.id) return;
+  const dataUrl = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+  if (!dataUrl) return;
+
+  if (kind === 'selfie') verifSelfie = true;
+  else verif[type] = 'pending';
+  refresh();
+
+  // Read the document in the browser (never on the server - a corrupt image can
+  // crash the OCR worker) so we can show what was scanned.
+  let scanned = null;
+  if (kind === 'doc') {
+    scanned = await ocrDocument(dataUrl, file.type);
+    if (scanned) { verifRead[type] = scanned.slice(0, 160); refresh(); }
+  }
+
+  try {
+    const body = { userId: sessionUser.id, type };
+    if (kind === 'selfie') body.selfieDataUrl = dataUrl;
+    else { body.documentDataUrl = dataUrl; body.extractedText = scanned || ''; }
+    const res = await fetch('/api/verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      // Most likely a selfie sent before any ID document exists.
+      if (kind === 'selfie') verifSelfie = false;
+      refresh();
+      return;
+    }
+    if (data && data.read) verifRead[type] = data.read;
+    if (data) verifSelfie = !!data.hasSelfie;
+    refresh();
+  } catch {}
+}
+
+function wireVerificationUploads(root, refresh) {
+  root.querySelectorAll('[data-doc]').forEach((inp) =>
+    inp.addEventListener('change', () => submitVerificationFile(inp.files[0], inp.dataset.doc, 'doc', refresh))
+  );
+  root.querySelectorAll('[data-selfie]').forEach((inp) =>
+    inp.addEventListener('change', () => submitVerificationFile(inp.files[0], inp.dataset.selfie, 'selfie', refresh))
+  );
+}
+
 async function ocrDocument(dataUrl, fileType) {
   try {
     if (typeof Tesseract === 'undefined') return null; // library not loaded
@@ -1244,13 +1282,22 @@ function verifRow(item) {
   const action = st === 'verified'
     ? ''
     : `<label class="btn outline sm doc-upload">${label}<input type="file" accept="image/*,application/pdf" data-doc="${item.key}" hidden /></label>`;
+  // ID needs a second upload: a selfie, so a reviewer can check the face on the
+  // document is the person submitting it. capture="user" opens the front camera
+  // on a phone rather than the file browser.
+  const selfieAction = item.selfie && st !== 'verified'
+    ? `<label class="btn outline sm doc-upload">${verifSelfie ? 'Retake selfie' : 'Upload selfie'}<input type="file" accept="image/*" capture="user" data-selfie="${item.key}" hidden /></label>`
+    : '';
+  const selfieNote = item.selfie && st !== 'verified'
+    ? `<p class="verif-selfie ${verifSelfie ? 'ok' : ''}">${verifSelfie ? 'Selfie added ✓' : 'Selfie still needed'}</p>`
+    : '';
   const readTxt = verifRead[item.key];
   const readNote = readTxt && st === 'pending'
     ? `<p class="verif-read muted">Scanned from your document: “${escapeHtml(readTxt)}”. If that looks wrong, upload a clearer photo.</p>`
     : '';
   return `<div class="verif-item">
-    <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span>${item.extra ? `<br /><span class="muted verif-extra">${item.extra}</span>` : ''}${readNote}</div>
-    <div class="verif-item-right">${pill}${action}</div>
+    <div><strong>${item.label}</strong><br /><span class="muted">${item.desc}</span>${item.extra ? `<br /><span class="muted verif-extra">${item.extra}</span>` : ''}${selfieNote}${readNote}</div>
+    <div class="verif-item-right">${pill}${action}${selfieAction}</div>
   </div>`;
 }
 // Location: pick a city (default Christchurch, whole-city) and optionally tick
@@ -1441,30 +1488,8 @@ const WIZ_WIRE = {
     if (cal) wireCalendar(cal, avail, () => {});
   },
   verification: (root) => {
-    root.querySelectorAll('[data-doc]').forEach((inp) =>
-      inp.addEventListener('change', () => {
-        const file = inp.files[0];
-        if (!file || !sessionUser?.id) return;
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const doc = inp.dataset.doc;
-          verif[doc] = 'pending';
-          renderWizStep(); // refresh only the wizard, never the whole portal
-          const scanned = await ocrDocument(reader.result, file.type);
-          if (scanned) { verifRead[doc] = scanned.slice(0, 160); renderWizStep(); }
-          try {
-            const res = await fetch('/api/verification', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: sessionUser.id, type: doc, documentDataUrl: reader.result, extractedText: scanned || '' }),
-            });
-            const data = await res.json();
-            if (data && data.read) { verifRead[doc] = data.read; renderWizStep(); }
-          } catch {}
-        };
-        reader.readAsDataURL(file);
-      })
-    );
+    // refresh only the wizard, never the whole portal
+    wireVerificationUploads(root, renderWizStep);
   },
 };
 

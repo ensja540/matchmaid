@@ -272,6 +272,13 @@ function cardHTML(v) {
       ? `<a href="${v.documentUrl}" target="_blank" rel="noopener"><img class="admin-doc" src="${v.documentUrl}" alt="Uploaded document" /></a>`
       : `<a class="btn outline sm" href="${v.documentUrl}" target="_blank" rel="noopener">Open document</a>`
     : '<span class="muted">No file attached</span>';
+  // ID checks carry a selfie: show it beside the document so the reviewer can
+  // compare the face against the photo without opening two tabs.
+  const selfie = v.selfieUrl
+    ? `<figure class="admin-selfie"><a href="${v.selfieUrl}" target="_blank" rel="noopener"><img class="admin-doc" src="${v.selfieUrl}" alt="Selfie" /></a><figcaption>Selfie</figcaption></figure>`
+    : v.type === 'id'
+      ? '<p class="admin-noselfie muted">No selfie submitted</p>'
+      : '';
   const rate = v.rateMin != null
     ? (v.rateMax && v.rateMax !== v.rateMin ? `$${v.rateMin}–$${v.rateMax}/hr` : `$${v.rateMin}/hr`)
     : '';
@@ -302,7 +309,7 @@ function cardHTML(v) {
         <button class="btn outline sm" data-decide="reject" data-id="${esc(v.id)}" type="button">Reject</button>
       </div>
     </div>
-    <div class="admin-vdoc">${doc}</div>
+    <div class="admin-vdoc">${v.type === 'id' && v.selfieUrl ? `<figure class="admin-selfie"><span class="admin-doc-wrap">${doc}</span><figcaption>Document</figcaption></figure>` : doc}${selfie}</div>
   </div>`;
 }
 
