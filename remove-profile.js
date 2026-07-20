@@ -19,15 +19,25 @@ window.RemoveProfile = (function () {
     const isMaid = !!(opts && opts.billingNote);
 
     // Pause is the softer, reversible alternative - and cheaper than starting
-    // over. Kept above the danger section and in the normal palette.
+    // over. It carries the same button id and message span the maid portal
+    // already wires up, so pausing keeps working with the standalone pause card
+    // gone. Rendered in both states: without the resume half, a paused maid
+    // would have no way back.
+    const paused = !!(opts && opts.paused);
     const pauseOffer = opts && opts.pauseOffer
-      ? `<section class="pause-alt">
-           <div>
-             <h3>Is your calendar full?</h3>
-             <p>Pause instead: stay listed for half the monthly fee and switch back on
-               whenever you want more work. No cooling-off period.</p>
+      ? `<section class="dz-card pause">
+           <h2>${paused ? 'Your listing is paused' : 'Is your calendar full?'}</h2>
+           <p>${
+             paused
+               ? "You're hidden from browse, search and matches. Your account, messages and reviews are untouched. Resume whenever you're ready."
+               : 'Pause instead: stay listed for half the monthly fee and switch back on whenever you want more work. No cooling-off period.'
+           }</p>
+           <div class="save-row">
+             <button class="btn ${paused ? 'solid' : 'outline'}" id="pauseBtn" type="button" data-paused="${paused}">
+               ${paused ? 'Resume my listing' : 'Pause my listing'}
+             </button>
+             <span class="save-msg" id="pauseMsg"></span>
            </div>
-           <button class="btn outline sm" id="dzPause" type="button">Pause my account</button>
          </section>`
       : '';
 
@@ -47,7 +57,7 @@ window.RemoveProfile = (function () {
 
     return `
       ${pauseOffer}
-      <section class="danger-zone">
+      <section class="dz-card danger">
         <h2>Remove profile</h2>
         <dl class="dz-facts">
           ${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
@@ -80,10 +90,7 @@ window.RemoveProfile = (function () {
     const cancel = document.getElementById('dzCancel');
     if (!input || !btn) return;
 
-    const pauseBtn = document.getElementById('dzPause');
-    if (pauseBtn && opts && typeof opts.onPause === 'function') {
-      pauseBtn.addEventListener('click', () => opts.onPause());
-    }
+    // #pauseBtn is wired by the maid portal, which owns the pause API call.
 
     // Reveal the confirm step only when asked for, and put the cursor in it.
     start?.addEventListener('click', () => {

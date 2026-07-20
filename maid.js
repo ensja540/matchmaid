@@ -536,8 +536,7 @@ const PANELS = {
           <span class="save-msg" id="profMsg"></span>
         </div>
       </form>
-      ${pauseHTML()}
-      ${loggedIn ? RemoveProfile.html({ billingNote: true, pauseOffer: mp.listingStatus !== 'paused' }) : ''}`;
+      ${loggedIn ? RemoveProfile.html({ billingNote: true, pauseOffer: true, paused: mp.listingStatus === 'paused' }) : ''}`;
   },
 
   subscription() {
@@ -677,12 +676,7 @@ const WIRE = {
     });
   },
   profile() {
-    if (loggedIn) RemoveProfile.bind(sessionUser.id, {
-      onPause: () => {
-        const pb = panel.querySelector('#pauseBtn');
-        if (pb) { pb.scrollIntoView({ behavior: 'smooth', block: 'center' }); pb.classList.add('flash'); setTimeout(() => pb.classList.remove('flash'), 1600); }
-      },
-    });
+    if (loggedIn) RemoveProfile.bind(sessionUser.id);
     // Photo is held as a data URL and saved with the rest of the profile.
     const avatar = panel.querySelector('#avatar');
     panel.querySelector('#photoInput')?.addEventListener('change', (e) => {
@@ -987,29 +981,6 @@ function enquiryRow(e) {
     <div><strong>${e.customer}</strong> · ${e.service}<br /><span class="muted">${e.suburb} · ${e.when}</span></div>
     <span class="status status-${e.status}">${e.status}</span>
   </div>`;
-}
-
-// Pausing hides the listing from browse, search and matches. Nothing else
-// changes - it's the reversible middle ground between staying live and removing
-// the account entirely.
-function pauseHTML() {
-  if (!loggedIn) return '';
-  const paused = mp.listingStatus === 'paused';
-  return `
-    <section class="pause-card">
-      <h2>${paused ? 'Your listing is paused' : 'Pause your listing'}</h2>
-      <p class="muted">${
-        paused
-          ? "You're hidden from browse, search and matches. Your account, messages and reviews are untouched. Resume whenever you're ready."
-          : 'Taking a break? Hide yourself from browse, search and matches without deleting anything. Your account, messages and reviews stay exactly as they are.'
-      }</p>
-      <div class="save-row">
-        <button class="btn ${paused ? 'solid' : 'outline'}" id="pauseBtn" type="button" data-paused="${paused}">
-          ${paused ? 'Resume my listing' : 'Pause my listing'}
-        </button>
-        <span class="save-msg" id="pauseMsg"></span>
-      </div>
-    </section>`;
 }
 
 // Prominent, hard-to-miss referral pitch for the overview. Grows the network
