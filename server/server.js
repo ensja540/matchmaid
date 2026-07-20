@@ -995,6 +995,63 @@ app.post('/api/feedback', async (req, res) => {
   }
 });
 
+// Signup counts per day, split by side. Days with no signups still come back
+// (generate_series) so the chart shows real gaps rather than closing them up.
+//
+// Bucketed by NZ local date, not UTC: an 11pm Auckland signup belongs to that
+// day, and plain ::date on a timestamptz would push it into tomorrow.
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+
+    const series = await query(
+      `with span as (
+         select generate_series(
+           (now() at time zone 'Pacific/Auckland')::date - ($1::int - 1),
+           (now() at time zone 'Pacific/Auckland')::date,
+           interval '1 day'
+         )::date as d
+       )
+       -- to_char, not the bare date: node-pg turns a DATE into a JS Date at
+       -- local midnight, which JSON then shifts a day either way.
+       select to_char(span.d, 'YYYY-MM-DD') as date,
+              count(u.id) filter (where u.role = 'client')::int  as customers,
+              count(u.id) filter (where u.role = 'cleaner')::int as cleaners
+         from span
+         left join users u
+           on (u.created_at at time zone 'Pacific/Auckland')::date = span.d
+          and u.role in ('client','cleaner')
+        group by span.d
+        order by span.d`,
+      [days]
+    );
+
+    // All-time totals, and how many of those are still active.
+    const totals = await query(
+      `select role,
+              count(*)::int as total,
+              count(*) filter (where status = 'active')::int as active
+         from users where role in ('client','cleaner') group by role`
+    );
+    const byRole = Object.fromEntries(totals.rows.map((r) => [r.role, r]));
+
+    res.json({
+      days,
+      series: series.rows,
+      totals: {
+        customers: byRole.client?.total ?? 0,
+        cleaners: byRole.cleaner?.total ?? 0,
+        customersActive: byRole.client?.active ?? 0,
+        cleanersActive: byRole.cleaner?.active ?? 0,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load stats.' });
+  }
+});
+
 app.get('/api/admin/feedback', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });

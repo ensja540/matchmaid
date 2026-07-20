@@ -13,6 +13,7 @@ function esc(s) {
 
 const feedbackBody = document.getElementById('feedbackBody');
 const reviewsBody = document.getElementById('reviewsBody');
+const statsBody = document.getElementById('statsBody');
 
 if (!sessionUser) {
   body.innerHTML = '<div class="panel-card"><p class="muted">Please <a href="/login">log in</a> with the admin account to review documents.</p></div>';
@@ -20,6 +21,190 @@ if (!sessionUser) {
   load();
   loadFeedback();
   loadReviews();
+  loadStats();
+}
+
+// ---- Signup stats -----------------------------------------------------------
+// Stacked columns: each day's total split into the two sides, which is a
+// part-to-whole reading rather than a comparison of two independent series.
+// Two fixed series colours, never reassigned by size: customers teal, cleaners
+// amber. Both clear the CVD separation check against a light surface; amber
+// sits under 3:1 contrast, which is why the table view below is not optional.
+const SERIES = [
+  { key: 'customers', label: 'Customers', color: '#0e9384' },
+  { key: 'cleaners', label: 'Cleaners', color: '#f59e0b' },
+];
+let statsRange = 30;
+let statsData = null;
+let statsTable = false;
+
+async function loadStats() {
+  if (!statsBody) return;
+  // Hold the previous render at reduced opacity rather than flashing a skeleton.
+  const plot = statsBody.querySelector('.sg-wrap');
+  if (plot) plot.style.opacity = '0.45';
+  try {
+    const res = await fetch(
+      `/api/admin/stats?userId=${encodeURIComponent(sessionUser.id)}&days=${statsRange}`
+    );
+    if (res.status === 403) {
+      statsBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
+      return;
+    }
+    if (!res.ok) throw new Error();
+    statsData = await res.json();
+    renderStats();
+  } catch {
+    statsBody.innerHTML = '<div class="panel-card"><p class="muted">Could not load signup stats.</p></div>';
+  }
+}
+
+function renderStats() {
+  const d = statsData;
+  if (!d) return;
+  const series = d.series || [];
+  const totalInRange = series.reduce((n, r) => n + r.customers + r.cleaners, 0);
+
+  statsBody.innerHTML = `
+    <div class="panel-card">
+      <div class="sg-controls">
+        ${[30, 60, 90].map((n) =>
+          `<button class="chip select ${n === statsRange ? 'on' : ''}" type="button" data-range="${n}">${n} days</button>`
+        ).join('')}
+        <button class="btn ghost sm sg-toggle" type="button" data-table>${statsTable ? 'Show chart' : 'Show table'}</button>
+      </div>
+
+      ${kpiRowHTML(d, totalInRange)}
+      ${statsTable ? tableHTML(series) : chartHTML(series)}
+    </div>`;
+
+  statsBody.querySelectorAll('[data-range]').forEach((b) =>
+    b.addEventListener('click', () => { statsRange = Number(b.dataset.range); loadStats(); })
+  );
+  statsBody.querySelector('[data-table]')?.addEventListener('click', () => {
+    statsTable = !statsTable;
+    renderStats();
+  });
+  if (!statsTable) wireChartHover();
+}
+
+// Headline numbers as stat tiles, not a chart - a handful of single values.
+// Proportional figures (no tabular-nums) at this size.
+function kpiRowHTML(d, totalInRange) {
+  const t = d.totals || {};
+  const tiles = [
+    { label: 'Customers, all time', value: t.customers ?? 0, sub: `${t.customersActive ?? 0} active` },
+    { label: 'Cleaners, all time', value: t.cleaners ?? 0, sub: `${t.cleanersActive ?? 0} active` },
+    { label: `Signups, last ${d.days} days`, value: totalInRange, sub: 'both sides' },
+  ];
+  return `<div class="sg-kpis">${tiles.map((k) => `
+    <div class="sg-kpi">
+      <span class="sg-kpi-label">${esc(k.label)}</span>
+      <span class="sg-kpi-value">${k.value.toLocaleString()}</span>
+      <span class="sg-kpi-sub">${esc(k.sub)}</span>
+    </div>`).join('')}</div>`;
+}
+
+function chartHTML(series) {
+  const max = Math.max(1, ...series.map((r) => r.customers + r.cleaners));
+  // Always leave headroom above the tallest column: the peak label sits inside
+  // the plot box (the scroll container clips anything above it), so a bar that
+  // reached 100% would push its own label out of view.
+  let top = max <= 8 ? max + 1 : Math.ceil(max / 4) * 4;
+  if (top <= max) top = max + 1;
+  const ticks = [top, Math.round(top / 2), 0];
+  // Label only the busiest day - a number on every column is noise.
+  const peak = series.reduce((best, r, i) =>
+    (r.customers + r.cleaners) > (series[best] ? series[best].customers + series[best].cleaners : -1) ? i : best, 0);
+  const peakTotal = series[peak] ? series[peak].customers + series[peak].cleaners : 0;
+
+  const cols = series.map((r, i) => {
+    const total = r.customers + r.cleaners;
+    // Only non-zero segments render, so the 2px gap never appears on its own.
+    const segs = SERIES
+      .filter((s) => r[s.key] > 0)
+      .map((s, idx, arr) => {
+        const isTop = idx === arr.length - 1;
+        return `<span class="sg-seg${isTop ? ' sg-seg-top' : ''}"
+          style="height:${(r[s.key] / top) * 100}%; background:${s.color}"></span>`;
+      })
+      .reverse() // cleaners sit above customers in the stack
+      .join('');
+    // Anchored off the baseline so it rides just above its own bar, staying
+    // inside the plot box rather than being clipped by the scroll container.
+    const label = i === peak && peakTotal > 0
+      ? `<span class="sg-peak" style="bottom:calc(${(peakTotal / top) * 100}% + 3px)">${peakTotal}</span>` : '';
+    return `<div class="sg-col" data-i="${i}" tabindex="0"
+      aria-label="${esc(fmtDay(r.date))}: ${r.customers} customers, ${r.cleaners} cleaners">
+      ${label}<span class="sg-stack">${segs}</span></div>`;
+  }).join('');
+
+  // Roughly six x labels, whatever the range.
+  const step = Math.max(1, Math.round(series.length / 6));
+  const xlabels = series.map((r, i) =>
+    `<span class="sg-x">${i % step === 0 ? esc(fmtDay(r.date)) : ''}</span>`).join('');
+
+  return `
+    <div class="sg-legend">
+      ${SERIES.map((s) =>
+        `<span class="sg-key"><i style="background:${s.color}"></i>${s.label}</span>`).join('')}
+    </div>
+    <div class="sg-wrap">
+      <div class="sg-yaxis">${ticks.map((t) => `<span>${t}</span>`).join('')}</div>
+      <div class="sg-plot">
+        <div class="sg-grid">${ticks.map(() => '<i></i>').join('')}</div>
+        <div class="sg-cols">${cols}</div>
+      </div>
+      <div class="sg-tip" id="sgTip" hidden></div>
+    </div>
+    <div class="sg-xaxis"><span class="sg-xpad"></span><div class="sg-xlabels">${xlabels}</div></div>`;
+}
+
+// The table view: every value reachable without hover or colour.
+function tableHTML(series) {
+  const rows = series
+    .filter((r) => r.customers + r.cleaners > 0)
+    .reverse()
+    .map((r) => `<tr><td>${esc(fmtDay(r.date))}</td><td>${r.customers}</td><td>${r.cleaners}</td>
+      <td><strong>${r.customers + r.cleaners}</strong></td></tr>`)
+    .join('');
+  return `<div class="sg-tablewrap">
+    <table class="sg-table">
+      <thead><tr><th>Day</th><th>Customers</th><th>Cleaners</th><th>Total</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="muted">No signups in this period.</td></tr>'}</tbody>
+    </table>
+  </div>`;
+}
+
+function fmtDay(iso) {
+  // iso is already YYYY-MM-DD in NZ time - split it rather than letting Date
+  // reinterpret it in the browser's timezone.
+  const [y, m, dd] = String(iso).split('-').map(Number);
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${dd} ${MON[(m || 1) - 1]}`;
+}
+
+function wireChartHover() {
+  const tip = statsBody.querySelector('#sgTip');
+  const wrap = statsBody.querySelector('.sg-wrap');
+  if (!tip || !wrap) return;
+  const show = (col) => {
+    const r = (statsData.series || [])[Number(col.dataset.i)];
+    if (!r) return;
+    tip.innerHTML = `<strong>${esc(fmtDay(r.date))}</strong>
+      ${SERIES.map((s) => `<span class="sg-tip-row"><i style="background:${s.color}"></i>${s.label}<b>${r[s.key]}</b></span>`).join('')}`;
+    tip.hidden = false;
+    const cr = col.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    // Keep the tip inside the card rather than letting it run off the edge.
+    const x = Math.min(Math.max(cr.left - wr.left + cr.width / 2, 60), wr.width - 60);
+    tip.style.left = `${x}px`;
+  };
+  statsBody.querySelectorAll('.sg-col').forEach((col) => {
+    col.addEventListener('mouseenter', () => show(col));
+    col.addEventListener('focus', () => show(col)); // keyboard gets the same
+  });
+  wrap.addEventListener('mouseleave', () => { tip.hidden = true; });
 }
 
 async function loadFeedback() {
