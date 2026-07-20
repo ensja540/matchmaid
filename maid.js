@@ -430,7 +430,7 @@ const PANELS = {
           <span>Free while we build out our user base</span>
         </div>
         <p class="muted">Full access with no fees while we build out our user base. After that it's a flat
-          $20/month (or $40/month for premium - top of the list).</p>
+          $30/month (or $40/month for premium - top of the list).</p>
       </div>
 
       <div class="portal-note">
@@ -548,7 +548,7 @@ const PANELS = {
       <div class="plan-cards">
         <div class="plan">
           <p class="tag">Standard</p>
-          <p class="price">$20<span>/month</span></p>
+          <p class="price">$30<span>/month</span></p>
           <ul class="checks">
             <li>Stay listed in your suburbs</li>
             <li>Unlimited exclusive enquiries</li>
@@ -832,7 +832,7 @@ const HOWFLOW_STEPS = [
   { n: '03', h: 'Set your price', b: `Add your hourly rate. You set it, and it's shown openly; no race to the bottom.` },
   { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas near you.` },
   { n: '05', h: `Get <span class="hi">exclusive</span> enquiries`, b: `Clients who want your services at your times reach out to <span class="hi">you alone</span>. Reply and arrange directly; <span class="hi">you keep 100%</span>.` },
-  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$20/month</span> (or <span class="hi">$40 for premium</span>).` },
+  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$30/month</span> (or <span class="hi">$40 for premium</span>).` },
 ];
 
 function howflowHTML() {

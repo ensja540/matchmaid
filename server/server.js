@@ -971,8 +971,12 @@ app.post('/api/verification', async (req, res) => {
 
 // --- Admin: review uploaded verification documents --------------------------
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'ensor.jack@gmail.com').toLowerCase();
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function isAdmin(userId) {
-  if (!userId) return false;
+  // Check the shape first. Postgres rejects anything that is not a uuid, so a
+  // stray "undefined" in the query string used to throw and surface as a 500
+  // (on every admin route) when the honest answer is simply "not authorised".
+  if (!userId || !UUID_RE.test(String(userId))) return false;
   const { rows } = await query('select email from users where id = $1', [userId]);
   return !!rows[0] && String(rows[0].email).toLowerCase() === ADMIN_EMAIL;
 }

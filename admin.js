@@ -51,11 +51,17 @@ async function loadStats() {
       statsBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
       return;
     }
-    if (!res.ok) throw new Error();
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
     statsData = await res.json();
     renderStats();
-  } catch {
-    statsBody.innerHTML = '<div class="panel-card"><p class="muted">Could not load signup stats.</p></div>';
+  } catch (err) {
+    // Say what actually went wrong. A bare "could not load" gave no way to tell
+    // a mid-deploy 404 from a broken query.
+    console.error('signup stats:', err);
+    statsBody.innerHTML =
+      `<div class="panel-card"><p class="muted">Could not load signup stats (${esc(err.message || 'network error')}).
+       <button class="btn ghost sm" type="button" data-retry>Retry</button></p></div>`;
+    statsBody.querySelector('[data-retry]')?.addEventListener('click', loadStats);
   }
 }
 
