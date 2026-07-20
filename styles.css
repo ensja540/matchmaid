@@ -1552,3 +1552,4 @@ a { color: inherit; text-decoration: none; }
 .combo-name { font-weight: 600; color: var(--ink); font-size: 0.9rem; }
 .combo-sub { font-size: 0.74rem; color: var(--muted); }
 .combo-none { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
+.combo-hint { margin: 0.35rem 0 0; font-size: 0.78rem; color: var(--copper-dark); }

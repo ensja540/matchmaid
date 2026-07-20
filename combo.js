@@ -21,11 +21,13 @@ const Combo = {
         aria-autocomplete="list" autocomplete="off" spellcheck="false"
         placeholder="${escape(placeholder)}" />
       <ul class="combo-list" role="listbox" hidden></ul>
-      <p class="combo-none" hidden>No match. Try the nearest town.</p>`;
+      <p class="combo-none" hidden>No match. Try the nearest town.</p>
+      <p class="combo-hint" hidden>Pick one from the list to set your suburb.</p>`;
 
     const input = root.querySelector('.combo-input');
     const list = root.querySelector('.combo-list');
     const none = root.querySelector('.combo-none');
+    const hint = root.querySelector('.combo-hint');
     let matches = [];
     let active = -1;
     let picked = null;
@@ -85,6 +87,7 @@ const Combo = {
       if (!it) return;
       picked = it;
       input.value = label(it);
+      hint.hidden = true;
       close();
       onPick?.(it);
     }
@@ -93,6 +96,7 @@ const Combo = {
       // Typing after a pick invalidates it until they choose again - stops a
       // stale id being submitted alongside edited text.
       if (picked && input.value !== label(picked)) { picked = null; onPick?.(null); }
+      hint.hidden = true;
       matches = find(input.value);
       active = matches.length ? 0 : -1;
       draw();
@@ -120,11 +124,14 @@ const Combo = {
     });
 
     input.addEventListener('blur', () => {
-      // Give the mousedown a tick, then tidy up dangling text.
+      // Give the mousedown a tick to land before tidying up.
       setTimeout(() => {
         close();
-        if (!picked) { if (input.value) { input.value = ''; onPick?.(null); } }
-        else input.value = label(picked);
+        // Keep whatever they typed on screen. Silently emptying the box reads
+        // as the field losing their work; instead the text stays and a hint
+        // says it is not a selection yet.
+        if (picked) { input.value = label(picked); hint.hidden = true; }
+        else hint.hidden = !input.value.trim();
       }, 120);
     });
 
