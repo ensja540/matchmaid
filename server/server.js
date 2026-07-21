@@ -663,8 +663,11 @@ app.get('/api/profile', async (req, res) => {
       `select st.slug from cleaner_services cs join service_types st on st.id = cs.service_type_id where cs.cleaner_id = $1`,
       [cp.id]
     );
+    // Ids as well as names: the maid's own editor sends ids back, so a suburb
+    // whose name exists in several regions (Richmond, Bishopdale) resolves to
+    // the exact one they picked rather than the first row that matches by name.
     const areas = await query(
-      `select s.name from cleaner_service_areas csa join suburbs s on s.id = csa.suburb_id where csa.cleaner_id = $1`,
+      `select s.id, s.name, s.region from cleaner_service_areas csa join suburbs s on s.id = csa.suburb_id where csa.cleaner_id = $1`,
       [cp.id]
     );
     res.json({
@@ -682,7 +685,7 @@ app.get('/api/profile', async (req, res) => {
       serviceSurcharges: Array.isArray(cp.service_surcharges) ? cp.service_surcharges : [],
       services: svc.rows.map((r) => r.slug),
       addons: Array.isArray(cp.addons) ? cp.addons : [],
-      areas: areas.rows.map((r) => r.name),
+      areas: areas.rows.map((r) => ({ id: r.id, name: r.name, region: r.region })),
       fullName: cp.full_name,
       email: cp.email,
       residentialAddress: cp.residential_address || '',

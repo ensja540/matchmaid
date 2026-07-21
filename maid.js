@@ -64,9 +64,40 @@ let wizStep = 0, wizEl = null;
 // Availability is real: load the logged-in maid's saved slots from the API,
 // and save changes back to the database. Falls back to demo when not logged in.
 let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
-const areas = new Set(loggedIn ? [] : profile.areas); // specific suburbs (when narrowing)
-let mpCity = 'Christchurch'; // default city
+// Service areas are stored by suburb ID, not name: the same suburb name exists
+// in several regions (Richmond, Bishopdale), so a name would attach the cleaner
+// to the wrong region's suburb. maidSubs is the id-bearing /api/suburbs list;
+// maidCityMap groups it into cities keyed "<town>|<region>" so same-named towns
+// stay distinct.
+let maidSubs = [];
+let maidCityMap = new Map(); // "town|region" -> { key, name, region, rows:[{id,name,...}] }
+const areas = new Set(); // suburb IDs the cleaner has narrowed to
+let mpCity = null; // a city key "<town>|<region>"; set once suburbs load
 let mpSpecific = false; // false = whole-city ("Christchurch-wide")
+
+function buildMaidCities(rows) {
+  maidSubs = Array.isArray(rows) ? rows : [];
+  maidCityMap = new Map();
+  for (const r of maidSubs) {
+    const key = `${r.territorial_authority}|${r.region}`;
+    if (!maidCityMap.has(key)) {
+      maidCityMap.set(key, { key, name: r.territorial_authority, region: r.region, rows: [] });
+    }
+    maidCityMap.get(key).rows.push(r);
+  }
+}
+const cityName = (key) => maidCityMap.get(key)?.name || '';
+const cityRows = (key) => maidCityMap.get(key)?.rows || [];
+// Combo items for the city field: one per city, region breaking name ties.
+function maidCities() {
+  return [...maidCityMap.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => ({ id: c.key, name: c.name, region: c.region, territorial_authority: '' }));
+}
+function defaultCityKey() {
+  for (const k of maidCityMap.keys()) if (k.startsWith('Christchurch')) return k;
+  return maidCityMap.keys().next().value || null;
+}
 // The cleaner's own base location - a city + suburb picked from dropdowns (no
 // free-text street address). Stored back into residential_address as
 // "Suburb, City" so it needs no schema change.
@@ -249,6 +280,39 @@ let mp = loggedIn
       residentialAddress: profile.residentialAddress || '',
     };
 if (!loggedIn) { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
+
+// The cleaner's saved service areas, held until the suburb list is also loaded
+// (both are async, either can land first).
+let loadedAreas = null;
+function resolveMaidLocation() {
+  if (!maidCityMap.size) return;                  // suburbs not loaded yet
+  if (!mpCity) mpCity = defaultCityKey();
+  if (!loadedAreas) { render(); return; }         // no profile areas yet
+  areas.clear();
+  loadedAreas.forEach((a) => { if (a && a.id != null) areas.add(a.id); });
+  // Pick the city holding the most of the saved suburbs.
+  let best = mpCity, bestN = -1;
+  for (const c of maidCityMap.values()) {
+    const n = c.rows.reduce((k, r) => k + (areas.has(r.id) ? 1 : 0), 0);
+    if (n > bestN) { bestN = n; best = c.key; }
+  }
+  mpCity = best;
+  const all = cityRows(mpCity);
+  mpSpecific = areas.size > 0 && !all.every((r) => areas.has(r.id));
+  render();
+  // If the setup wizard is open on its location step, refresh it too - suburbs
+  // may have loaded after it rendered.
+  if (wizEl && WIZ_STEPS[wizStep]?.key === 'areas') renderWizStep();
+}
+
+// The id-bearing suburb list powers the location picker.
+if (sessionUser?.id) {
+  fetch('/api/suburbs')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((rows) => { buildMaidCities(rows || []); resolveMaidLocation(); })
+    .catch(() => {});
+}
+
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
   fetch(`/api/profile?userId=${encodeURIComponent(sessionUser.id)}`)
@@ -267,16 +331,10 @@ if (sessionUser?.id) {
         fullName: data.fullName ?? '',
         residentialAddress: data.residentialAddress ?? '',
       };
-      areas.clear();
-      (data.areas || []).forEach((a) => areas.add(a));
-      // Infer the city and whether they've narrowed to specific suburbs.
-      let best = 'Christchurch', bestN = -1;
-      for (const c of Object.keys(DEMO.towns)) {
-        const n = DEMO.towns[c].filter((s) => areas.has(s)).length;
-        if (n > bestN) { bestN = n; best = c; }
-      }
-      mpCity = best;
-      mpSpecific = areas.size > 0 && !DEMO.towns[mpCity].every((s) => areas.has(s));
+      // areas arrive as {id, name, region}. Stash them; the city can only be
+      // inferred once the suburb list has loaded, so reconcile both together.
+      loadedAreas = Array.isArray(data.areas) ? data.areas : [];
+      resolveMaidLocation();
       { const ex = extractRates(data.cleanRates); mpCleanRates = ex.rates; mpBondGuaranteed = ex.bond; mpEndOfLease = ex.endOfLease; mpProductsOption = ex.productsOption; mpPayments = new Set(ex.payments); mpOffers = new Set(Object.keys(mpCleanRates)); }
       { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       render();
@@ -758,7 +816,8 @@ const WIRE = {
             bondGuaranteed: mpBondGuaranteed,
             endOfLease: mpEndOfLease,
             services: [...Object.keys(mpCleanRates), ...(mpEndOfLease ? ['end-of-tenancy'] : [])],
-            areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
+            // Suburb IDs, scoped to the chosen city. City-wide sends the lot.
+            areas: (mpSpecific ? cityRows(mpCity).filter((r) => areas.has(r.id)) : cityRows(mpCity)).map((r) => r.id),
             listingStatus: 'active',
           }),
         });
@@ -1274,26 +1333,29 @@ function verifRow(item) {
 // Location: pick a city (default Christchurch, whole-city) and optionally tick
 // "specific suburbs" to narrow to chosen suburbs within that city.
 function locSectionHTML() {
+  const cname = cityName(mpCity) || '…';
+  const loading = !maidCityMap.size;
   return `<div class="field" id="locField">
     <span>Where you work</span>
     <label class="loc-city-label muted">Town or city</label>
     <div id="cityCombo" class="loc-city"></div>
+    ${loading ? '<p class="loc-note muted">Loading locations…</p>' : `
     <label class="check-inline" style="margin-top:0.7rem"><input type="checkbox" id="specificToggle" ${mpSpecific ? 'checked' : ''} /> I only want to work specific suburbs</label>
-    <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${mpCity}-wide</strong>. Clients anywhere in ${mpCity} can find you.</p>
+    <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${cname}-wide</strong>. Clients anywhere in ${cname} can find you.</p>
     <div class="loc-picker" id="locPicker" ${mpSpecific ? '' : 'hidden'}>
-      <div class="combo">
-        <input type="text" id="subSearch" class="combo-input" placeholder="Search suburbs in ${mpCity}…" autocomplete="off" />
+      <div class="combo combo--select">
+        <input type="text" id="subSearch" class="combo-input" placeholder="Search suburbs in ${cname}…" autocomplete="off" />
         <div class="combo-list" id="subResults" hidden></div>
       </div>
       <div class="area-chips" id="selectedAreas"></div>
-    </div>
+    </div>`}
   </div>`;
 }
 function areaChipsHTML() {
-  const chosen = (DEMO.towns[mpCity] || []).filter((s) => areas.has(s));
+  const chosen = cityRows(mpCity).filter((r) => areas.has(r.id));
   if (!chosen.length) return '<span class="muted" style="font-size:0.85rem">No suburbs added yet. Search above and add the ones you cover.</span>';
   return chosen
-    .map((s) => `<span class="area-chip">${s}<button type="button" class="area-x" data-remove="${s}" aria-label="Remove ${s}">×</button></span>`)
+    .map((r) => `<span class="area-chip">${escapeHtml(r.name)}<button type="button" class="area-x" data-remove="${r.id}" aria-label="Remove ${escapeHtml(r.name)}">×</button></span>`)
     .join('');
 }
 // These accept a root element (default: the portal panel) so the same location
@@ -1303,32 +1365,30 @@ function renderAreaChips(root = panel) {
   if (!box) return;
   box.innerHTML = areaChipsHTML();
   box.querySelectorAll('[data-remove]').forEach((b) =>
-    b.addEventListener('click', () => { areas.delete(b.dataset.remove); renderAreaChips(root); })
+    b.addEventListener('click', () => { areas.delete(Number(b.dataset.remove)); renderAreaChips(root); })
   );
 }
 function renderSubResults(q, root = panel) {
   const box = root.querySelector('#subResults');
   if (!box) return;
   const query = (q || '').trim().toLowerCase();
-  const matches = (DEMO.towns[mpCity] || [])
-    .filter((s) => !areas.has(s) && (!query || s.toLowerCase().includes(query)))
-    .slice(0, 8);
+  // Suburbs of the chosen city not already added. Empty query lists them all
+  // (capped), so a small city like Ashburton shows every suburb on focus.
+  const matches = cityRows(mpCity)
+    .filter((r) => !areas.has(r.id) && (!query || r.name.toLowerCase().includes(query)))
+    .slice(0, query ? 8 : 200);
   if (!matches.length) { box.hidden = true; box.innerHTML = ''; return; }
-  box.innerHTML = matches.map((s) => `<button type="button" class="combo-opt" data-add="${s}">${s}</button>`).join('');
+  box.innerHTML = matches.map((r) => `<button type="button" class="combo-opt" data-add="${r.id}">${escapeHtml(r.name)}</button>`).join('');
   box.hidden = false;
   box.querySelectorAll('[data-add]').forEach((b) =>
     b.addEventListener('click', () => {
-      areas.add(b.dataset.add);
+      areas.add(Number(b.dataset.add));
       const inp = root.querySelector('#subSearch');
       if (inp) { inp.value = ''; inp.focus(); }
       box.hidden = true;
       renderAreaChips(root);
     })
   );
-}
-// Built once DEMO.towns has the nationwide list merged in (after nz-locations.js).
-function maidCities() {
-  return Object.keys(DEMO.towns).sort().map((name) => ({ id: name, name, region: '', territorial_authority: '' }));
 }
 function wireLocSection(root = panel) {
   const cityMount = root.querySelector('#cityCombo');
@@ -1580,7 +1640,7 @@ async function saveWizard() {
         bondGuaranteed: mpBondGuaranteed,
         endOfLease: mpEndOfLease,
         services: [...Object.keys(mpCleanRates), ...(mpEndOfLease ? ['end-of-tenancy'] : [])],
-        areas: mpSpecific ? (DEMO.towns[mpCity] || []).filter((s) => areas.has(s)) : (DEMO.towns[mpCity] || []).slice(),
+        areas: (mpSpecific ? cityRows(mpCity).filter((r) => areas.has(r.id)) : cityRows(mpCity)).map((r) => r.id),
         listingStatus: 'active',
       }),
     });
