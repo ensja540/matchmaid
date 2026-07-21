@@ -445,7 +445,7 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="field"><span>Phone</span><input name="phone" value="${attr(cprof.phone)}" placeholder="Optional" /></label>
-          <label class="field"><span>Suburb</span><div id="profSuburbCombo"></div></label>
+          <div id="profSuburbCombo"></div>
         </div>
         <span class="bf-label" style="margin-top:1.4rem">Your home</span>
         <div class="field-row">
@@ -569,7 +569,7 @@ const WIRE = {
 let suburbCombo = null;
 function mountSuburbCombo(root) {
   if (!root) return;
-  suburbCombo = Combo.attach(root, suburbList, {
+  suburbCombo = LocationPicker.attach(root, suburbList, {
     selectedId: cprof.suburbId,
     onPick: (item) => {
       if (!item) { cprof.suburbId = null; cprof.suburb = ''; cprof.suburbRegion = ''; return; }
@@ -1075,7 +1075,7 @@ const CWIZ_CONTENT = {
     <label class="field"><span>Phone <span class="muted">(optional)</span></span><input id="cwizPhone" type="text" value="${attr(cprof.phone)}" placeholder="Optional" /></label>`,
   suburb: () => `
     <p class="wiz-lede">Where's your home? We'll match you with cleaners who cover your area first.</p>
-    <label class="field"><span>Suburb</span><div id="cwizSuburbCombo"></div></label>`,
+    <div id="cwizSuburbCombo"></div>`,
   home: () => {
     const ph = (sel) => opt('', 'Select…', sel);
     const bedOpts = ph(cprof.bedrooms) + ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
