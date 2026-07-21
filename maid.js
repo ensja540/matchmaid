@@ -1344,7 +1344,7 @@ function locSectionHTML() {
     <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${cname}-wide</strong>. Clients anywhere in ${cname} can find you.</p>
     <div class="loc-picker" id="locPicker" ${mpSpecific ? '' : 'hidden'}>
       <div class="combo combo--select">
-        <input type="text" id="subSearch" class="combo-input" placeholder="Search suburbs in ${cname}…" autocomplete="off" />
+        <input type="text" id="subSearch" class="combo-input" placeholder="Type a suburb in ${cname}…" autocomplete="off" />
         <div class="combo-list" id="subResults" hidden></div>
       </div>
       <div class="area-chips" id="selectedAreas"></div>
@@ -1395,7 +1395,7 @@ function wireLocSection(root = panel) {
   if (cityMount) {
     Combo.attach(cityMount, maidCities(), {
       selectedId: mpCity,
-      placeholder: 'Search your town or city',
+      placeholder: 'Type your town or city',
       onPick: (c) => { if (c) { mpCity = c.id; rerenderLoc(root); } },
     });
   }

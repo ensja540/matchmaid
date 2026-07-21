@@ -17,7 +17,7 @@ const Combo = {
   // onPick(item|null) fires on every change, null when the field is cleared.
   attach(root, items, opts = {}) {
     if (!root) return null;
-    const { selectedId, placeholder = 'Start typing…', onPick, showAllOnFocus = false } = opts;
+    const { selectedId, placeholder = 'Type to search…', onPick, showAllOnFocus = false } = opts;
     const TYPED_MAX = 8;    // matches shown while typing
     const BROWSE_MAX = 400; // ceiling when listing a whole (scoped) set
 
@@ -204,14 +204,14 @@ const LocationPicker = {
     }
 
     suburbCombo = Combo.attach(root.querySelector('.lp-suburb'), [], {
-      placeholder: 'Select your suburb',
+      placeholder: 'Type your suburb',
       showAllOnFocus: true,
       onPick: (row) => onPick?.(row || null),
     });
 
     Combo.attach(root.querySelector('.lp-city'), cities, {
       selectedId: preCityId,
-      placeholder: 'Start typing your town or city',
+      placeholder: 'Type your town or city',
       onPick: (city) => {
         if (!city) { suburbField.hidden = true; suburbCombo.setItems([]); onPick?.(null); return; }
         showSuburbs(city);
