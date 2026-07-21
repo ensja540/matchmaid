@@ -1274,12 +1274,10 @@ function verifRow(item) {
 // Location: pick a city (default Christchurch, whole-city) and optionally tick
 // "specific suburbs" to narrow to chosen suburbs within that city.
 function locSectionHTML() {
-  const cityOpts = Object.keys(DEMO.towns)
-    .map((c) => `<option value="${c}" ${c === mpCity ? 'selected' : ''}>${c}</option>`)
-    .join('');
   return `<div class="field" id="locField">
     <span>Where you work</span>
-    <select id="citySel" class="loc-city">${cityOpts}</select>
+    <label class="loc-city-label muted">Town or city</label>
+    <div id="cityCombo" class="loc-city"></div>
     <label class="check-inline" style="margin-top:0.7rem"><input type="checkbox" id="specificToggle" ${mpSpecific ? 'checked' : ''} /> I only want to work specific suburbs</label>
     <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${mpCity}-wide</strong>. Clients anywhere in ${mpCity} can find you.</p>
     <div class="loc-picker" id="locPicker" ${mpSpecific ? '' : 'hidden'}>
@@ -1328,8 +1326,19 @@ function renderSubResults(q, root = panel) {
     })
   );
 }
+// Built once DEMO.towns has the nationwide list merged in (after nz-locations.js).
+function maidCities() {
+  return Object.keys(DEMO.towns).sort().map((name) => ({ id: name, name, region: '', territorial_authority: '' }));
+}
 function wireLocSection(root = panel) {
-  root.querySelector('#citySel')?.addEventListener('change', (e) => { mpCity = e.target.value; rerenderLoc(root); });
+  const cityMount = root.querySelector('#cityCombo');
+  if (cityMount) {
+    Combo.attach(cityMount, maidCities(), {
+      selectedId: mpCity,
+      placeholder: 'Search your town or city',
+      onPick: (c) => { if (c) { mpCity = c.id; rerenderLoc(root); } },
+    });
+  }
   root.querySelector('#specificToggle')?.addEventListener('change', (e) => { mpSpecific = e.target.checked; rerenderLoc(root); });
   const inp = root.querySelector('#subSearch');
   if (inp) {

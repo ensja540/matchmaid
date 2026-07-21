@@ -1274,7 +1274,10 @@ a { color: inherit; text-decoration: none; }
 .results-tools[hidden] { display: none; }
 .sort-label { font-size: 0.82rem; color: var(--muted); display: inline-flex; align-items: center; gap: 0.4rem; }
 .sort-label select { padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font: inherit; color: var(--ink); }
-.loc-city { padding: 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font: inherit; color: var(--ink); width: 100%; max-width: 260px; }
+/* Now wraps a searchable combo, not a <select>: the .combo-input carries the
+   border and padding, so this just constrains width. */
+.loc-city { width: 100%; max-width: 320px; }
+.loc-city-label { display: block; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; margin-bottom: 0.35rem; }
 .loc-note { margin: 0.6rem 0 0; font-size: 0.86rem; }
 
 /* Searchable suburb picker (combo box + selected chips) */
