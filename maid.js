@@ -77,6 +77,10 @@ let mpCity = null; // a city key "<town>|<region>"; set once suburbs load
 // syncAreasFromCircle) and stays what the rest of the app reads.
 let mpCenter = null;    // {lat, lng} - null until the profile or a default lands
 let mpRadiusKm = 10;
+// Suburbs inside the circle the cleaner has crossed off by hand. Kept as an
+// explicit list rather than baked into `areas`, so it survives moving the
+// circle - cross off Lyttelton once and it stays off when the radius changes.
+const mpExcluded = new Set();
 
 function buildMaidCities(rows) {
   maidSubs = Array.isArray(rows) ? rows : [];
@@ -374,6 +378,8 @@ if (sessionUser?.id) {
         mpCenter = { lat: +data.serviceCenter.lat, lng: +data.serviceCenter.lng };
         if (Number.isFinite(+data.serviceRadiusKm)) mpRadiusKm = Math.round(+data.serviceRadiusKm);
       }
+      mpExcluded.clear();
+      (Array.isArray(data.serviceExcluded) ? data.serviceExcluded : []).forEach((id) => mpExcluded.add(Number(id)));
       // Parse the base location first - resolveMaidLocation turns it into a row id.
       { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       resolveMaidLocation();
@@ -861,6 +867,7 @@ const WIRE = {
             // itself. `areas` rides along only for the pre-map fallback path.
             serviceCenter: mpCenter,
             serviceRadiusKm: mpRadiusKm,
+            serviceExcluded: [...mpExcluded],
             areas: [...areas],
             listingStatus: 'active',
           }),
@@ -1383,9 +1390,16 @@ function verifRow(item) {
 // The circle is only the input. What gets saved and matched on is still the
 // suburb id list, resolved from the circle - by the server on save, and here for
 // the live count. Both use the same haversine, so they agree.
-function coveredSuburbs() {
+// Everything the circle reaches, before the cleaner's own opt-outs.
+function inCircleSuburbs() {
   if (!mpCenter) return [];
   return maidSubs.filter((r) => r.lat != null && kmBetween(mpCenter, r) <= mpRadiusKm);
+}
+// What they'll actually be found for: inside the circle, minus the ones they've
+// crossed off. A circle can't express "everywhere within 20km except over the
+// hill", and that exception is common enough to be worth keeping.
+function coveredSuburbs() {
+  return inCircleSuburbs().filter((r) => !mpExcluded.has(r.id));
 }
 function kmBetween(a, b) {
   const R = 6371, rad = (d) => (d * Math.PI) / 180;
@@ -1431,7 +1445,13 @@ function locSectionHTML() {
     <p class="loc-cover">Covers <strong id="coverCount">${covered.length}</strong> ${covered.length === 1 ? 'suburb' : 'suburbs'}
       <button type="button" class="link-btn" id="coverToggle" aria-expanded="false">see the list</button></p>
     <div class="area-chips" id="coverList" hidden>${coverListHTML()}</div>
+    <div id="excludedRow">${excludedHTML()}</div>
   </div>`;
+}
+function chipTown(r) {
+  return r.territorial_authority && r.territorial_authority !== r.name
+    ? `<span class="chip-town">${escapeHtml(r.territorial_authority)}</span>`
+    : '';
 }
 function coverListHTML() {
   const covered = coveredSuburbs().sort((a, b) => kmBetween(mpCenter, a) - kmBetween(mpCenter, b));
@@ -1439,8 +1459,17 @@ function coverListHTML() {
   // Nearest first, and each one carries its town: seeing "Rangiora" appear at
   // 25km is the check that the circle reaches where they meant it to.
   return covered
-    .map((r) => `<span class="area-chip">${escapeHtml(r.name)}${r.territorial_authority && r.territorial_authority !== r.name ? `<span class="chip-town">${escapeHtml(r.territorial_authority)}</span>` : ''}</span>`)
+    .map((r) => `<span class="area-chip">${escapeHtml(r.name)}${chipTown(r)}<button type="button" class="area-x" data-drop="${r.id}" aria-label="Don't work in ${escapeHtml(r.name)}">×</button></span>`)
     .join('');
+}
+// Only the crossed-off suburbs the circle still reaches. One they've moved away
+// from is no longer a choice they need to see - but it stays in the set, so it
+// comes back crossed off if the circle returns.
+function excludedHTML() {
+  const off = inCircleSuburbs().filter((r) => mpExcluded.has(r.id));
+  if (!off.length) return '';
+  return `<p class="loc-excluded">Not working in:
+    ${off.map((r) => `<span class="area-chip off">${escapeHtml(r.name)}${chipTown(r)}<button type="button" class="area-x" data-restore="${r.id}" aria-label="Work in ${escapeHtml(r.name)} after all">↺</button></span>`).join('')}</p>`;
 }
 // Live readout as the pin moves or the slider runs - no save needed to see it.
 function refreshCoverage(root = panel) {
@@ -1453,6 +1482,8 @@ function refreshCoverage(root = panel) {
   }
   const list = root.querySelector('#coverList');
   if (list && !list.hidden) list.innerHTML = coverListHTML();
+  const off = root.querySelector('#excludedRow');
+  if (off) off.innerHTML = excludedHTML();
 }
 // One Leaflet map per mount. Held so a re-render can tear the old one down -
 // Leaflet leaves listeners on a detached container otherwise.
@@ -1467,8 +1498,10 @@ function wireLocSection(root = panel) {
   // page scroll to zoom is the single most hated map behaviour there is.
   // setView is not optional: Leaflet cannot project a layer onto a map with no
   // centre, so adding the circle first throws and takes the whole picker with it.
-  const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true })
-    .setView([mpCenter.lat, mpCenter.lng], 11);
+  const map = L.map(mount, {
+    scrollWheelZoom: false, zoomControl: true,
+    maxBounds: [[-48.5, 164], [-32.5, 181]], maxBoundsViscosity: 0.9,
+  }).setView([mpCenter.lat, mpCenter.lng], 11);
   areaMap = map;
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -1476,7 +1509,7 @@ function wireLocSection(root = panel) {
   }).addTo(map);
 
   const circle = L.circle(mpCenter, {
-    radius: mpRadiusKm * 1000,
+    radius: mpRadiusKm * 1000, className: 'area-circle',
     color: '#b87333', weight: 1.5, fillColor: '#b87333', fillOpacity: 0.12,
   }).addTo(map);
   const pin = L.marker(mpCenter, {
@@ -1488,21 +1521,77 @@ function wireLocSection(root = panel) {
 
   const fit = () => map.fitBounds(circle.getBounds().pad(0.12));
   fit();
+  // Only pull the view back when the circle has actually escaped it. Refitting
+  // after every drag feels like the map is fighting you.
+  const keepInView = () => { if (!map.getBounds().contains(circle.getBounds())) fit(); };
 
-  pin.on('drag', () => {
-    const p = pin.getLatLng();
-    mpCenter = { lat: p.lat, lng: p.lng };
-    circle.setLatLng(p);
+  // Keep the centre inside New Zealand. A determined drag can otherwise run the
+  // longitude past 180, which the server rejects - and a rejected circle would
+  // leave the map showing an area that never saved.
+  const clampToNZ = (lat, lng) => L.latLng(
+    Math.min(-33, Math.max(-48, lat)),
+    Math.min(180, Math.max(165, ((lng + 540) % 360) - 180))
+  );
+  const setCenter = (latlng) => {
+    const at = clampToNZ(latlng.lat, latlng.lng);
+    mpCenter = { lat: at.lat, lng: at.lng };
+    circle.setLatLng(at);
+    pin.setLatLng(at);
     refreshCoverage(root);
-  });
-  pin.on('dragend', fit);
-  // Tapping the map moves the pin - easier than dragging on a phone.
+  };
+
+  pin.on('drag', () => setCenter(pin.getLatLng()));
+  pin.on('dragend', keepInView);
+
+  // Drag anywhere inside the circle to move the whole area - reaching for the
+  // pin is fiddly, and grabbing the blob is what people try first.
+  //
+  // Pointer events, not Leaflet's mouse events: on a phone `mousemove` only
+  // arrives after the finger lifts, so a touch drag would jump instead of
+  // following. Pointer events cover mouse, touch and stylus in one path.
+  const path = circle.getElement();
+  if (path) {
+    let grab = null; // where they took hold, so that spot stays under the cursor
+    const onDown = (ev) => {
+      grab = { at: map.mouseEventToLatLng(ev), from: circle.getLatLng() };
+      map.dragging.disable();               // or the map pans out from under it
+      path.setPointerCapture?.(ev.pointerId);
+      L.DomEvent.stop(ev);
+    };
+    const onMove = (ev) => {
+      if (!grab) return;
+      const now = map.mouseEventToLatLng(ev);
+      setCenter(L.latLng(
+        grab.from.lat + (now.lat - grab.at.lat),
+        grab.from.lng + (now.lng - grab.at.lng)
+      ));
+    };
+    const onUp = () => {
+      if (!grab) return;
+      grab = null;
+      map.dragging.enable();
+      keepInView();
+    };
+    L.DomEvent.on(path, 'pointerdown', onDown);
+    // On the document, not the path: a fast drag outruns the cursor and would
+    // otherwise stick "held" after the button came up outside the circle.
+    L.DomEvent.on(document, 'pointermove', onMove);
+    L.DomEvent.on(document, 'pointerup', onUp);
+    L.DomEvent.on(document, 'pointercancel', onUp);
+    // Every re-render builds a new map; take these listeners down with the old one.
+    map.on('unload', () => {
+      L.DomEvent.off(document, 'pointermove', onMove);
+      L.DomEvent.off(document, 'pointerup', onUp);
+      L.DomEvent.off(document, 'pointercancel', onUp);
+    });
+  }
+
+  // A tap outside the circle still jumps the area there. Inside is a drag, so
+  // leave it alone - otherwise the smallest wobble would recentre on the cursor.
   map.on('click', (e) => {
-    mpCenter = { lat: e.latlng.lat, lng: e.latlng.lng };
-    pin.setLatLng(e.latlng);
-    circle.setLatLng(e.latlng);
-    refreshCoverage(root);
-    fit();
+    if (kmBetween(circle.getLatLng(), e.latlng) <= mpRadiusKm) return;
+    setCenter(e.latlng);
+    keepInView();
   });
 
   const range = root.querySelector('#radiusRange');
@@ -1516,6 +1605,17 @@ function wireLocSection(root = panel) {
   // Refit on release, not on every step - the map lurching under a moving
   // thumb makes the slider feel like it's fighting you.
   range?.addEventListener('change', fit);
+
+  // Delegated: both lists are re-rendered on every change, so binding each
+  // chip's button would mean rebinding them all on every drag frame.
+  root.querySelector('#locField')?.addEventListener('click', (e) => {
+    const drop = e.target.closest('[data-drop]');
+    const back = e.target.closest('[data-restore]');
+    if (!drop && !back) return;
+    if (drop) mpExcluded.add(Number(drop.dataset.drop));
+    if (back) mpExcluded.delete(Number(back.dataset.restore));
+    refreshCoverage(root);
+  });
 
   const toggle = root.querySelector('#coverToggle');
   toggle?.addEventListener('click', () => {
@@ -1764,6 +1864,7 @@ async function saveWizard() {
         services: [...Object.keys(mpCleanRates), ...(mpEndOfLease ? ['end-of-tenancy'] : [])],
         serviceCenter: mpCenter,
         serviceRadiusKm: mpRadiusKm,
+        serviceExcluded: [...mpExcluded],
         areas: [...areas],
         listingStatus: 'active',
       }),

@@ -526,12 +526,13 @@ app.get('/api/suburbs', async (_req, res) => {
 const RADIUS_SQL = `6371 * acos(least(1,
   cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2))
   + sin(radians($1)) * sin(radians(lat))))`;
-async function suburbsWithin(lat, lng, km) {
+async function suburbsWithin(lat, lng, km, excluded = []) {
   const { rows } = await query(
     `select id from suburbs where lat is not null and ${RADIUS_SQL} <= $3`,
     [lat, lng, km]
   );
-  return rows.map((r) => r.id);
+  const off = new Set(excluded.map(Number));
+  return rows.map((r) => r.id).filter((id) => !off.has(id));
 }
 
 // Resolve a suburb to its id. Prefer an explicit id from the client: with the
@@ -668,7 +669,7 @@ app.get('/api/profile', async (req, res) => {
               cp.id_verified, cp.police_verified, cp.insurance_verified,
               cp.brings_products, cp.profile_photo_url, cp.service_surcharges,
               cp.residential_address, cp.clean_rates,
-              cp.service_lat, cp.service_lng, cp.service_radius_km,
+              cp.service_lat, cp.service_lng, cp.service_radius_km, cp.service_excluded,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.user_id = $1`,
@@ -710,6 +711,7 @@ app.get('/api/profile', async (req, res) => {
       // The service-area circle, so the map reopens where they left it.
       serviceCenter: cp.service_lat != null ? { lat: Number(cp.service_lat), lng: Number(cp.service_lng) } : null,
       serviceRadiusKm: cp.service_radius_km != null ? Number(cp.service_radius_km) : null,
+      serviceExcluded: Array.isArray(cp.service_excluded) ? cp.service_excluded : [],
     });
   } catch (err) {
     console.error(err);
@@ -719,7 +721,7 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, endOfLease, productsOption, payments, residentialAddress, fullName, serviceCenter, serviceRadiusKm } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, endOfLease, productsOption, payments, residentialAddress, fullName, serviceCenter, serviceRadiusKm, serviceExcluded } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
@@ -733,6 +735,17 @@ app.put('/api/profile', async (req, res) => {
       const km = Math.min(200, Math.max(1, +serviceRadiusKm));
       if (lat <= -33 && lat >= -48 && lng >= 165 && lng <= 180) circle = { lat, lng, km };
     }
+    // Sent a circle that didn't validate? Stop here. Falling through would apply
+    // the `areas` list the browser derived from that same bad circle, which is
+    // how a stray drag turns into "all my suburbs vanished".
+    if (serviceCenter && !circle) {
+      return res.status(400).json({ error: 'That service area is outside New Zealand.' });
+    }
+    // Suburbs crossed off inside that circle. Capped: this is a hand-made list,
+    // and anything longer is a bug or someone poking the endpoint.
+    const excluded = Array.isArray(serviceExcluded)
+      ? [...new Set(serviceExcluded.map(Number).filter(Number.isInteger))].slice(0, 500)
+      : null;
 
     // Per-clean-type fee model: regular and deep, both hourly. End-of-lease and
     // its bond-back guarantee are capabilities of the deep clean, stored as
@@ -805,7 +818,8 @@ app.put('/api/profile', async (req, res) => {
          clean_rates = coalesce($14, clean_rates),
          service_lat = coalesce($15, service_lat),
          service_lng = coalesce($16, service_lng),
-         service_radius_km = coalesce($17, service_radius_km), updated_at = now()
+         service_radius_km = coalesce($17, service_radius_km),
+         service_excluded = coalesce($18, service_excluded), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
@@ -817,6 +831,7 @@ app.put('/api/profile', async (req, res) => {
         typeof residentialAddress === 'string' ? residentialAddress.slice(0, 300) : null,
         cleanRatesClean != null ? JSON.stringify(cleanRatesClean) : null,
         circle?.lat ?? null, circle?.lng ?? null, circle?.km ?? null,
+        excluded != null ? JSON.stringify(excluded) : null,
       ]
     );
 
@@ -839,7 +854,7 @@ app.put('/api/profile', async (req, res) => {
     // A circle defines the areas: resolve it here rather than trusting the list
     // the browser worked out, so the saved suburbs always match the saved circle.
     if (circle) {
-      const ids = await suburbsWithin(circle.lat, circle.lng, circle.km);
+      const ids = await suburbsWithin(circle.lat, circle.lng, circle.km, excluded ?? []);
       await query('delete from cleaner_service_areas where cleaner_id = $1', [cleanerId]);
       if (ids.length) {
         await query(

@@ -1309,10 +1309,20 @@ a { color: inherit; text-decoration: none; }
 }
 .link-btn:hover { color: var(--ink); }
 
-/* The covered-suburb list is read-only now - the circle decides what's in it. */
+/* The circle decides what's in the list; the × takes individual suburbs back
+   out again ("everywhere within 20km except over the hill"). */
 .area-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; max-height: 190px; overflow-y: auto; }
-.area-chip { display: inline-flex; align-items: baseline; gap: 0.35rem; background: var(--paper-2); border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
+.area-chip { display: inline-flex; align-items: baseline; gap: 0.35rem; background: var(--paper-2); border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.45rem 0.3rem 0.8rem; font-size: 0.85rem; }
 .chip-town { font-size: 0.72rem; color: var(--muted); }
+.area-x { border: 0; background: none; cursor: pointer; font-size: 1rem; line-height: 1; color: var(--muted); padding: 0 0.2rem; }
+.area-x:hover { color: var(--ink); }
+
+/* Crossed-off suburbs: struck through, and each one keeps a ↺ to undo it. They
+   sit outside the scrolling list so they're never hidden below the fold - an
+   exclusion you can't find is one you can't reverse. */
+.loc-excluded { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.8rem 0 0; font-size: 0.86rem; color: var(--muted); }
+.area-chip.off { background: none; border-style: dashed; }
+.area-chip.off > :first-child { text-decoration: line-through; }
 
 /* Guided getting-started checklist */
 .getting-started { border: 1px solid var(--accent); background: linear-gradient(160deg, var(--paper-2), #fff); }
