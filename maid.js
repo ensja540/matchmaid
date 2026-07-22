@@ -1343,7 +1343,7 @@ function locSectionHTML() {
     <label class="check-inline" style="margin-top:0.7rem"><input type="checkbox" id="specificToggle" ${mpSpecific ? 'checked' : ''} /> I only want to work specific suburbs</label>
     <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${cname}-wide</strong>. Clients anywhere in ${cname} can find you.</p>
     <div class="loc-picker" id="locPicker" ${mpSpecific ? '' : 'hidden'}>
-      <div class="combo combo--select">
+      <div class="combo">
         <input type="text" id="subSearch" class="combo-input" placeholder="Type a suburb in ${cname}…" autocomplete="off" />
         <div class="combo-list" id="subResults" hidden></div>
       </div>
@@ -1372,11 +1372,11 @@ function renderSubResults(q, root = panel) {
   const box = root.querySelector('#subResults');
   if (!box) return;
   const query = (q || '').trim().toLowerCase();
-  // Suburbs of the chosen city not already added. Empty query lists them all
-  // (capped), so a small city like Ashburton shows every suburb on focus.
+  // Nothing until they start typing.
+  if (!query) { box.hidden = true; box.innerHTML = ''; return; }
   const matches = cityRows(mpCity)
-    .filter((r) => !areas.has(r.id) && (!query || r.name.toLowerCase().includes(query)))
-    .slice(0, query ? 8 : 200);
+    .filter((r) => !areas.has(r.id) && r.name.toLowerCase().includes(query))
+    .slice(0, 8);
   if (!matches.length) { box.hidden = true; box.innerHTML = ''; return; }
   box.innerHTML = matches.map((r) => `<button type="button" class="combo-opt" data-add="${r.id}">${escapeHtml(r.name)}</button>`).join('');
   box.hidden = false;
@@ -1403,7 +1403,6 @@ function wireLocSection(root = panel) {
   const inp = root.querySelector('#subSearch');
   if (inp) {
     inp.addEventListener('input', () => renderSubResults(inp.value, root));
-    inp.addEventListener('focus', () => renderSubResults(inp.value, root));
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); const first = root.querySelector('#subResults [data-add]'); if (first) first.click(); }
     });

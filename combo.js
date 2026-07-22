@@ -11,18 +11,14 @@
 
 const Combo = {
   // items: [{id, name, region, territorial_authority}]
-  // opts.showAllOnFocus: on focus with an empty box, list everything (used for
-  //   the scoped suburb field, so its handful of options are visible without
-  //   typing). Left off for the ~900-entry city field.
   // onPick(item|null) fires on every change, null when the field is cleared.
+  // The list stays hidden until the first keystroke - nothing shows on focus.
   attach(root, items, opts = {}) {
     if (!root) return null;
-    const { selectedId, placeholder = 'Type to search…', onPick, showAllOnFocus = false } = opts;
-    const TYPED_MAX = 8;    // matches shown while typing
-    const BROWSE_MAX = 400; // ceiling when listing a whole (scoped) set
+    const { selectedId, placeholder = 'Type to search…', onPick } = opts;
+    const TYPED_MAX = 8; // matches shown while typing
 
     root.classList.add('combo');
-    if (showAllOnFocus) root.classList.add('combo--select');
     root.innerHTML = `
       <input type="text" class="combo-input" role="combobox" aria-expanded="false"
         aria-autocomplete="list" autocomplete="off" spellcheck="false"
@@ -51,7 +47,7 @@ const Combo = {
 
     function find(q) {
       const s = q.trim().toLowerCase();
-      if (!s) return showAllOnFocus ? pool.slice(0, BROWSE_MAX) : [];
+      if (!s) return []; // nothing until they start typing
       const starts = [], town = [], contains = [];
       for (const it of pool) {
         const n = it.name.toLowerCase();
@@ -101,7 +97,9 @@ const Combo = {
       onPick?.(it);
     }
 
-    input.addEventListener('focus', () => { if (showAllOnFocus || input.value.trim()) open(); });
+    // Only reopen the list on focus if there is already text to match - an
+    // empty field stays quiet until the first keystroke.
+    input.addEventListener('focus', () => { if (input.value.trim()) open(); });
     input.addEventListener('input', () => {
       // Typing after a pick invalidates it until they choose again - stops a
       // stale id being submitted alongside edited text.
@@ -205,7 +203,6 @@ const LocationPicker = {
 
     suburbCombo = Combo.attach(root.querySelector('.lp-suburb'), [], {
       placeholder: 'Type your suburb',
-      showAllOnFocus: true,
       onPick: (row) => onPick?.(row || null),
     });
 

@@ -1577,7 +1577,6 @@ a { color: inherit; text-decoration: none; }
 .combo-sub { font-size: 0.74rem; color: var(--muted); }
 .combo-none { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
 
-/* The suburb field (combo--select) still opens its full list on focus, but it
-   reads and behaves as a search box - magnifier, caret, type to filter - so
-   clicking it shows everything and typing narrows it. */
+/* Both location fields read and behave as search boxes: magnifier, caret, and
+   a list that appears only once you start typing. */
 .lp-city .combo-input, .lp-suburb .combo-input { width: 100%; }
