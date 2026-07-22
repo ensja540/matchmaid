@@ -512,11 +512,27 @@ app.post('/api/profile/remove', async (req, res) => {
 // and Hillsborough all exist in more than one region), so the picker groups by
 // region and callers should send the id rather than the bare name.
 app.get('/api/suburbs', async (_req, res) => {
+  // lat/lng ride along so the radius picker can show "covers 34 suburbs" as the
+  // circle is dragged, without a round trip per pixel. The server recomputes the
+  // same set on save - this copy is only for display.
   const { rows } = await query(
-    'select id, name, region, territorial_authority from suburbs order by region, name'
+    'select id, name, region, territorial_authority, lat, lng from suburbs order by region, name'
   );
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, lat: r.lat == null ? null : Number(r.lat), lng: r.lng == null ? null : Number(r.lng) })));
 });
+
+// Suburbs whose centre falls inside a circle. Haversine in SQL: 1,688 rows is
+// far too few to justify PostGIS.
+const RADIUS_SQL = `6371 * acos(least(1,
+  cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2))
+  + sin(radians($1)) * sin(radians(lat))))`;
+async function suburbsWithin(lat, lng, km) {
+  const { rows } = await query(
+    `select id from suburbs where lat is not null and ${RADIUS_SQL} <= $3`,
+    [lat, lng, km]
+  );
+  return rows.map((r) => r.id);
+}
 
 // Resolve a suburb to its id. Prefer an explicit id from the client: with the
 // nationwide list a bare name is ambiguous (four Richmonds), and the old
@@ -652,6 +668,7 @@ app.get('/api/profile', async (req, res) => {
               cp.id_verified, cp.police_verified, cp.insurance_verified,
               cp.brings_products, cp.profile_photo_url, cp.service_surcharges,
               cp.residential_address, cp.clean_rates,
+              cp.service_lat, cp.service_lng, cp.service_radius_km,
               u.full_name, u.email
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.user_id = $1`,
@@ -690,6 +707,9 @@ app.get('/api/profile', async (req, res) => {
       email: cp.email,
       residentialAddress: cp.residential_address || '',
       cleanRates: cp.clean_rates && typeof cp.clean_rates === 'object' ? cp.clean_rates : {},
+      // The service-area circle, so the map reopens where they left it.
+      serviceCenter: cp.service_lat != null ? { lat: Number(cp.service_lat), lng: Number(cp.service_lng) } : null,
+      serviceRadiusKm: cp.service_radius_km != null ? Number(cp.service_radius_km) : null,
     });
   } catch (err) {
     console.error(err);
@@ -699,10 +719,20 @@ app.get('/api/profile', async (req, res) => {
 
 app.put('/api/profile', async (req, res) => {
   try {
-    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, endOfLease, productsOption, payments, residentialAddress, fullName } = req.body ?? {};
+    const { userId, businessName, bio, years, rate, rateMin, rateMax, services, addons, areas, badges, listingStatus, bringsProducts, photo, serviceSurcharges, cleanRates, bondGuaranteed, endOfLease, productsOption, payments, residentialAddress, fullName, serviceCenter, serviceRadiusKm } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const cleanerId = await cleanerIdForUser(userId);
     if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    // The service-area circle. Validated here rather than trusted: a bad centre
+    // or a 5,000km radius would quietly put the cleaner in every search in the
+    // country. NZ's bounding box, and a radius capped at a plausible commute.
+    let circle = null;
+    if (serviceCenter && Number.isFinite(+serviceCenter.lat) && Number.isFinite(+serviceCenter.lng) && Number.isFinite(+serviceRadiusKm)) {
+      const lat = +serviceCenter.lat, lng = +serviceCenter.lng;
+      const km = Math.min(200, Math.max(1, +serviceRadiusKm));
+      if (lat <= -33 && lat >= -48 && lng >= 165 && lng <= 180) circle = { lat, lng, km };
+    }
 
     // Per-clean-type fee model: regular and deep, both hourly. End-of-lease and
     // its bond-back guarantee are capabilities of the deep clean, stored as
@@ -772,7 +802,10 @@ app.put('/api/profile', async (req, res) => {
                                   when $11 = '' then null else $11 end,
          service_surcharges = coalesce($12, service_surcharges),
          residential_address = coalesce($13, residential_address),
-         clean_rates = coalesce($14, clean_rates), updated_at = now()
+         clean_rates = coalesce($14, clean_rates),
+         service_lat = coalesce($15, service_lat),
+         service_lng = coalesce($16, service_lng),
+         service_radius_km = coalesce($17, service_radius_km), updated_at = now()
        where id = $1`,
       [
         cleanerId, businessName ?? null, bio ?? null, Number.isFinite(+years) ? +years : null,
@@ -783,6 +816,7 @@ app.put('/api/profile', async (req, res) => {
         cleanSurcharges != null ? JSON.stringify(cleanSurcharges) : null,
         typeof residentialAddress === 'string' ? residentialAddress.slice(0, 300) : null,
         cleanRatesClean != null ? JSON.stringify(cleanRatesClean) : null,
+        circle?.lat ?? null, circle?.lng ?? null, circle?.km ?? null,
       ]
     );
 
@@ -802,7 +836,19 @@ app.put('/api/profile', async (req, res) => {
         );
       }
     }
-    if (Array.isArray(areas)) {
+    // A circle defines the areas: resolve it here rather than trusting the list
+    // the browser worked out, so the saved suburbs always match the saved circle.
+    if (circle) {
+      const ids = await suburbsWithin(circle.lat, circle.lng, circle.km);
+      await query('delete from cleaner_service_areas where cleaner_id = $1', [cleanerId]);
+      if (ids.length) {
+        await query(
+          `insert into cleaner_service_areas (cleaner_id, suburb_id)
+           select $1, unnest($2::int[]) on conflict do nothing`,
+          [cleanerId, ids]
+        );
+      }
+    } else if (Array.isArray(areas)) {
       await query('delete from cleaner_service_areas where cleaner_id = $1', [cleanerId]);
       // Areas may arrive as ids (current client) or names (older callers).
       for (const area of areas) {

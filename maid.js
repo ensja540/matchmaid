@@ -73,7 +73,10 @@ let maidSubs = [];
 let maidCityMap = new Map(); // "town|region" -> { key, name, region, rows:[{id,name,...}] }
 const areas = new Set(); // suburb IDs the cleaner has narrowed to
 let mpCity = null; // a city key "<town>|<region>"; set once suburbs load
-let mpSpecific = false; // false = whole-city ("Christchurch-wide")
+// The service area itself: a circle. `areas` is derived from it (see
+// syncAreasFromCircle) and stays what the rest of the app reads.
+let mpCenter = null;    // {lat, lng} - null until the profile or a default lands
+let mpRadiusKm = 10;
 
 function buildMaidCities(rows) {
   maidSubs = Array.isArray(rows) ? rows : [];
@@ -98,18 +101,45 @@ function defaultCityKey() {
   for (const k of maidCityMap.keys()) if (k.startsWith('Christchurch')) return k;
   return maidCityMap.keys().next().value || null;
 }
-// The cleaner's own base location - a city + suburb picked from dropdowns (no
-// free-text street address). Stored back into residential_address as
-// "Suburb, City" so it needs no schema change.
-let mpHomeCity = 'Christchurch';
-let mpHomeSuburb = '';
+// The cleaner's own base location - the same town-then-suburb search fields
+// used everywhere else, over the real suburb list (no free-text street
+// address). Stored back into residential_address as "Suburb, City" so it needs
+// no schema change; the id is only held to preselect the fields when editing.
+let mpHomeCity = '';   // town or city name
+let mpHomeSuburb = ''; // suburb within that town
+let mpHomeId = null;   // its /api/suburbs row id, once the list has loaded
 function parseHome(addr) {
   const parts = String(addr || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const cities = Object.keys(DEMO.towns);
-  const last = parts[parts.length - 1];
-  const city = cities.includes(last) ? last : cities[0];
-  const sub = parts.length > 1 ? parts[parts.length - 2] : '';
-  return { city, suburb: (DEMO.towns[city] || []).includes(sub) ? sub : '' };
+  if (!parts.length) return { city: '', suburb: '' };
+  // A lone name is a town that is its own suburb (small towns save as one part).
+  if (parts.length === 1) return { city: parts[0], suburb: parts[0] };
+  return { suburb: parts[parts.length - 2], city: parts[parts.length - 1] };
+}
+// Saved as names, shown by id: match the stored pair back to a suburb row once
+// the list is in. Town match first - the same suburb name exists in several.
+function resolveHomeId() {
+  if (!maidSubs.length || !mpHomeSuburb) return;
+  const sub = mpHomeSuburb.toLowerCase(), town = mpHomeCity.toLowerCase();
+  // A handful of small towns share a name across regions (Wainui, Kinloch), and
+  // the town alone can't separate them - break the tie on the region they work in.
+  const region = maidCityMap.get(mpCity)?.region;
+  const named = maidSubs.filter((r) => r.name.toLowerCase() === sub);
+  const inTown = named.filter((r) => (r.territorial_authority || '').toLowerCase() === town);
+  const row =
+    inTown.find((r) => r.region === region) || inTown[0] ||
+    named.find((r) => r.region === region) || named[0];
+  // Nothing matched (an old town-only value): leave the field empty rather than
+  // holding a name the picker can't show, so what saves is what they can see.
+  if (!row) { mpHomeSuburb = ''; mpHomeId = null; return; }
+  mpHomeId = row.id;
+  mpHomeSuburb = row.name;
+  mpHomeCity = row.territorial_authority || row.name;
+}
+// "Suburb, Town", collapsed to one name when the town is its own suburb.
+function homeAddress() {
+  if (!mpHomeSuburb) return mpHomeCity;
+  if (!mpHomeCity || mpHomeSuburb === mpHomeCity) return mpHomeSuburb;
+  return `${mpHomeSuburb}, ${mpHomeCity}`;
 }
 // Per-clean-type fee: { slug: dollars }. A type with a fee is one the maid
 // offers; no entry means they don't offer it. Both regular and deep are hourly.
@@ -185,35 +215,27 @@ function cleanFeesHTML() {
       </div>`;
   }).join('');
 }
-// The cleaner's base location as two dropdowns: city, then a suburb from that
-// city. Changing the city repopulates the suburbs.
+// The cleaner's base location: type a town, then a suburb of that town. Both
+// lists stay hidden until you start typing (see LocationPicker in combo.js).
 function homeLocationHTML() {
-  const cityOpts = Object.keys(DEMO.towns)
-    .map((c) => `<option value="${escapeHtml(c)}" ${c === mpHomeCity ? 'selected' : ''}>${escapeHtml(c)}</option>`)
-    .join('');
   return `
     <div class="field"><span>Where you're based</span>
-      <div class="home-loc">
-        <select class="home-city" name="homeCity">${cityOpts}</select>
-        <select class="home-suburb" name="homeSuburb">${homeSuburbOptions()}</select>
-      </div>
+      ${maidSubs.length
+        ? '<div class="home-loc" id="homeLoc"></div>'
+        : '<p class="loc-note muted">Loading locations…</p>'}
     </div>`;
 }
-function homeSuburbOptions() {
-  const subs = DEMO.towns[mpHomeCity] || [];
-  return `<option value="">Select suburb…</option>` +
-    subs.map((s) => `<option value="${escapeHtml(s)}" ${s === mpHomeSuburb ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
-}
 function wireHomeLocation(root) {
-  const city = root.querySelector('.home-city');
-  const suburb = root.querySelector('.home-suburb');
-  if (!city || !suburb) return;
-  city.addEventListener('change', () => {
-    mpHomeCity = city.value;
-    mpHomeSuburb = '';
-    suburb.innerHTML = homeSuburbOptions();
+  const mount = root.querySelector('#homeLoc');
+  if (!mount) return;
+  LocationPicker.attach(mount, maidSubs, {
+    selectedId: mpHomeId,
+    onPick: (row) => {
+      mpHomeId = row ? row.id : null;
+      mpHomeSuburb = row ? row.name : '';
+      mpHomeCity = row ? row.territorial_authority || row.name : '';
+    },
   });
-  suburb.addEventListener('change', () => { mpHomeSuburb = suburb.value; });
 }
 
 function wireCleanFees(root) {
@@ -287,6 +309,7 @@ let loadedAreas = null;
 function resolveMaidLocation() {
   if (!maidCityMap.size) return;                  // suburbs not loaded yet
   if (!mpCity) mpCity = defaultCityKey();
+  resolveHomeId();                                // saved base location -> row id
   if (!loadedAreas) { render(); return; }         // no profile areas yet
   areas.clear();
   loadedAreas.forEach((a) => { if (a && a.id != null) areas.add(a.id); });
@@ -297,21 +320,32 @@ function resolveMaidLocation() {
     if (n > bestN) { bestN = n; best = c.key; }
   }
   mpCity = best;
-  const all = cityRows(mpCity);
-  mpSpecific = areas.size > 0 && !all.every((r) => areas.has(r.id));
+  // No saved circle (a profile last edited before the map existed): fit one to
+  // the suburbs they already cover, so the map opens on their real patch rather
+  // than throwing it away. The server does the same for everyone on migration.
+  if (!mpCenter && areas.size) {
+    const rows = maidSubs.filter((r) => areas.has(r.id) && r.lat != null);
+    if (rows.length) {
+      mpCenter = {
+        lat: rows.reduce((t, r) => t + Number(r.lat), 0) / rows.length,
+        lng: rows.reduce((t, r) => t + Number(r.lng), 0) / rows.length,
+      };
+      mpRadiusKm = Math.max(5, Math.ceil(Math.max(...rows.map((r) => kmBetween(mpCenter, r)))));
+    }
+  }
   render();
   // If the setup wizard is open on its location step, refresh it too - suburbs
   // may have loaded after it rendered.
   if (wizEl && WIZ_STEPS[wizStep]?.key === 'areas') renderWizStep();
 }
 
-// The id-bearing suburb list powers the location picker.
-if (sessionUser?.id) {
-  fetch('/api/suburbs')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((rows) => { buildMaidCities(rows || []); resolveMaidLocation(); })
-    .catch(() => {});
-}
+// The id-bearing suburb list powers both location pickers. Fetched whether or
+// not anyone is logged in - it is public, and the demo profile shows the same
+// fields, which sit at "Loading locations…" without it.
+fetch('/api/suburbs')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((rows) => { buildMaidCities(rows || []); resolveMaidLocation(); })
+  .catch(() => {});
 
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
@@ -334,9 +368,16 @@ if (sessionUser?.id) {
       // areas arrive as {id, name, region}. Stash them; the city can only be
       // inferred once the suburb list has loaded, so reconcile both together.
       loadedAreas = Array.isArray(data.areas) ? data.areas : [];
+      // The saved circle, if they have one. resolveMaidLocation fits one from
+      // the suburb list when they don't.
+      if (data.serviceCenter && Number.isFinite(+data.serviceCenter.lat)) {
+        mpCenter = { lat: +data.serviceCenter.lat, lng: +data.serviceCenter.lng };
+        if (Number.isFinite(+data.serviceRadiusKm)) mpRadiusKm = Math.round(+data.serviceRadiusKm);
+      }
+      // Parse the base location first - resolveMaidLocation turns it into a row id.
+      { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       resolveMaidLocation();
       { const ex = extractRates(data.cleanRates); mpCleanRates = ex.rates; mpBondGuaranteed = ex.bond; mpEndOfLease = ex.endOfLease; mpProductsOption = ex.productsOption; mpPayments = new Set(ex.payments); mpOffers = new Set(Object.keys(mpCleanRates)); }
-      { const h = parseHome(mp.residentialAddress); mpHomeCity = h.city; mpHomeSuburb = h.suburb; }
       render();
       profileLoaded = true; tryAutoWizard();
     })
@@ -788,7 +829,7 @@ const WIRE = {
       mp.businessName = f.business.value;
       mp.bio = f.bio.value;
       mp.fullName = f.fullName.value;
-      mp.residentialAddress = mpHomeSuburb ? `${mpHomeSuburb}, ${mpHomeCity}` : mpHomeCity;
+      mp.residentialAddress = homeAddress();
       mp.years = f.years.value;
       mpProductsOption = f.productsOption.value;
       mp.bringsProducts = mpProductsOption !== 'supplied';
@@ -816,8 +857,11 @@ const WIRE = {
             bondGuaranteed: mpBondGuaranteed,
             endOfLease: mpEndOfLease,
             services: [...Object.keys(mpCleanRates), ...(mpEndOfLease ? ['end-of-tenancy'] : [])],
-            // Suburb IDs, scoped to the chosen city. City-wide sends the lot.
-            areas: (mpSpecific ? cityRows(mpCity).filter((r) => areas.has(r.id)) : cityRows(mpCity)).map((r) => r.id),
+            // The circle is what's saved; the server resolves it to suburb ids
+            // itself. `areas` rides along only for the pre-map fallback path.
+            serviceCenter: mpCenter,
+            serviceRadiusKm: mpRadiusKm,
+            areas: [...areas],
             listingStatus: 'active',
           }),
         });
@@ -1330,87 +1374,162 @@ function verifRow(item) {
     <div class="verif-item-right">${pill}${action}${selfieAction}</div>
   </div>`;
 }
-// Location: pick a city (default Christchurch, whole-city) and optionally tick
-// "specific suburbs" to narrow to chosen suburbs within that city.
+// Location: a circle on a map. Drag the pin to where you set out from, set how
+// far you'll travel, and the suburbs inside it become your service areas. This
+// replaced ticking suburbs one at a time - "everywhere within 20km" is how
+// cleaners actually think about it, and it crosses town boundaries for free
+// (Amberley to the top of Christchurch is one drag, not forty ticks).
+//
+// The circle is only the input. What gets saved and matched on is still the
+// suburb id list, resolved from the circle - by the server on save, and here for
+// the live count. Both use the same haversine, so they agree.
+function coveredSuburbs() {
+  if (!mpCenter) return [];
+  return maidSubs.filter((r) => r.lat != null && kmBetween(mpCenter, r) <= mpRadiusKm);
+}
+function kmBetween(a, b) {
+  const R = 6371, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+// `areas` still drives the save payload and the rest of the portal, so keep it
+// in step with the circle rather than making every reader understand geometry.
+function syncAreasFromCircle() {
+  areas.clear();
+  coveredSuburbs().forEach((r) => areas.add(r.id));
+}
+// Where to drop the pin the first time: their own suburb, else the middle of
+// their town, else the country's default.
+function defaultCenter() {
+  const home = maidSubs.find((r) => r.id === mpHomeId && r.lat != null);
+  if (home) return { lat: Number(home.lat), lng: Number(home.lng) };
+  const rows = cityRows(mpCity).filter((r) => r.lat != null);
+  if (rows.length) {
+    return {
+      lat: rows.reduce((t, r) => t + Number(r.lat), 0) / rows.length,
+      lng: rows.reduce((t, r) => t + Number(r.lng), 0) / rows.length,
+    };
+  }
+  return { lat: -43.5321, lng: 172.6362 }; // Christchurch
+}
 function locSectionHTML() {
-  const cname = cityName(mpCity) || '…';
-  const loading = !maidCityMap.size;
+  if (!maidSubs.length) {
+    return `<div class="field" id="locField"><span>Where you work</span>
+      <p class="loc-note muted">Loading locations…</p></div>`;
+  }
+  const covered = coveredSuburbs();
   return `<div class="field" id="locField">
     <span>Where you work</span>
-    <label class="loc-city-label muted">Town or city</label>
-    <div id="cityCombo" class="loc-city"></div>
-    ${loading ? '<p class="loc-note muted">Loading locations…</p>' : `
-    <label class="check-inline" style="margin-top:0.7rem"><input type="checkbox" id="specificToggle" ${mpSpecific ? 'checked' : ''} /> I only want to work specific suburbs</label>
-    <p class="loc-note muted" ${mpSpecific ? 'hidden' : ''}>Working <strong>${cname}-wide</strong>. Clients anywhere in ${cname} can find you.</p>
-    <div class="loc-picker" id="locPicker" ${mpSpecific ? '' : 'hidden'}>
-      <div class="combo">
-        <input type="text" id="subSearch" class="combo-input" placeholder="Type a suburb in ${cname}…" autocomplete="off" />
-        <div class="combo-list" id="subResults" hidden></div>
-      </div>
-      <div class="area-chips" id="selectedAreas"></div>
-    </div>`}
+    <p class="loc-note muted">Drag the pin to where you set out from, then set how far you'll travel. Clients inside the circle can find you.</p>
+    <div class="area-map" id="areaMap"></div>
+    <div class="radius-row">
+      <input type="range" id="radiusRange" min="1" max="100" step="1" value="${mpRadiusKm}"
+        aria-label="How far you'll travel, in kilometres" />
+      <span class="radius-val"><strong id="radiusOut">${mpRadiusKm}</strong> km</span>
+    </div>
+    <p class="loc-cover">Covers <strong id="coverCount">${covered.length}</strong> ${covered.length === 1 ? 'suburb' : 'suburbs'}
+      <button type="button" class="link-btn" id="coverToggle" aria-expanded="false">see the list</button></p>
+    <div class="area-chips" id="coverList" hidden>${coverListHTML()}</div>
   </div>`;
 }
-function areaChipsHTML() {
-  const chosen = cityRows(mpCity).filter((r) => areas.has(r.id));
-  if (!chosen.length) return '<span class="muted" style="font-size:0.85rem">No suburbs added yet. Search above and add the ones you cover.</span>';
-  return chosen
-    .map((r) => `<span class="area-chip">${escapeHtml(r.name)}<button type="button" class="area-x" data-remove="${r.id}" aria-label="Remove ${escapeHtml(r.name)}">×</button></span>`)
+function coverListHTML() {
+  const covered = coveredSuburbs().sort((a, b) => kmBetween(mpCenter, a) - kmBetween(mpCenter, b));
+  if (!covered.length) return '<span class="muted" style="font-size:0.85rem">Nothing inside the circle yet - widen it or move the pin.</span>';
+  // Nearest first, and each one carries its town: seeing "Rangiora" appear at
+  // 25km is the check that the circle reaches where they meant it to.
+  return covered
+    .map((r) => `<span class="area-chip">${escapeHtml(r.name)}${r.territorial_authority && r.territorial_authority !== r.name ? `<span class="chip-town">${escapeHtml(r.territorial_authority)}</span>` : ''}</span>`)
     .join('');
 }
-// These accept a root element (default: the portal panel) so the same location
-// picker can be wired inside the first-run wizard modal, which lives on body.
-function renderAreaChips(root = panel) {
-  const box = root.querySelector('#selectedAreas');
-  if (!box) return;
-  box.innerHTML = areaChipsHTML();
-  box.querySelectorAll('[data-remove]').forEach((b) =>
-    b.addEventListener('click', () => { areas.delete(Number(b.dataset.remove)); renderAreaChips(root); })
-  );
+// Live readout as the pin moves or the slider runs - no save needed to see it.
+function refreshCoverage(root = panel) {
+  syncAreasFromCircle();
+  const covered = coveredSuburbs();
+  const count = root.querySelector('#coverCount');
+  if (count) {
+    count.textContent = covered.length;
+    count.nextSibling && (count.nextSibling.textContent = ` ${covered.length === 1 ? 'suburb' : 'suburbs'} `);
+  }
+  const list = root.querySelector('#coverList');
+  if (list && !list.hidden) list.innerHTML = coverListHTML();
 }
-function renderSubResults(q, root = panel) {
-  const box = root.querySelector('#subResults');
-  if (!box) return;
-  const query = (q || '').trim().toLowerCase();
-  // Nothing until they start typing.
-  if (!query) { box.hidden = true; box.innerHTML = ''; return; }
-  const matches = cityRows(mpCity)
-    .filter((r) => !areas.has(r.id) && r.name.toLowerCase().includes(query))
-    .slice(0, 8);
-  if (!matches.length) { box.hidden = true; box.innerHTML = ''; return; }
-  box.innerHTML = matches.map((r) => `<button type="button" class="combo-opt" data-add="${r.id}">${escapeHtml(r.name)}</button>`).join('');
-  box.hidden = false;
-  box.querySelectorAll('[data-add]').forEach((b) =>
-    b.addEventListener('click', () => {
-      areas.add(Number(b.dataset.add));
-      const inp = root.querySelector('#subSearch');
-      if (inp) { inp.value = ''; inp.focus(); }
-      box.hidden = true;
-      renderAreaChips(root);
-    })
-  );
-}
+// One Leaflet map per mount. Held so a re-render can tear the old one down -
+// Leaflet leaves listeners on a detached container otherwise.
+let areaMap = null;
 function wireLocSection(root = panel) {
-  const cityMount = root.querySelector('#cityCombo');
-  if (cityMount) {
-    Combo.attach(cityMount, maidCities(), {
-      selectedId: mpCity,
-      placeholder: 'Type your town or city',
-      onPick: (c) => { if (c) { mpCity = c.id; rerenderLoc(root); } },
-    });
-  }
-  root.querySelector('#specificToggle')?.addEventListener('change', (e) => { mpSpecific = e.target.checked; rerenderLoc(root); });
-  const inp = root.querySelector('#subSearch');
-  if (inp) {
-    inp.addEventListener('input', () => renderSubResults(inp.value, root));
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); const first = root.querySelector('#subResults [data-add]'); if (first) first.click(); }
-    });
-    // Hide the dropdown shortly after leaving the field (delay lets a click land).
-    inp.addEventListener('blur', () => setTimeout(() => { const box = root.querySelector('#subResults'); if (box) box.hidden = true; }, 150));
-  }
-  renderAreaChips(root);
+  const mount = root.querySelector('#areaMap');
+  if (!mount || typeof L === 'undefined') return;
+  if (!mpCenter) mpCenter = defaultCenter();
+
+  if (areaMap) { areaMap.remove(); areaMap = null; }
+  // scrollWheelZoom off on purpose: the map sits mid-form, and hijacking the
+  // page scroll to zoom is the single most hated map behaviour there is.
+  const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true });
+  areaMap = map;
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+
+  const circle = L.circle(mpCenter, {
+    radius: mpRadiusKm * 1000,
+    color: '#b87333', weight: 1.5, fillColor: '#b87333', fillOpacity: 0.12,
+  }).addTo(map);
+  const pin = L.marker(mpCenter, {
+    draggable: true,
+    keyboard: true,
+    title: 'Drag to move where you set out from',
+    icon: L.divIcon({ className: 'area-pin', html: '<span></span>', iconSize: [18, 18] }),
+  }).addTo(map);
+
+  const fit = () => map.fitBounds(circle.getBounds().pad(0.12));
+  fit();
+
+  pin.on('drag', () => {
+    const p = pin.getLatLng();
+    mpCenter = { lat: p.lat, lng: p.lng };
+    circle.setLatLng(p);
+    refreshCoverage(root);
+  });
+  pin.on('dragend', fit);
+  // Tapping the map moves the pin - easier than dragging on a phone.
+  map.on('click', (e) => {
+    mpCenter = { lat: e.latlng.lat, lng: e.latlng.lng };
+    pin.setLatLng(e.latlng);
+    circle.setLatLng(e.latlng);
+    refreshCoverage(root);
+    fit();
+  });
+
+  const range = root.querySelector('#radiusRange');
+  const out = root.querySelector('#radiusOut');
+  range?.addEventListener('input', () => {
+    mpRadiusKm = Number(range.value);
+    if (out) out.textContent = mpRadiusKm;
+    circle.setRadius(mpRadiusKm * 1000);
+    refreshCoverage(root);
+  });
+  // Refit on release, not on every step - the map lurching under a moving
+  // thumb makes the slider feel like it's fighting you.
+  range?.addEventListener('change', fit);
+
+  const toggle = root.querySelector('#coverToggle');
+  toggle?.addEventListener('click', () => {
+    const list = root.querySelector('#coverList');
+    if (!list) return;
+    list.hidden = !list.hidden;
+    if (!list.hidden) list.innerHTML = coverListHTML();
+    toggle.setAttribute('aria-expanded', String(!list.hidden));
+    toggle.textContent = list.hidden ? 'see the list' : 'hide the list';
+  });
+
+  // The container starts at zero height inside a hidden tab; Leaflet needs a
+  // nudge once it has been laid out.
+  setTimeout(() => { map.invalidateSize(); fit(); }, 60);
+  refreshCoverage(root);
 }
+// Used when the suburb list lands after the section has already rendered.
 function rerenderLoc(root = panel) {
   const f = root.querySelector('#locField');
   if (!f) return;
@@ -1498,7 +1617,7 @@ const WIZ_CONTENT = {
     <label class="field"><span>Short bio <span class="muted">(optional)</span></span>
       <textarea id="wizBio" rows="3" placeholder="A sentence or two about you and your cleaning.">${escapeHtml(mp.bio || '')}</textarea></label>`,
   areas: () => `
-    <p class="wiz-lede">Where will you take jobs? Christchurch-wide by default, or narrow to specific suburbs.</p>
+    <p class="wiz-lede">How far will you travel for a job? Drop the pin where you set out from and stretch the circle to suit.</p>
     ${locSectionHTML()}`,
   pricing: () => `
       <p class="wiz-lede">Both cleans are priced per hour. Leave one blank if you don't offer it. End-of-lease cleans are an option under the deep clean.</p>
@@ -1591,7 +1710,7 @@ function captureWizStep(key) {
     if (!mpHomeSuburb) { wizSetMsg('Pick the suburb you’re based in to continue.', 'err'); return false; }
     if (!biz) { wizSetMsg('Add a business or display name to continue.', 'err'); return false; }
     mp.fullName = name;
-    mp.residentialAddress = `${mpHomeSuburb}, ${mpHomeCity}`;
+    mp.residentialAddress = homeAddress();
     mp.businessName = biz;
     mp.bio = wizEl.querySelector('#wizBio').value;
     return true;
@@ -1639,7 +1758,9 @@ async function saveWizard() {
         bondGuaranteed: mpBondGuaranteed,
         endOfLease: mpEndOfLease,
         services: [...Object.keys(mpCleanRates), ...(mpEndOfLease ? ['end-of-tenancy'] : [])],
-        areas: (mpSpecific ? cityRows(mpCity).filter((r) => areas.has(r.id)) : cityRows(mpCity)).map((r) => r.id),
+        serviceCenter: mpCenter,
+        serviceRadiusKm: mpRadiusKm,
+        areas: [...areas],
         listingStatus: 'active',
       }),
     });
