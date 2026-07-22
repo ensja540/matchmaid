@@ -1465,7 +1465,10 @@ function wireLocSection(root = panel) {
   if (areaMap) { areaMap.remove(); areaMap = null; }
   // scrollWheelZoom off on purpose: the map sits mid-form, and hijacking the
   // page scroll to zoom is the single most hated map behaviour there is.
-  const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true });
+  // setView is not optional: Leaflet cannot project a layer onto a map with no
+  // centre, so adding the circle first throws and takes the whole picker with it.
+  const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true })
+    .setView([mpCenter.lat, mpCenter.lng], 11);
   areaMap = map;
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -1524,9 +1527,10 @@ function wireLocSection(root = panel) {
     toggle.textContent = list.hidden ? 'see the list' : 'hide the list';
   });
 
-  // The container starts at zero height inside a hidden tab; Leaflet needs a
-  // nudge once it has been laid out.
-  setTimeout(() => { map.invalidateSize(); fit(); }, 60);
+  // The container has no size until the panel is laid out; Leaflet needs a nudge
+  // once it does. Bail if a re-render has already replaced this map - the timer
+  // outlives it, and poking a torn-down map throws.
+  setTimeout(() => { if (areaMap === map) { map.invalidateSize(); fit(); } }, 60);
   refreshCoverage(root);
 }
 // Used when the suburb list lands after the section has already rendered.
