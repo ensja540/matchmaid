@@ -1042,6 +1042,11 @@ app.post('/api/verification', async (req, res) => {
     const selfie = type === 'id' ? (selfieDataUrl || kept.selfie_url || null) : null;
     if (!doc) return res.status(400).json({ error: 'Please attach your ID document as well.' });
 
+    // ID proves identity only if a document AND a selfie can be compared. Until
+    // both are in it is not review-ready: it stays out of the admin queue (which
+    // takes only complete submissions) and the admin is not pinged.
+    const reviewReady = type !== 'id' || !!selfie;
+
     // One active submission per type: clear old, insert fresh as pending.
     await query('delete from verifications where cleaner_id = $1 and type = $2', [cleanerId, type]);
     await query(
@@ -1049,19 +1054,22 @@ app.post('/api/verification', async (req, res) => {
        values ($1, $2, 'pending', $3, $4, 'self-upload', $5)`,
       [cleanerId, type, doc, selfie, text || kept.extracted_text || null]
     );
-    // Nudge the admin that something is waiting, so the review queue does not
-    // need watching. Fire-and-forget - never fails the upload.
-    const who = await query(
-      'select u.email, u.full_name from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
-      [cleanerId]
-    );
-    sendVerificationPendingEmail({
-      to: ADMIN_EMAIL,
-      cleanerName: who.rows[0]?.full_name || '',
-      cleanerEmail: who.rows[0]?.email || '',
-      type,
-      hasSelfie: !!selfie,
-    }).catch((e) => console.error('[email] verification pending:', e));
+    // Nudge the admin only once the submission is complete, so an ID that is
+    // still missing its selfie does not ping a review that can't happen yet.
+    // Fire-and-forget - never fails the upload.
+    if (reviewReady) {
+      const who = await query(
+        'select u.email, u.full_name from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
+        [cleanerId]
+      );
+      sendVerificationPendingEmail({
+        to: ADMIN_EMAIL,
+        cleanerName: who.rows[0]?.full_name || '',
+        cleanerEmail: who.rows[0]?.email || '',
+        type,
+        hasSelfie: !!selfie,
+      }).catch((e) => console.error('[email] verification pending:', e));
+    }
 
     res.json({
       ok: true,
@@ -1248,7 +1256,10 @@ app.get('/api/admin/verifications', async (req, res) => {
          from verifications v
          join cleaner_profiles cpf on cpf.id = v.cleaner_id
          join users u on u.id = cpf.user_id
+        -- An ID needs both a document and a selfie to prove identity; one without
+        -- a selfie is not review-ready, so keep it out of the queue entirely.
         where v.status = 'pending'
+          and (v.type <> 'id' or v.selfie_url is not null)
         order by v.created_at`
     );
     res.json(rows.map((r) => ({
@@ -1276,9 +1287,14 @@ app.post('/api/admin/verification-decision', async (req, res) => {
     const { userId, id, decision } = req.body ?? {};
     if (!(await isAdmin(userId))) return res.status(403).json({ error: 'Not authorized.' });
     if (!id || !['approve', 'reject'].includes(decision)) return res.status(400).json({ error: 'id and a valid decision are required.' });
-    const v = await query('select cleaner_id, type from verifications where id = $1', [id]);
+    const v = await query('select cleaner_id, type, selfie_url from verifications where id = $1', [id]);
     if (!v.rows.length) return res.status(404).json({ error: 'No such verification.' });
-    const { cleaner_id, type } = v.rows[0];
+    const { cleaner_id, type, selfie_url } = v.rows[0];
+    // Never verify an ID on a document alone - physical identity needs the selfie
+    // to check the face against. Belt-and-braces: the queue already hides these.
+    if (decision === 'approve' && type === 'id' && !selfie_url) {
+      return res.status(400).json({ error: 'This ID has no selfie, so identity can’t be confirmed. Ask the cleaner to add one.' });
+    }
     if (decision === 'approve') {
       await query("update verifications set status = 'verified', verified_at = now() where id = $1", [id]);
       const col = VERIF_COL[type];

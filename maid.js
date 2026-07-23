@@ -1352,8 +1352,12 @@ function badge(label, on) {
 }
 function verifRow(item) {
   const st = verif[item.key];
+  // An ID is only under review once its selfie is in too - until then it is not
+  // in the admin's queue, so don't tell the maid it is being reviewed.
+  const awaitingSelfie = item.selfie && st === 'pending' && !verifSelfie;
   const pill =
     st === 'verified' ? '<span class="status status-accepted">Verified ✓</span>'
+    : awaitingSelfie ? '<span class="status status-new">Add a selfie to finish</span>'
     : st === 'pending' ? '<span class="status status-responded">Under review</span>'
     : st === 'failed' ? '<span class="status status-new">Not accepted, re-upload</span>'
     : '<span class="status status-new">Not added</span>';
