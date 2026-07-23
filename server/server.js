@@ -1148,6 +1148,56 @@ app.get('/api/admin/stats', async (req, res) => {
     );
     const byRole = Object.fromEntries(totals.rows.map((r) => [r.role, r]));
 
+    // Where the people who signed up in this window are based, ranked by town.
+    // Signup itself carries no location - it comes from the profile set later:
+    // a client's saved suburb, a cleaner's base address. Both are resolved
+    // THROUGH the suburbs table to a territorial_authority, so the two sides
+    // share one vocabulary - otherwise a cleaner's "Christchurch" and a client's
+    // "Christchurch City" would rank as two different towns.
+    //
+    // Clients carry a suburb id directly. Cleaners store their base as the
+    // "Suburb, Town" string homeAddress() built (or a lone "Town"), so match the
+    // suburb-name part back to a row, preferring the one whose own town matches.
+    // The trailing " City"/" District" is dropped for a friendlier label.
+    const recent = `(u.created_at at time zone 'Pacific/Auckland')::date
+                    > (now() at time zone 'Pacific/Auckland')::date - $1::int`;
+    const topTowns = await query(
+      `with signups as (
+         select 'client' as role, s.territorial_authority as ta
+           from users u
+           join client_profiles cp on cp.user_id = u.id
+           join suburbs s on s.id = cp.default_suburb_id
+          where u.role = 'client' and ${recent}
+         union all
+         select 'cleaner' as role, s.ta
+           from users u
+           join cleaner_profiles cp on cp.user_id = u.id
+           join lateral (
+             -- Match the suburb-name part; fall back to the town part against the
+             -- territorial authority, so a lone-town base ("Christchurch", which
+             -- is no suburb's name) still resolves to its TA ("Christchurch City").
+             select sub.territorial_authority as ta
+               from suburbs sub
+              where lower(sub.name) = lower(trim(split_part(cp.residential_address, ',', 1)))
+                 or lower(regexp_replace(sub.territorial_authority, '\\s+(City|District)$', '')) =
+                    lower(trim(regexp_replace(cp.residential_address, '^.*,\\s*', '')))
+              order by (lower(sub.name) = lower(trim(split_part(cp.residential_address, ',', 1)))) desc
+              limit 1
+           ) s on true
+          where u.role = 'cleaner' and coalesce(cp.residential_address, '') <> '' and ${recent}
+       )
+       select regexp_replace(ta, '\\s+(City|District)$', '') as town,
+              count(*) filter (where role = 'client')::int  as customers,
+              count(*) filter (where role = 'cleaner')::int as cleaners,
+              count(*)::int as total
+         from signups
+        where ta is not null and ta <> ''
+        group by 1
+        order by total desc, town
+        limit 12`,
+      [days]
+    );
+
     res.json({
       days,
       series: series.rows,
@@ -1157,6 +1207,7 @@ app.get('/api/admin/stats', async (req, res) => {
         customersActive: byRole.client?.active ?? 0,
         cleanersActive: byRole.cleaner?.active ?? 0,
       },
+      topTowns: topTowns.rows,
     });
   } catch (err) {
     console.error(err);

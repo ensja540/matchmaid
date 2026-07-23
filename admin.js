@@ -15,15 +15,6 @@ const feedbackBody = document.getElementById('feedbackBody');
 const reviewsBody = document.getElementById('reviewsBody');
 const statsBody = document.getElementById('statsBody');
 
-if (!sessionUser) {
-  body.innerHTML = '<div class="panel-card"><p class="muted">Please <a href="/login">log in</a> with the admin account to review documents.</p></div>';
-} else {
-  load();
-  loadFeedback();
-  loadReviews();
-  loadStats();
-}
-
 // ---- Signup stats -----------------------------------------------------------
 // Stacked columns: each day's total split into the two sides, which is a
 // part-to-whole reading rather than a comparison of two independent series.
@@ -34,9 +25,20 @@ const SERIES = [
   { key: 'customers', label: 'Customers', color: '#0e9384' },
   { key: 'cleaners', label: 'Cleaners', color: '#f59e0b' },
 ];
+// Declared before the entry point below: loadStats() reads statsRange while
+// building its request, so with `let` (not hoisted) it must exist by then.
 let statsRange = 30;
 let statsData = null;
 let statsTable = false;
+
+if (!sessionUser) {
+  body.innerHTML = '<div class="panel-card"><p class="muted">Please <a href="/login">log in</a> with the admin account to review documents.</p></div>';
+} else {
+  load();
+  loadFeedback();
+  loadReviews();
+  loadStats();
+}
 
 async function loadStats() {
   if (!statsBody) return;
@@ -82,7 +84,8 @@ function renderStats() {
 
       ${kpiRowHTML(d, totalInRange)}
       ${statsTable ? tableHTML(series) : chartHTML(series)}
-    </div>`;
+    </div>
+    ${topTownsHTML(d)}`;
 
   statsBody.querySelectorAll('[data-range]').forEach((b) =>
     b.addEventListener('click', () => { statsRange = Number(b.dataset.range); loadStats(); })
@@ -109,6 +112,37 @@ function kpiRowHTML(d, totalInRange) {
       <span class="sg-kpi-value">${k.value.toLocaleString()}</span>
       <span class="sg-kpi-sub">${esc(k.sub)}</span>
     </div>`).join('')}</div>`;
+}
+
+// Where signups came from, over the same window as the chart. A ranked bar per
+// town, split into customers and cleaners so an admin can see, say, a town full
+// of customers with no cleaner to serve them.
+function topTownsHTML(d) {
+  const towns = d.topTowns || [];
+  if (!towns.length) {
+    return `<div class="panel-card">
+      <h3 class="tt-head">Top towns</h3>
+      <p class="muted">No signups with a saved location in the last ${d.days} days.</p>
+    </div>`;
+  }
+  const max = Math.max(...towns.map((t) => t.total));
+  const rows = towns.map((t) => `
+    <li class="tt-row">
+      <span class="tt-name">${esc(t.town)}</span>
+      <span class="tt-bar" aria-hidden="true">
+        <i class="tt-fill tt-cust" style="width:${(t.customers / max) * 100}%"></i>
+        <i class="tt-fill tt-clean" style="width:${(t.cleaners / max) * 100}%"></i>
+      </span>
+      <span class="tt-count">${t.total}<span class="tt-split">${t.customers}c · ${t.cleaners}m</span></span>
+    </li>`).join('');
+  return `<div class="panel-card">
+    <h3 class="tt-head">Top towns <span class="muted tt-sub">signups, last ${d.days} days</span></h3>
+    <div class="sg-legend tt-legend">
+      <span class="sg-key"><i class="tt-cust"></i>Customers</span>
+      <span class="sg-key"><i class="tt-clean"></i>Cleaners</span>
+    </div>
+    <ol class="tt-list">${rows}</ol>
+  </div>`;
 }
 
 function chartHTML(series) {

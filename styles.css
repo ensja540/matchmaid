@@ -1578,6 +1578,27 @@ a { color: inherit; text-decoration: none; }
 /* Columns of numbers do align vertically, so tabular figures are right here. */
 .sg-table td:not(:first-child) { font-variant-numeric: tabular-nums; }
 
+/* Top towns: a ranked horizontal bar per town, customers then cleaners, using
+   the same two colours as the signup chart so the two read as one system. */
+.tt-head { margin: 0 0 0.9rem; font-size: 1rem; }
+.tt-sub { font-size: 0.75rem; font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; margin-left: 0.4rem; }
+.tt-legend { margin-bottom: 1rem; }
+.sg-key i.tt-cust { background: #0e9384; }
+.sg-key i.tt-clean { background: #f59e0b; }
+.tt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+.tt-row { display: grid; grid-template-columns: minmax(6rem, 9rem) 1fr auto; align-items: center; gap: 0.8rem; }
+.tt-name { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Segments butt together into one bar; each is capped so a lone side still
+   shows a rounded end. min-width keeps a 1-count sliver visible. */
+.tt-bar { display: flex; height: 0.7rem; background: var(--paper-2); border-radius: 999px; overflow: hidden; }
+.tt-fill { display: block; height: 100%; }
+.tt-fill:not([style*="width:0"]) { min-width: 3px; }
+.tt-cust { background: #0e9384; }
+.tt-clean { background: #f59e0b; }
+.tt-count { font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.tt-split { display: block; font-size: 0.68rem; font-weight: 400; color: var(--muted); }
+@media (max-width: 460px) { .tt-row { grid-template-columns: minmax(5rem, 7rem) 1fr auto; gap: 0.5rem; } }
+
 /* ---------- Admin: ID selfie beside the document ---------- */
 .admin-vdoc { display: flex; gap: 0.8rem; flex-wrap: wrap; align-items: flex-start; }
 .admin-selfie { margin: 0; display: flex; flex-direction: column; gap: 0.3rem; }
