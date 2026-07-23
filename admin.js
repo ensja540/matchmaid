@@ -11,6 +11,45 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// Documents are stored as data: URLs (base64 in the DB). Two problems with
+// linking to them directly: browsers refuse to open a data: URL as a top-level
+// tab (so "Open document" did nothing), and anything that opens a file risks a
+// download. Turning the data: URL into a blob: URL fixes both - the browser
+// renders it inline in its own viewer (PDF or image), and nothing hits the disk.
+// Nothing is ever downloaded or executed; it is only ever viewed in the browser.
+const blobCache = new Map(); // data URL -> blob: URL, so we build each once
+function toBlobUrl(dataUrl) {
+  if (!dataUrl || !/^data:/.test(dataUrl)) return dataUrl || '';
+  if (blobCache.has(dataUrl)) return blobCache.get(dataUrl);
+  try {
+    const comma = dataUrl.indexOf(',');
+    const meta = dataUrl.slice(5, comma);
+    const mime = (meta.split(';')[0]) || 'application/octet-stream';
+    const isB64 = /;base64/i.test(meta);
+    const body = dataUrl.slice(comma + 1);
+    let blob;
+    if (isB64) {
+      const bin = atob(body);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      blob = new Blob([bytes], { type: mime });
+    } else {
+      blob = new Blob([decodeURIComponent(body)], { type: mime });
+    }
+    const url = URL.createObjectURL(blob);
+    blobCache.set(dataUrl, url);
+    return url;
+  } catch {
+    return dataUrl; // fall back to the raw URL rather than breaking the card
+  }
+}
+// Open a stored file inline in a new tab (the browser renders PDFs/images in its
+// own viewer - viewing, never downloading). Used for "view full size".
+function viewStoredFile(dataUrl) {
+  const url = toBlobUrl(dataUrl);
+  if (url) window.open(url, '_blank', 'noopener');
+}
+
 const feedbackBody = document.getElementById('feedbackBody');
 const reviewsBody = document.getElementById('reviewsBody');
 const statsBody = document.getElementById('statsBody');
@@ -297,19 +336,36 @@ function render(list) {
   body.querySelectorAll('[data-decide]').forEach((b) =>
     b.addEventListener('click', () => decide(b, b.dataset.id, b.dataset.decide))
   );
+  body.querySelectorAll('[data-openfile]').forEach((el) =>
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const v = list.find((x) => String(x.id) === el.dataset.id);
+      if (v) viewStoredFile(el.dataset.openfile === 'selfie' ? v.selfieUrl : v.documentUrl);
+    })
+  );
 }
 
 function cardHTML(v) {
   const isImg = /^data:image\//.test(v.documentUrl || '');
-  const doc = v.documentUrl
-    ? isImg
-      ? `<a href="${v.documentUrl}" target="_blank" rel="noopener"><img class="admin-doc" src="${v.documentUrl}" alt="Uploaded document" /></a>`
-      : `<a class="btn outline sm" href="${v.documentUrl}" target="_blank" rel="noopener">Open document</a>`
-    : '<span class="muted">No file attached</span>';
+  const isPdf = /^data:application\/pdf/.test(v.documentUrl || '');
+  // Everything renders inline - image thumbnail, or an embedded PDF viewer -
+  // with "view full size" opening the same blob in the browser's own viewer.
+  // No link ever points at a downloadable file.
+  const doc = !v.documentUrl
+    ? '<span class="muted">No file attached</span>'
+    : isImg
+      ? `<a class="admin-doc-open" data-openfile="doc" data-id="${v.id}" title="View full size">
+           <img class="admin-doc" src="${v.documentUrl}" alt="Uploaded document" /></a>`
+      : isPdf
+        ? `<div class="admin-doc-pdf">
+             <iframe class="admin-doc-frame" src="${toBlobUrl(v.documentUrl)}" title="Uploaded document"></iframe>
+             <button type="button" class="btn outline sm" data-openfile="doc" data-id="${v.id}">View full size</button>
+           </div>`
+        : `<button type="button" class="btn outline sm" data-openfile="doc" data-id="${v.id}">View document</button>`;
   // ID checks carry a selfie: show it beside the document so the reviewer can
   // compare the face against the photo without opening two tabs.
   const selfie = v.selfieUrl
-    ? `<figure class="admin-selfie"><a href="${v.selfieUrl}" target="_blank" rel="noopener"><img class="admin-doc" src="${v.selfieUrl}" alt="Selfie" /></a><figcaption>Selfie</figcaption></figure>`
+    ? `<figure class="admin-selfie"><a class="admin-doc-open" data-openfile="selfie" data-id="${v.id}" title="View full size"><img class="admin-doc" src="${v.selfieUrl}" alt="Selfie" /></a><figcaption>Selfie</figcaption></figure>`
     : v.type === 'id'
       ? '<p class="admin-noselfie muted">No selfie submitted</p>'
       : '';
