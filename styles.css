@@ -1288,15 +1288,19 @@ a { color: inherit; text-decoration: none; }
   background: var(--paper-2); z-index: 0; /* keeps tiles under the sticky header */
 }
 @media (max-width: 520px) { .area-map { height: 260px; } }
-/* The centre pin: a copper dot, no image asset - Leaflet's default marker would
-   drag in its own PNGs and shadow sprite. */
-.area-pin span {
-  display: block; width: 18px; height: 18px; border-radius: 50%;
+/* Centre crosshair: a fixed copper dot at the middle of the map. The map moves
+   under it, so it marks where you set out from without ever moving itself.
+   pointer-events:none keeps it from swallowing the drag. */
+.area-cross {
+  position: absolute; left: 50%; top: 50%; z-index: 500;
+  width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
   background: var(--copper); border: 3px solid var(--paper); box-sizing: border-box;
-  box-shadow: 0 1px 6px rgb(0 0 0 / 0.35); cursor: grab;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.4); pointer-events: none;
 }
-.area-pin:active span { cursor: grabbing; }
-.leaflet-container { font: inherit; border-radius: calc(var(--radius) - 1px); }
+.leaflet-container { font: inherit; border-radius: calc(var(--radius) - 1px); cursor: grab; }
+.leaflet-container:active { cursor: grabbing; }
+/* No grabbable circle any more; the pan cursor should read as "move the map". */
+.area-circle { pointer-events: none; }
 
 .radius-row { display: flex; align-items: center; gap: 0.9rem; margin-top: 0.8rem; }
 .radius-row input[type='range'] { flex: 1; accent-color: var(--copper); }

@@ -1381,11 +1381,12 @@ function verifRow(item) {
     <div class="verif-item-right">${pill}${action}${selfieAction}</div>
   </div>`;
 }
-// Location: a circle on a map. Drag the pin to where you set out from, set how
-// far you'll travel, and the suburbs inside it become your service areas. This
-// replaced ticking suburbs one at a time - "everywhere within 20km" is how
-// cleaners actually think about it, and it crosses town boundaries for free
-// (Amberley to the top of Christchurch is one drag, not forty ticks).
+// Location: a circle fixed to the centre of a map. Move the map to where you
+// set out from, set how far you'll travel, and the suburbs inside the circle
+// become your service areas. This replaced ticking suburbs one at a time -
+// "everywhere within 20km" is how cleaners actually think about it, and it
+// crosses town boundaries for free (Amberley to the top of Christchurch is one
+// pan, not forty ticks).
 //
 // The circle is only the input. What gets saved and matched on is still the
 // suburb id list, resolved from the circle - by the server on save, and here for
@@ -1413,7 +1414,7 @@ function syncAreasFromCircle() {
   areas.clear();
   coveredSuburbs().forEach((r) => areas.add(r.id));
 }
-// Where to drop the pin the first time: their own suburb, else the middle of
+// Where to centre the map the first time: their own suburb, else the middle of
 // their town, else the country's default.
 function defaultCenter() {
   const home = maidSubs.find((r) => r.id === mpHomeId && r.lat != null);
@@ -1435,7 +1436,7 @@ function locSectionHTML() {
   const covered = coveredSuburbs();
   return `<div class="field" id="locField">
     <span>Where you work</span>
-    <p class="loc-note muted">Drag the pin to where you set out from, then set how far you'll travel. Clients inside the circle can find you.</p>
+    <p class="loc-note muted">Move the map to centre it where you set out from, then set how far you'll travel. Clients inside the circle can find you.</p>
     <div class="area-map" id="areaMap"></div>
     <div class="radius-row">
       <input type="range" id="radiusRange" min="1" max="100" step="1" value="${mpRadiusKm}"
@@ -1455,7 +1456,7 @@ function chipTown(r) {
 }
 function coverListHTML() {
   const covered = coveredSuburbs().sort((a, b) => kmBetween(mpCenter, a) - kmBetween(mpCenter, b));
-  if (!covered.length) return '<span class="muted" style="font-size:0.85rem">Nothing inside the circle yet - widen it or move the pin.</span>';
+  if (!covered.length) return '<span class="muted" style="font-size:0.85rem">Nothing inside the circle yet - widen it or move the map.</span>';
   // Nearest first, and each one carries its town: seeing "Rangiora" appear at
   // 25km is the check that the circle reaches where they meant it to.
   return covered
@@ -1471,7 +1472,7 @@ function excludedHTML() {
   return `<p class="loc-excluded">Not working in:
     ${off.map((r) => `<span class="area-chip off">${escapeHtml(r.name)}${chipTown(r)}<button type="button" class="area-x" data-restore="${r.id}" aria-label="Work in ${escapeHtml(r.name)} after all">↺</button></span>`).join('')}</p>`;
 }
-// Live readout as the pin moves or the slider runs - no save needed to see it.
+// Live readout as the map pans or the slider runs - no save needed to see it.
 function refreshCoverage(root = panel) {
   syncAreasFromCircle();
   const covered = coveredSuburbs();
@@ -1498,9 +1499,12 @@ function wireLocSection(root = panel) {
   // page scroll to zoom is the single most hated map behaviour there is.
   // setView is not optional: Leaflet cannot project a layer onto a map with no
   // centre, so adding the circle first throws and takes the whole picker with it.
+  // maxBounds is the validation box (165..180 E, -48..-33 S), not a looser frame
+  // around it: the centre can never leave the visible area, so pinning the
+  // circle to the centre can never produce a point the server would reject.
   const map = L.map(mount, {
     scrollWheelZoom: false, zoomControl: true,
-    maxBounds: [[-48.5, 164], [-32.5, 181]], maxBoundsViscosity: 0.9,
+    maxBounds: [[-48, 165], [-33, 180]], maxBoundsViscosity: 1,
   }).setView([mpCenter.lat, mpCenter.lng], 11);
   areaMap = map;
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1508,90 +1512,35 @@ function wireLocSection(root = panel) {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
 
+  // interactive:false - the circle is not a thing you grab. The whole map is the
+  // control: the circle stays pinned to the centre and you move the map beneath
+  // it, the way Facebook Marketplace's radius picker works.
   const circle = L.circle(mpCenter, {
-    radius: mpRadiusKm * 1000, className: 'area-circle',
+    radius: mpRadiusKm * 1000, className: 'area-circle', interactive: false,
     color: '#b87333', weight: 1.5, fillColor: '#b87333', fillOpacity: 0.12,
   }).addTo(map);
-  const pin = L.marker(mpCenter, {
-    draggable: true,
-    keyboard: true,
-    title: 'Drag to move where you set out from',
-    icon: L.divIcon({ className: 'area-pin', html: '<span></span>', iconSize: [18, 18] }),
-  }).addTo(map);
 
-  const fit = () => map.fitBounds(circle.getBounds().pad(0.12));
-  fit();
-  // Only pull the view back when the circle has actually escaped it. Refitting
-  // after every drag feels like the map is fighting you.
-  const keepInView = () => { if (!map.getBounds().contains(circle.getBounds())) fit(); };
+  // A crosshair fixed at the centre of the container, marking where you set out
+  // from. pointer-events:none so it never eats a drag. It never moves - the map
+  // moves under it - so it needs no repositioning.
+  L.DomUtil.create('div', 'area-cross', mount);
 
-  // Keep the centre inside New Zealand. A determined drag can otherwise run the
-  // longitude past 180, which the server rejects - and a rejected circle would
-  // leave the map showing an area that never saved.
-  const clampToNZ = (lat, lng) => L.latLng(
-    Math.min(-33, Math.max(-48, lat)),
-    Math.min(180, Math.max(165, ((lng + 540) % 360) - 180))
-  );
-  const setCenter = (latlng) => {
-    const at = clampToNZ(latlng.lat, latlng.lng);
-    mpCenter = { lat: at.lat, lng: at.lng };
-    circle.setLatLng(at);
-    pin.setLatLng(at);
+  const fitRadius = () => map.fitBounds(circle.getBounds().pad(0.12));
+  fitRadius();
+
+  // The map's centre IS the service centre. 'move' fires continuously through a
+  // drag (and a fling's inertia), so the circle and the covered-suburb count
+  // follow the map live - suburbs drop in and out as you pan. maxBounds keeps
+  // the centre inside NZ in the browser; the clamp is a belt-and-braces so a
+  // value the server would reject can never be what's saved, even mid-inertia.
+  map.on('move', () => {
+    const c = map.getCenter();
+    mpCenter = {
+      lat: Math.min(-33, Math.max(-48, c.lat)),
+      lng: Math.min(180, Math.max(165, c.lng)),
+    };
+    circle.setLatLng(mpCenter);
     refreshCoverage(root);
-  };
-
-  pin.on('drag', () => setCenter(pin.getLatLng()));
-  pin.on('dragend', keepInView);
-
-  // Drag anywhere inside the circle to move the whole area - reaching for the
-  // pin is fiddly, and grabbing the blob is what people try first.
-  //
-  // Pointer events, not Leaflet's mouse events: on a phone `mousemove` only
-  // arrives after the finger lifts, so a touch drag would jump instead of
-  // following. Pointer events cover mouse, touch and stylus in one path.
-  const path = circle.getElement();
-  if (path) {
-    let grab = null; // where they took hold, so that spot stays under the cursor
-    const onDown = (ev) => {
-      grab = { at: map.mouseEventToLatLng(ev), from: circle.getLatLng() };
-      map.dragging.disable();               // or the map pans out from under it
-      path.setPointerCapture?.(ev.pointerId);
-      L.DomEvent.stop(ev);
-    };
-    const onMove = (ev) => {
-      if (!grab) return;
-      const now = map.mouseEventToLatLng(ev);
-      setCenter(L.latLng(
-        grab.from.lat + (now.lat - grab.at.lat),
-        grab.from.lng + (now.lng - grab.at.lng)
-      ));
-    };
-    const onUp = () => {
-      if (!grab) return;
-      grab = null;
-      map.dragging.enable();
-      keepInView();
-    };
-    L.DomEvent.on(path, 'pointerdown', onDown);
-    // On the document, not the path: a fast drag outruns the cursor and would
-    // otherwise stick "held" after the button came up outside the circle.
-    L.DomEvent.on(document, 'pointermove', onMove);
-    L.DomEvent.on(document, 'pointerup', onUp);
-    L.DomEvent.on(document, 'pointercancel', onUp);
-    // Every re-render builds a new map; take these listeners down with the old one.
-    map.on('unload', () => {
-      L.DomEvent.off(document, 'pointermove', onMove);
-      L.DomEvent.off(document, 'pointerup', onUp);
-      L.DomEvent.off(document, 'pointercancel', onUp);
-    });
-  }
-
-  // A tap outside the circle still jumps the area there. Inside is a drag, so
-  // leave it alone - otherwise the smallest wobble would recentre on the cursor.
-  map.on('click', (e) => {
-    if (kmBetween(circle.getLatLng(), e.latlng) <= mpRadiusKm) return;
-    setCenter(e.latlng);
-    keepInView();
   });
 
   const range = root.querySelector('#radiusRange');
@@ -1602,9 +1551,9 @@ function wireLocSection(root = panel) {
     circle.setRadius(mpRadiusKm * 1000);
     refreshCoverage(root);
   });
-  // Refit on release, not on every step - the map lurching under a moving
-  // thumb makes the slider feel like it's fighting you.
-  range?.addEventListener('change', fit);
+  // Zoom to the new radius on release, not on every step - the map lurching
+  // under a moving thumb makes the slider feel like it's fighting you.
+  range?.addEventListener('change', fitRadius);
 
   // Delegated: both lists are re-rendered on every change, so binding each
   // chip's button would mean rebinding them all on every drag frame.
@@ -1630,7 +1579,7 @@ function wireLocSection(root = panel) {
   // The container has no size until the panel is laid out; Leaflet needs a nudge
   // once it does. Bail if a re-render has already replaced this map - the timer
   // outlives it, and poking a torn-down map throws.
-  setTimeout(() => { if (areaMap === map) { map.invalidateSize(); fit(); } }, 60);
+  setTimeout(() => { if (areaMap === map) { map.invalidateSize(); fitRadius(); } }, 60);
   refreshCoverage(root);
 }
 // Used when the suburb list lands after the section has already rendered.
@@ -1721,7 +1670,7 @@ const WIZ_CONTENT = {
     <label class="field"><span>Short bio <span class="muted">(optional)</span></span>
       <textarea id="wizBio" rows="3" placeholder="A sentence or two about you and your cleaning.">${escapeHtml(mp.bio || '')}</textarea></label>`,
   areas: () => `
-    <p class="wiz-lede">How far will you travel for a job? Drop the pin where you set out from and stretch the circle to suit.</p>
+    <p class="wiz-lede">How far will you travel for a job? Centre the map where you set out from and stretch the circle to suit.</p>
     ${locSectionHTML()}`,
   pricing: () => `
       <p class="wiz-lede">Both cleans are priced per hour. Leave one blank if you don't offer it. End-of-lease cleans are an option under the deep clean.</p>
