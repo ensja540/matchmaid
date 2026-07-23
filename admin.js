@@ -79,6 +79,25 @@ if (!sessionUser) {
   loadStats();
 }
 
+// One section visible at a time. Everything still loads up front (the queries
+// are cheap and it keeps the tab counts live), the tabs just decide what shows.
+const adminTabs = document.getElementById('adminTabs');
+adminTabs?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.portal-tab');
+  if (!btn) return;
+  adminTabs.querySelectorAll('.portal-tab').forEach((b) => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.admin-panel').forEach((p) => { p.hidden = p.dataset.panel !== btn.dataset.tab; });
+});
+// A count on a tab, so a full review queue is visible without opening it.
+function setTabCount(tab, n) {
+  const btn = adminTabs?.querySelector(`[data-tab="${tab}"]`);
+  if (!btn) return;
+  let b = btn.querySelector('.tab-count');
+  if (!n) { b?.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'tab-count'; btn.appendChild(b); }
+  b.textContent = n;
+}
+
 async function loadStats() {
   if (!statsBody) return;
   // Hold the previous render at reduced opacity rather than flashing a skeleton.
@@ -124,6 +143,7 @@ function renderStats() {
       ${kpiRowHTML(d, totalInRange)}
       ${statsTable ? tableHTML(series) : chartHTML(series)}
     </div>
+    ${advancedHTML(d)}
     ${topTownsHTML(d)}`;
 
   statsBody.querySelectorAll('[data-range]').forEach((b) =>
@@ -151,6 +171,54 @@ function kpiRowHTML(d, totalInRange) {
       <span class="sg-kpi-value">${k.value.toLocaleString()}</span>
       <span class="sg-kpi-sub">${esc(k.sub)}</span>
     </div>`).join('')}</div>`;
+}
+
+// Marketplace health, grouped the way a two-sided market is read: supply on one
+// side, demand on the other, growth and quality below. Each is a compact tile.
+function metricTile(label, value, sub) {
+  return `<div class="adv-metric">
+    <span class="adv-label">${esc(label)}</span>
+    <span class="adv-value">${value}</span>
+    ${sub ? `<span class="adv-sub">${esc(sub)}</span>` : ''}
+  </div>`;
+}
+function advancedHTML(d) {
+  const a = d.advanced;
+  if (!a) return '';
+  const t = d.totals || {};
+  const wow = a.signupsWowPct;
+  const wowStr = wow == null ? '—' : `${wow > 0 ? '+' : ''}${wow}%`;
+  const wowCls = wow == null ? '' : wow > 0 ? 'up' : wow < 0 ? 'down' : '';
+  const num = (n) => (n == null ? '—' : Number(n).toLocaleString());
+  const groups = [
+    ['Supply', [
+      metricTile('Active listings', num(a.activeListings), `${num(t.cleaners)} cleaners total`),
+      metricTile('ID verified', num(a.verifiedId)),
+      metricTile('Police checked', num(a.verifiedPolice)),
+      metricTile('Insured', num(a.verifiedInsurance)),
+      metricTile('Suburbs covered', num(a.suburbsCovered), 'by an active listing'),
+    ]],
+    ['Demand', [
+      metricTile('Customers', num(t.customers)),
+      metricTile('Enquiries', num(a.enquiriesTotal), `${num(a.enquiriesWindow)} in ${d.days} days`),
+      metricTile('Reply rate', a.enquiryResponseRate == null ? '—' : `${a.enquiryResponseRate}%`, 'enquiries answered'),
+      metricTile('Per listing', a.customersPerListing == null ? '—' : a.customersPerListing, 'customers each'),
+      metricTile('Bookings', num(a.bookings)),
+    ]],
+    ['Growth & quality', [
+      metricTile('New this week', num(a.signupsThisWeek), `${num(a.signupsPrevWeek)} the week before`),
+      metricTile('Week on week', `<span class="adv-wow ${wowCls}">${wowStr}</span>`),
+      metricTile('Reviews', num(a.reviews)),
+      metricTile('Avg rating', a.avgRating != null ? a.avgRating.toFixed(2) : '—', a.reviews ? 'out of 5' : 'none yet'),
+    ]],
+  ];
+  return `<div class="panel-card adv-card">
+    <h3 class="adv-head">Marketplace health</h3>
+    ${groups.map(([title, tiles]) => `<div class="adv-group">
+      <h4 class="adv-group-title">${title}</h4>
+      <div class="adv-grid">${tiles.join('')}</div>
+    </div>`).join('')}
+  </div>`;
 }
 
 // Where signups came from, over the same window as the chart. A ranked bar per
@@ -328,6 +396,7 @@ async function load() {
 }
 
 function render(list) {
+  setTabCount('verifications', Array.isArray(list) ? list.length : 0);
   if (!Array.isArray(list) || !list.length) {
     body.innerHTML = '<div class="panel-card"><p class="muted">Nothing waiting for review right now. 🎉</p></div>';
     return;

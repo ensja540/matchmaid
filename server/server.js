@@ -1206,16 +1206,69 @@ app.get('/api/admin/stats', async (req, res) => {
       [days]
     );
 
+    // Advanced marketplace health, all in one round trip. A two-sided market
+    // lives or dies on the balance between supply (cleaners, listed and
+    // verified, and how much ground they cover) and demand (customers and the
+    // enquiries they send), so the numbers are grouped that way.
+    const adv = (await query(
+      `select
+         (select count(*) filter (where listing_status = 'active') from cleaner_profiles)::int as active_listings,
+         (select count(*) filter (where id_verified) from cleaner_profiles)::int         as verified_id,
+         (select count(*) filter (where police_verified) from cleaner_profiles)::int      as verified_police,
+         (select count(*) filter (where insurance_verified) from cleaner_profiles)::int   as verified_insurance,
+         (select count(distinct csa.suburb_id)
+            from cleaner_service_areas csa
+            join cleaner_profiles cp on cp.id = csa.cleaner_id
+           where cp.listing_status = 'active')::int as suburbs_covered,
+         (select count(*) from enquiries)::int                                            as enquiries_total,
+         (select count(*) filter (where responded_at is not null) from enquiries)::int    as enquiries_responded,
+         (select count(*) from enquiries where created_at > now() - ($1 || ' days')::interval)::int as enquiries_window,
+         (select count(*) from bookings)::int                                             as bookings_total,
+         (select count(*) filter (where status = 'published') from reviews)::int          as reviews_total,
+         (select round(avg(overall), 2) from reviews where status = 'published')          as avg_rating,
+         (select count(*) filter (where created_at > now() - interval '7 days')
+            from users where role in ('client','cleaner'))::int as signups_this_week,
+         (select count(*) filter (where created_at <= now() - interval '7 days'
+                               and created_at >  now() - interval '14 days')
+            from users where role in ('client','cleaner'))::int as signups_prev_week`,
+      [String(days)]
+    )).rows[0];
+
+    const totalCleaners = byRole.cleaner?.total ?? 0;
+    const totalCustomers = byRole.client?.total ?? 0;
+    const respRate = adv.enquiries_total ? Math.round((adv.enquiries_responded / adv.enquiries_total) * 100) : null;
+    const wow = adv.signups_prev_week
+      ? Math.round(((adv.signups_this_week - adv.signups_prev_week) / adv.signups_prev_week) * 100)
+      : null;
+
     res.json({
       days,
       series: series.rows,
       totals: {
-        customers: byRole.client?.total ?? 0,
-        cleaners: byRole.cleaner?.total ?? 0,
+        customers: totalCustomers,
+        cleaners: totalCleaners,
         customersActive: byRole.client?.active ?? 0,
         cleanersActive: byRole.cleaner?.active ?? 0,
       },
       topTowns: topTowns.rows,
+      advanced: {
+        activeListings: adv.active_listings,
+        verifiedId: adv.verified_id,
+        verifiedPolice: adv.verified_police,
+        verifiedInsurance: adv.verified_insurance,
+        suburbsCovered: adv.suburbs_covered,
+        enquiriesTotal: adv.enquiries_total,
+        enquiriesWindow: adv.enquiries_window,
+        enquiryResponseRate: respRate,     // % of enquiries a cleaner has replied to
+        bookings: adv.bookings_total,
+        reviews: adv.reviews_total,
+        avgRating: adv.avg_rating != null ? Number(adv.avg_rating) : null,
+        // Customers per active listing - the supply/demand balance at a glance.
+        customersPerListing: adv.active_listings ? Math.round((totalCustomers / adv.active_listings) * 10) / 10 : null,
+        signupsThisWeek: adv.signups_this_week,
+        signupsPrevWeek: adv.signups_prev_week,
+        signupsWowPct: wow,               // week-on-week growth, null if no prior week
+      },
     });
   } catch (err) {
     console.error(err);
