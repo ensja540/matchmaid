@@ -44,6 +44,7 @@ function parseLoc(val) {
 // names: nationwide the same name exists in several regions, so every write
 // sends the id.
 let suburbList = [];
+let suburbsFailed = false; // the /api/suburbs fetch errored - say so, don't show a dead picker
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
 let pendingReviews = []; // cleans the customer has been asked to rate, and hasn't
@@ -160,8 +161,8 @@ const postJSON = (url, body) =>
 
 function loadSuburbs() {
   getJSON('/api/suburbs')
-    .then((list) => { suburbList = Array.isArray(list) ? list : []; reRenderIf('find', 'profile'); })
-    .catch(() => {});
+    .then((list) => { suburbList = Array.isArray(list) ? list : []; reRenderIf('find', 'profile'); refreshCwizForSuburbs(); })
+    .catch(() => { suburbsFailed = true; reRenderIf('find', 'profile'); refreshCwizForSuburbs(); });
 }
 function loadDirectory() {
   getJSON('/api/directory').then((list) => { directory = list; reRenderIf('messages'); }).catch(() => {});
@@ -445,7 +446,7 @@ const PANELS = {
         </div>
         <div class="field-row">
           <label class="field"><span>Phone</span><input name="phone" value="${attr(cprof.phone)}" placeholder="Optional" /></label>
-          <div id="profSuburbCombo"></div>
+          ${suburbComboHTML('profSuburbCombo')}
         </div>
         <span class="bf-label" style="margin-top:1.4rem">Your home</span>
         <div class="field-row">
@@ -567,8 +568,18 @@ const WIRE = {
 // One mount for both the profile form and the wizard. Picking writes straight
 // into cprof, so nothing has to read a <select> back out at save time.
 let suburbCombo = null;
+// Mounting the picker over an empty list is worse than showing nothing: the
+// town field renders and looks live, but matches nothing whatever you type, so
+// it reads as "Match Maid doesn't cover me" rather than "not loaded yet". The
+// wizard's suburb step blocks on a pick, so that dead end is unescapable.
+function suburbComboHTML(id) {
+  if (suburbList.length) return `<div id="${id}"></div>`;
+  return suburbsFailed
+    ? `<div id="${id}"><p class="loc-note err">Could not load the suburb list. Check your connection and reload the page.</p></div>`
+    : `<div id="${id}"><p class="loc-note muted">Loading suburbs…</p></div>`;
+}
 function mountSuburbCombo(root) {
-  if (!root) return;
+  if (!root || !suburbList.length) return;
   suburbCombo = LocationPicker.attach(root, suburbList, {
     selectedId: cprof.suburbId,
     onPick: (item) => {
@@ -1075,7 +1086,7 @@ const CWIZ_CONTENT = {
     <label class="field"><span>Phone <span class="muted">(optional)</span></span><input id="cwizPhone" type="text" value="${attr(cprof.phone)}" placeholder="Optional" /></label>`,
   suburb: () => `
     <p class="wiz-lede">Where's your home? We'll match you with cleaners who cover your area first.</p>
-    <div id="cwizSuburbCombo"></div>`,
+    ${suburbComboHTML('cwizSuburbCombo')}`,
   home: () => {
     const ph = (sel) => opt('', 'Select…', sel);
     const bedOpts = ph(cprof.bedrooms) + ['1', '2', '3', '4', '5', '6+'].map((v) => opt(v, v, cprof.bedrooms)).join('');
@@ -1146,6 +1157,16 @@ function dismissCwiz() {
 }
 function closeCwiz() {
   if (cwizEl) { cwizEl.remove(); cwizEl = null; }
+}
+// The suburb list is ~200 KB and the client-profile call that opens this wizard
+// is small, so the wizard routinely renders first - and its suburb step *blocks*
+// on a pick. Without this the customer is stuck on step 2 for good. Only fires
+// when the picker genuinely isn't mounted, so it can't pull focus mid-typing.
+// Same fault, and same fix, as refreshWizardForSuburbs in maid.js.
+function refreshCwizForSuburbs() {
+  if (!cwizEl || CWIZ_STEPS[cwizStep]?.key !== 'suburb') return;
+  if (cwizEl.querySelector('#cwizSuburbCombo .combo')) return; // already live
+  renderCwizStep();
 }
 function cwizSetMsg(t, c) {
   const m = cwizEl && cwizEl.querySelector('#cwizMsg');
