@@ -33,11 +33,20 @@ const Combo = {
     let matches = [];
     let active = -1;
     let picked = null;
+    // item -> the alias that matched it, for the "includes Petone" sub-line.
+    const via = new Map();
 
     const label = (it) =>
       it.territorial_authority && it.territorial_authority !== it.name
         ? `${it.name} · ${it.territorial_authority}`
         : it.name;
+    // Why this row is here. An alias match needs saying out loud - "Lower Hutt"
+    // on its own looks like the wrong answer to someone who typed "Petone".
+    const subLine = (it) => {
+      const base = [it.territorial_authority, it.region].filter((x) => x && x !== it.name).join(', ');
+      const hit = via.get(it);
+      return hit ? `includes ${hit}${base ? ` · ${base}` : ''}` : base;
+    };
 
     function preselect(id) {
       const pre = pool.find((i) => String(i.id) === String(id));
@@ -47,8 +56,9 @@ const Combo = {
 
     function find(q) {
       const s = q.trim().toLowerCase();
+      via.clear();
       if (!s) return []; // nothing until they start typing
-      const starts = [], town = [], contains = [];
+      const starts = [], town = [], contains = [], inside = [];
       for (const it of pool) {
         const n = it.name.toLowerCase();
         const t = (it.territorial_authority || '').toLowerCase();
@@ -57,9 +67,19 @@ const Combo = {
         if (n.startsWith(s)) starts.push(it);
         else if (t.startsWith(s)) town.push(it);
         else if (n.includes(s)) contains.push(it);
+        else {
+          // Last resort: what they typed is something this item *contains*. The
+          // town field carries its suburbs as aliases, so typing "Petone" offers
+          // Lower Hutt. Greater Wellington splits over eight councils and almost
+          // nobody calls their town "Lower Hutt" or "Porirua" first - without
+          // this they type their suburb, see "No match", and conclude Match Maid
+          // doesn't cover them.
+          const hit = (it.aliases || []).find((a) => a.toLowerCase().startsWith(s));
+          if (hit) { via.set(it, hit); inside.push(it); }
+        }
         if (starts.length >= TYPED_MAX) break;
       }
-      return [...starts, ...town, ...contains].slice(0, TYPED_MAX);
+      return [...starts, ...town, ...contains, ...inside].slice(0, TYPED_MAX);
     }
 
     function draw() {
@@ -67,7 +87,7 @@ const Combo = {
         .map((it, i) => `<li class="combo-opt${i === active ? ' on' : ''}" role="option"
           aria-selected="${i === active}" data-i="${i}">
           <span class="combo-name">${escape(it.name)}</span>
-          <span class="combo-sub">${escape([it.territorial_authority, it.region].filter((x) => x && x !== it.name).join(', '))}</span>
+          <span class="combo-sub">${escape(subLine(it))}</span>
         </li>`)
         .join('');
       const open = matches.length > 0;
@@ -158,13 +178,17 @@ const LocationPicker = {
     // Group suburbs by their city. territorial_authority is the town/city and is
     // present on every row, so it is the grouping key; region disambiguates the
     // handful of same-named towns (two Richmonds, etc.).
+    // `aliases` is every suburb the city holds, so the city field finds a town
+    // by a suburb inside it (see Combo.find) - "Petone" -> Lower Hutt.
     const cityMap = new Map();
     for (const r of rows || []) {
       const key = `${r.territorial_authority}|${r.region}`;
       if (!cityMap.has(key)) {
-        cityMap.set(key, { id: key, name: r.territorial_authority, region: r.region, territorial_authority: '', rows: [] });
+        cityMap.set(key, { id: key, name: r.territorial_authority, region: r.region, territorial_authority: '', rows: [], aliases: [] });
       }
-      cityMap.get(key).rows.push(r);
+      const city = cityMap.get(key);
+      city.rows.push(r);
+      if (r.name !== r.territorial_authority) city.aliases.push(r.name);
     }
     const cities = [...cityMap.values()].sort((a, b) => a.name.localeCompare(b.name));
 

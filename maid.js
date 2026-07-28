@@ -70,6 +70,7 @@ let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
 // maidCityMap groups it into cities keyed "<town>|<region>" so same-named towns
 // stay distinct.
 let maidSubs = [];
+let maidSubsFailed = false; // the /api/suburbs fetch errored - say so, don't spin
 let maidCityMap = new Map(); // "town|region" -> { key, name, region, rows:[{id,name,...}] }
 const areas = new Set(); // suburb IDs the cleaner has narrowed to
 let mpCity = null; // a city key "<town>|<region>"; set once suburbs load
@@ -222,11 +223,15 @@ function cleanFeesHTML() {
 // The cleaner's base location: type a town, then a suburb of that town. Both
 // lists stay hidden until you start typing (see LocationPicker in combo.js).
 function homeLocationHTML() {
+  // Nothing here works without the suburb list, and the About step of the wizard
+  // won't let anyone past until a suburb is picked - so a failed fetch has to say
+  // so rather than sit on "Loading…" forever.
+  const placeholder = maidSubsFailed
+    ? '<p class="loc-note err">Could not load the location list. Check your connection and reload the page.</p>'
+    : '<p class="loc-note muted">Loading locations…</p>';
   return `
     <div class="field"><span>Where you're based</span>
-      ${maidSubs.length
-        ? '<div class="home-loc" id="homeLoc"></div>'
-        : '<p class="loc-note muted">Loading locations…</p>'}
+      ${maidSubs.length ? '<div class="home-loc" id="homeLoc"></div>' : placeholder}
     </div>`;
 }
 function wireHomeLocation(root) {
@@ -338,18 +343,34 @@ function resolveMaidLocation() {
     }
   }
   render();
-  // If the setup wizard is open on its location step, refresh it too - suburbs
-  // may have loaded after it rendered.
-  if (wizEl && WIZ_STEPS[wizStep]?.key === 'areas') renderWizStep();
+  refreshWizardForSuburbs();
+}
+// The suburb list is ~1,700 rows and routinely lands after the profile and
+// availability calls that trigger the wizard, so the wizard can render before it
+// arrives. Both the About step (base location) and the Areas step (the map) are
+// built from it, and About *blocks* on a suburb being picked - leave it showing
+// "Loading locations…" and the cleaner is stuck on step 1 with no way forward.
+// Re-render whichever of the two is open; typed input is stashed first so the
+// refresh doesn't eat a half-filled form.
+function refreshWizardForSuburbs() {
+  if (!wizEl) return;
+  // Only when the control genuinely isn't there. Both steps mount their real UI
+  // (#homeLoc, #areaMap) the moment maidSubs is non-empty, so its absence is the
+  // stuck state exactly - and re-rendering on top of a working step would only
+  // pull focus out from under someone mid-sentence.
+  const stuck = { about: '#homeLoc', areas: '#areaMap' }[WIZ_STEPS[wizStep]?.key];
+  if (!stuck || wizEl.querySelector(stuck)) return;
+  stashWizInputs();
+  renderWizStep();
 }
 
 // The id-bearing suburb list powers both location pickers. Fetched whether or
 // not anyone is logged in - it is public, and the demo profile shows the same
 // fields, which sit at "Loading locations…" without it.
 fetch('/api/suburbs')
-  .then((r) => (r.ok ? r.json() : null))
+  .then((r) => (r.ok ? r.json() : Promise.reject(new Error('suburbs'))))
   .then((rows) => { buildMaidCities(rows || []); resolveMaidLocation(); })
-  .catch(() => {});
+  .catch(() => { maidSubsFailed = true; render(); refreshWizardForSuburbs(); });
 
 // Load the real saved profile for the logged-in maid.
 if (sessionUser?.id) {
@@ -1743,6 +1764,19 @@ function closeWizard() {
 function wizSetMsg(text, cls) {
   const m = wizEl && wizEl.querySelector('#wizMsg');
   if (m) { m.textContent = text || ''; m.className = 'wiz-msg ' + (cls || ''); }
+}
+// Capture-without-validating, for a re-render the cleaner didn't ask for (the
+// suburb list landing mid-step). captureWizStep is the gate; this one only
+// preserves. The other steps write into state as you touch them, so About - the
+// only step of plain text inputs - is all there is to save.
+function stashWizInputs() {
+  if (!wizEl || WIZ_STEPS[wizStep]?.key !== 'about') return;
+  const name = wizEl.querySelector('#wizName');
+  const biz = wizEl.querySelector('#wizBiz');
+  const bio = wizEl.querySelector('#wizBio');
+  if (name) mp.fullName = name.value;
+  if (biz) mp.businessName = biz.value;
+  if (bio) mp.bio = bio.value;
 }
 function renderWizStep() {
   if (!wizEl) return;
