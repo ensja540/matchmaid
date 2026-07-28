@@ -7,3 +7,9 @@ server/.env
 # local artifacts / originals (not needed in the deploy)
 *.zip
 unzipped/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
