@@ -1244,6 +1244,46 @@ app.get('/api/admin/stats', async (req, res) => {
       [String(days)]
     )).rows[0];
 
+    // Onboarding funnel, both sides. Every stage repeats all the conditions of
+    // the stages above it, so the counts can only fall - a funnel whose steps
+    // are independent filters can rise between stages, which reads as nonsense.
+    //
+    // Removed accounts are excluded: someone who deleted their account is not a
+    // drop-off at the stage they happened to reach, and leaving them in makes
+    // every conversion below look worse than it is. That makes the top of the
+    // funnel smaller than the "all time" tile, so the count is returned too and
+    // the dashboard says so rather than looking like an off-by-one.
+    const funnelRow = (await query(
+      `select
+         count(*) filter (where u.role = 'cleaner')::int as c_signed,
+         count(*) filter (where u.role = 'cleaner' and u.email_verified)::int as c_confirmed,
+         count(*) filter (where u.role = 'cleaner' and u.email_verified
+                            and cp.hourly_rate_min is not null)::int as c_priced,
+         count(*) filter (where u.role = 'cleaner' and u.email_verified
+                            and cp.hourly_rate_min is not null
+                            and cp.listing_status = 'active')::int as c_listed,
+         count(*) filter (where u.role = 'cleaner' and u.email_verified
+                            and cp.hourly_rate_min is not null
+                            and cp.listing_status = 'active' and cp.id_verified)::int as c_verified,
+         count(*) filter (where u.role = 'client')::int as k_signed,
+         count(*) filter (where u.role = 'client' and u.email_verified)::int as k_confirmed,
+         count(*) filter (where u.role = 'client' and u.email_verified
+                            and lp.default_suburb_id is not null)::int as k_located,
+         count(*) filter (where u.role = 'client' and u.email_verified
+                            and lp.default_suburb_id is not null
+                            and exists (select 1 from enquiries e where e.client_id = lp.id))::int as k_enquired
+         from users u
+         left join cleaner_profiles cp on cp.user_id = u.id
+         left join client_profiles  lp on lp.user_id = u.id
+        where u.role in ('client','cleaner') and u.removed_at is null`
+    )).rows[0];
+
+    const removedRow = (await query(
+      `select count(*) filter (where role = 'cleaner')::int as cleaners,
+              count(*) filter (where role = 'client')::int  as customers
+         from users where role in ('client','cleaner') and removed_at is not null`
+    )).rows[0];
+
     const totalCleaners = byRole.cleaner?.total ?? 0;
     const totalCustomers = byRole.client?.total ?? 0;
     const respRate = adv.enquiries_total ? Math.round((adv.enquiries_responded / adv.enquiries_total) * 100) : null;
@@ -1261,6 +1301,25 @@ app.get('/api/admin/stats', async (req, res) => {
         cleanersActive: byRole.cleaner?.active ?? 0,
       },
       topTowns: topTowns.rows,
+      // Stage labels live here, next to the SQL that defines them, so the
+      // dashboard can't drift from what is actually being counted.
+      funnel: {
+        cleaners: [
+          { label: 'Account created', value: funnelRow.c_signed },
+          { label: 'Email confirmed', value: funnelRow.c_confirmed },
+          { label: 'Set a rate', value: funnelRow.c_priced },
+          { label: 'Profile complete, live in search', value: funnelRow.c_listed },
+          { label: 'ID verified', value: funnelRow.c_verified },
+        ],
+        customers: [
+          { label: 'Account created', value: funnelRow.k_signed },
+          { label: 'Email confirmed', value: funnelRow.k_confirmed },
+          { label: 'Saved their suburb', value: funnelRow.k_located },
+          { label: 'Sent an enquiry', value: funnelRow.k_enquired },
+        ],
+        removedCleaners: removedRow.cleaners,
+        removedCustomers: removedRow.customers,
+      },
       advanced: {
         activeListings: adv.active_listings,
         verifiedId: adv.verified_id,

@@ -143,6 +143,7 @@ function renderStats() {
       ${kpiRowHTML(d, totalInRange)}
       ${statsTable ? tableHTML(series) : chartHTML(series)}
     </div>
+    ${funnelHTML(d)}
     ${advancedHTML(d)}
     ${topTownsHTML(d)}`;
 
@@ -171,6 +172,51 @@ function kpiRowHTML(d, totalInRange) {
       <span class="sg-kpi-value">${k.value.toLocaleString()}</span>
       <span class="sg-kpi-sub">${esc(k.sub)}</span>
     </div>`).join('')}</div>`;
+}
+
+// Onboarding funnel, one column per side. Bars are widthed against the TOP of
+// the funnel, not the biggest remaining stage, so the shape of the drop-off is
+// the thing you see. Two percentages per row because they answer different
+// questions: "of everyone who signed up" (overall) and "of the people who got
+// this far" (step) - the second is what tells you which step is leaking.
+function funnelSideHTML(title, stages, removed) {
+  if (!stages || !stages.length) return '';
+  const top = stages[0].value;
+  const rows = stages.map((s, i) => {
+    const prev = i === 0 ? null : stages[i - 1].value;
+    const pctTop = top ? Math.round((s.value / top) * 100) : 0;
+    const pctStep = prev == null ? null : prev ? Math.round((s.value / prev) * 100) : 0;
+    const drop = prev == null ? 0 : prev - s.value;
+    return `<li class="fn-row">
+      <div class="fn-line">
+        <span class="fn-label">${esc(s.label)}</span>
+        <span class="fn-count">${s.value.toLocaleString()}</span>
+      </div>
+      <div class="fn-track"><span class="fn-bar" style="width:${top ? Math.max(pctTop, 1.5) : 0}%"></span></div>
+      <div class="fn-line fn-meta">
+        <span class="muted">${pctTop}% of signups</span>
+        ${pctStep == null
+          ? '<span class="muted">—</span>'
+          : `<span class="${drop > 0 ? 'fn-drop' : 'muted'}">${pctStep}% of previous${drop > 0 ? ` · lost ${drop}` : ''}</span>`}
+      </div>
+    </li>`;
+  });
+  return `<div class="fn-side">
+    <h4 class="adv-group-title">${esc(title)}</h4>
+    <ol class="fn-list">${rows.join('')}</ol>
+    ${removed ? `<p class="fn-note muted">Excludes ${removed} removed account${removed === 1 ? '' : 's'}.</p>` : ''}
+  </div>`;
+}
+function funnelHTML(d) {
+  const f = d.funnel;
+  if (!f) return '';
+  return `<div class="panel-card adv-card">
+    <h3 class="adv-head">Onboarding funnel</h3>
+    <div class="fn-grid">
+      ${funnelSideHTML('Cleaners', f.cleaners, f.removedCleaners)}
+      ${funnelSideHTML('Customers', f.customers, f.removedCustomers)}
+    </div>
+  </div>`;
 }
 
 // Marketplace health, grouped the way a two-sided market is read: supply on one
