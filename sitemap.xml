@@ -43,6 +43,12 @@
     <priority>0.3</priority>
   </url>
   <url>
+    <loc>https://matchmaid.co.nz/cleaners</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://matchmaid.co.nz/cleaners/riccarton</loc>
     <lastmod>2026-07-17</lastmod>
     <changefreq>weekly</changefreq>

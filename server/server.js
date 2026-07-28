@@ -19,6 +19,16 @@ const publicDir = join(here, '..'); // project root holds index.html etc.
 
 const app = express();
 app.use(express.json({ limit: '8mb' })); // room for base64 photos + ID documents
+
+// The suburb-page hub. Registered ahead of express.static on purpose: static
+// sees a directory and 301s /cleaners -> /cleaners/, which is a second URL for
+// one page (and, before the hub existed, a redirect straight into a 404 - which
+// is what Search Console started reporting). Serving it here keeps /cleaners a
+// plain 200, the same shape as /browse and /for-maids.
+app.get('/cleaners', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(join(publicDir, 'cleaners', 'index.html'));
+});
 // `extensions: ['html']` lets /customer serve customer.html — clean URLs.
 // `no-cache` = always revalidate, so browsers/Cloudflare never serve a stale
 // page or script (this is what caused "only works on hard refresh").
