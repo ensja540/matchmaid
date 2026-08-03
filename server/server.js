@@ -1654,7 +1654,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
       `select cp.id, coalesce(cp.business_name, u.full_name) as name, cp.bio, cp.years_experience,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
-              cp.service_surcharges, cp.profile_photo_url
+              cp.clean_rates, cp.profile_photo_url
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.id = $1 and u.status = 'active'`,
       [id]
@@ -1684,7 +1684,16 @@ app.get('/api/cleaner-profile', async (req, res) => {
       reviews: cp.review_count,
       badges: { id: cp.id_verified, police: cp.police_verified, insurance: cp.insurance_verified },
       bringsProducts: !!cp.brings_products,
-      serviceSurcharges: Array.isArray(cp.service_surcharges) ? cp.service_surcharges : [],
+      // The actual per-clean-type hourly fees, replacing the dead
+      // service_surcharges the profile card used to list as "specialist cleans".
+      // endOfLease rides in the same JSON as a capability, not a fee.
+      cleanFees: (() => {
+        const cr = cp.clean_rates && typeof cp.clean_rates === 'object' ? cp.clean_rates : {};
+        return ['regular', 'deep', 'end-of-tenancy']
+          .map((slug) => ({ slug, price: Number(cr[slug]) }))
+          .filter((f) => Number.isFinite(f.price) && f.price > 0);
+      })(),
+      endOfLease: !!(cp.clean_rates && cp.clean_rates.endOfLease),
       breakdown: await reviewBreakdown(cp.id),
       photo: cp.profile_photo_url || '',
       services: svc.rows.map((r) => r.name),
@@ -2310,7 +2319,7 @@ app.post('/api/match', async (req, res) => {
       select
         cp.id,
         coalesce(cp.business_name, u.full_name) as name,
-        cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max,
+        cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max, cp.clean_rates,
         cp.avg_rating, cp.review_count, cp.addons,
         cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
         cp.service_surcharges,
@@ -2361,17 +2370,47 @@ app.post('/api/match', async (req, res) => {
           .filter((x) => x.slot);
         const availScore = sel.length ? matched.length / sel.length : 0.6;
 
-        // A specialist clean can carry a per-hour surcharge. Fold it into the
-        // rate BEFORE scoring, otherwise a cleaner with a big deep-clean
-        // surcharge would rank as though they were cheap.
-        const surcharges = Array.isArray(r.service_surcharges) ? r.service_surcharges : [];
-        const surcharge = wantedBase
-          ? Number(surcharges.find((s) => s.slug === wantedBase)?.extra) || 0
-          : 0;
+        // Price the clean type they actually asked for.
+        //
+        // hourly_rate_min/max are the band ACROSS a cleaner's clean types, so
+        // showing rateMin meant a cleaner charging $45 regular and $65 deep
+        // advertised "$45/hr" on a deep-clean search - $20/hr under what they
+        // would charge. The per-type fee in clean_rates is the real number.
+        //
+        // service_surcharges is a dead field: it belonged to an older "base rate
+        // plus a specialist surcharge" model, the maid profile form has not
+        // written it since per-type fees landed, and adding it on top of a
+        // per-type fee double-counts. One legacy row still carries deep:+10 and
+        // was producing $40/hr for a cleaner whose rates are $30 and $50 -
+        // neither of their actual prices. It is no longer used for pricing.
+        const cleanRates = r.clean_rates && typeof r.clean_rates === 'object' ? r.clean_rates : {};
+        const feeFor = (slug) => {
+          if (!slug) return null;
+          // End-of-lease has no fee of its own - it is a capability of the deep
+          // clean, priced off the deep rate (see the maid fee form).
+          const key = slug === 'end-of-tenancy' ? 'deep' : slug;
+          const v = Number(cleanRates[key]);
+          return Number.isFinite(v) && v > 0 ? v : null;
+        };
         const rawMin = r.hourly_rate_min != null ? Number(r.hourly_rate_min) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
         const rawMax = r.hourly_rate_max != null ? Number(r.hourly_rate_max) : r.hourly_rate != null ? Number(r.hourly_rate) : null;
-        const cMin = rawMin != null ? rawMin + surcharge : null;
-        const cMax = rawMax != null ? rawMax + surcharge : null;
+        // The rate for the selected clean type when they offer it. When they
+        // don't, there is no honest single price for it - fall back to their
+        // lowest fee and flag it, so the card can say "from" rather than quote a
+        // number for work this cleaner doesn't do.
+        const exact = feeFor(wantedBase);
+        const rateForService = exact != null ? exact : rawMin;
+        const rateIsExact = exact != null;
+        // Priced extras the customer actually ticked. addons is the only place a
+        // per-extra price can live; it is empty for everyone today, so this
+        // renders nothing until cleaners can set them again - but it is driven
+        // by the data rather than assuming the list stays empty.
+        const wantedExtras = reqServices.filter((s) => s !== wantedBase);
+        const extraFees = (Array.isArray(r.addons) ? r.addons : [])
+          .filter((a) => a && wantedExtras.includes(a.slug) && Number(a.price) > 0)
+          .map((a) => ({ slug: a.slug, price: Math.round(Number(a.price)) }));
+        const cMin = rateForService != null ? rateForService : rawMin;
+        const cMax = rateForService != null ? rateForService : rawMax;
         let fair = null, priceScore = 0.5;
         if (cMin != null && cMax != null) {
           const lo = Math.max(cMin, bMin), hi = Math.min(cMax, bMax);
@@ -2387,17 +2426,19 @@ app.post('/api/match', async (req, res) => {
           name: r.name,
           atCapacity,
           rateMin: cMin, rateMax: cMax, fair,
-          estCost: fair != null ? Math.round(fair * duration) : null,
+          // Hourly fee x hours, plus any flat-priced extras they ticked.
+          estCost: fair != null
+            ? Math.round(fair * duration) + extraFees.reduce((t, e) => t + e.price, 0)
+            : null,
           rating: Number(r.avg_rating) || 0,
           reviews: r.review_count,
           badges, featured: r.is_featured,
           bringsProducts: !!r.brings_products,
-          // baseRate is the advertised hourly; surcharge is what this clean type
-          // adds on top. rateMin/rateMax/fair already include it.
-          baseRate: rawMin,
-          surcharge,
-          surchargeService: surcharge > 0 ? wantedBase : null,
-          serviceSurcharges: surcharges,
+          // What this cleaner charges for the clean that was searched for, and
+          // whether that is their actual fee for it or a "from" fallback.
+          rateForService, rateIsExact, serviceSlug: wantedBase || null,
+          extraFees,
+          rateBand: rawMin != null && rawMax != null && rawMax > rawMin ? { min: rawMin, max: rawMax } : null,
           services: offered,
           addons: Array.isArray(r.addons) ? r.addons : [],
           offered: offeredReq,

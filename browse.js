@@ -209,14 +209,14 @@ function resultCard(r, p) {
   const slotChips = (r.matched || [])
     .map((m) => `<span class="chip on">${DAYS[m.day]} ${(SLOTS.find((s) => s.key === m.slot) || {}).label || m.slot}</span>`)
     .join('');
-  const rateStr = rateLabel(r.rateMin, r.rateMax);
+  const rateStr = serviceRateLabel(r, p);
   const fairStr = '';
   const costStr = r.estCost != null ? ` · ~$${r.estCost} for ${p.hours}h` : '';
   const first = r.name.split(/['\s]/)[0];
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
       <div><h3><button class="linklike" type="button" data-cleaner="${r.id}">${r.name}</button>${Rating.badge(r.rating, r.reviews)} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
-        <p class="result-meta">${rateStr}${fairStr}${costStr} · ${p.locLabel}</p></div>
+        <p class="result-meta">${rateStr}${fairStr}${costStr}</p></div>
       <span class="tier tier-${r.tier}">${tierLabel}</span>
     </div>
     ${r.bondGuaranteed ? '<p class="bond-badge">✓ Bond-back guaranteed on end-of-tenancy cleans</p>' : ''}
@@ -265,6 +265,39 @@ function rateLabel(min, max) {
   const r = min ?? max;
   return r == null ? 'rate on enquiry' : `$${r}/hr`;
 }
+// The profile card isn't scoped to one clean type, so a cleaner who charges $45
+// regular and $65 deep can't be summed up by a single number. "from $45/hr"
+// says that honestly; the Rates list below it itemises each type. Still not a
+// range - a range in the headline was what made people read the low end as the
+// price.
+function profileRateLabel(c) {
+  const min = c.rateMin, max = c.rateMax;
+  if (min == null && max == null) return 'rate on enquiry';
+  if (min != null && max != null && max > min) return `from $${min}/hr`;
+  return `$${min ?? max}/hr`;
+}
+// What this cleaner charges for the clean that was actually searched for, plus
+// any priced extra that was ticked.
+//
+// The card used to print rateMin, which is the bottom of a cleaner's band across
+// ALL their clean types - so a cleaner at $45 regular / $65 deep advertised
+// "$45/hr" on a deep-clean search. The rate now names the clean it is for, so
+// there is nothing to misread; when the cleaner doesn't offer that clean at all
+// it reads "from $X/hr" rather than quoting a price for work they don't do.
+function serviceRateLabel(r, p) {
+  const rate = r.rateForService != null ? r.rateForService : (r.rateMin ?? r.rateMax);
+  if (rate == null) return 'rate on enquiry';
+  const svc = SVC_NAME[r.serviceSlug || p.baseService] || '';
+  const head = r.rateIsExact === false
+    ? `from $${rate}/hr`
+    : `$${rate}/hr${svc ? ` <span class="rate-for">${escapeHtml(svc.toLowerCase())}</span>` : ''}`;
+  // Flat-priced extras the customer asked for, itemised rather than folded
+  // silently into the hourly figure.
+  const extras = (r.extraFees || [])
+    .map((e) => ` + $${e.price} ${escapeHtml((SVC_NAME[e.slug] || e.slug).toLowerCase())}`)
+    .join('');
+  return head + extras;
+}
 function escapeHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -282,17 +315,19 @@ function cleanerCardHTML(c) {
       <div class="avatar lg">${c.photo ? `<img src="${escapeHtml(c.photo)}" alt="" />` : `<span>${initial}</span>`}</div>
       <div>
         <h2>${escapeHtml(c.name)}${Rating.badge(c.rating, c.reviews)}</h2>
-        <p class="muted" style="margin:0">${rateLabel(c.rateMin, c.rateMax)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
+        <p class="muted" style="margin:0">${profileRateLabel(c)}${c.years ? ` · ${c.years} yrs exp` : ''}</p>
       </div>
     </div>
     ${Badges.earned(c.badges, c.bringsProducts)}
     ${c.bondGuaranteed ? '<p class="bond-badge">✓ Bond-back guaranteed on end-of-tenancy cleans</p>' : ''}
     ${c.bio ? `<p>${escapeHtml(c.bio)}</p>` : ''}
     <div class="cv-section"><h4>Services</h4><div class="chips">${svc}</div></div>
-    ${c.serviceSurcharges && c.serviceSurcharges.length
-      ? `<div class="cv-section"><h4>Specialist cleans</h4><ul class="addon-menu">${c.serviceSurcharges
-          .map((s) => `<li><span>${escapeHtml(SVC_NAME[s.slug] || s.slug)}</span><span class="addon-cost">+$${Math.max(0, Math.round(Number(s.extra) || 0))}/hr</span></li>`)
-          .join('')}</ul></div>`
+    ${c.cleanFees && c.cleanFees.length
+      ? `<div class="cv-section"><h4>Rates</h4><ul class="addon-menu">${c.cleanFees
+          .map((f) => `<li><span>${escapeHtml(SVC_NAME[f.slug] || f.slug)}</span><span class="addon-cost">$${f.price}/hr</span></li>`)
+          .join('')}${c.endOfLease
+            ? `<li><span>End of lease</span><span class="addon-cost">at the deep-clean rate</span></li>`
+            : ''}</ul></div>`
       : ''}
     <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '-'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
