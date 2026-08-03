@@ -47,7 +47,14 @@
 <body>
   <div class="toolbar">
     A5 flyer — press <button onclick="window.print()">Print</button> (or Ctrl/Cmd-P).
-    Swap a real QR into the dashed box: generate one free for <b>matchmaid.co.nz</b> and paste it in.
+    <br />
+    <b>Point the QR at the tagged URL, not the bare domain:</b>
+    <code>https://matchmaid.co.nz/?utm_source=flyer&amp;utm_medium=print&amp;utm_campaign=chch-a5</code>
+    — that tag is the only thing that lets the admin dashboard tell a flyer scan from someone
+    who typed the address. Untagged, every scan is filed as "direct" and the flyer looks like it
+    did nothing. Change <code>utm_campaign</code> per drop (<code>chch-a5</code>,
+    <code>akl-cafes</code>) to compare them. The printed address stays the short one — people
+    type that, and it still works.
   </div>
 
   <div class="sheet">
@@ -64,7 +71,7 @@
     </ul>
 
     <div class="cta">
-      <div class="qr">QR to<br />matchmaid.co.nz</div>
+      <div class="qr">QR to<br />matchmaid.co.nz<br />?utm_source=flyer</div>
       <div class="url">matchmaid.co.nz<small>Free · Christchurch &amp; Auckland</small></div>
     </div>
 

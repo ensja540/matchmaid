@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="/analytics.js?v=87"></script>
+    <script src="/attribution.js?v=1"></script>
     <title>Match Maid | Verification review</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -13,7 +14,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700;800&display=swap" />
-    <link rel="stylesheet" href="styles.css?v=101" />
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="styles.css?v=102" />
   </head>
   <body class="app-body">
     <header class="app-bar">
@@ -32,6 +34,7 @@
 
       <nav class="portal-tabs" id="adminTabs">
         <button class="portal-tab active" data-tab="dashboard" type="button">Dashboard</button>
+        <button class="portal-tab" data-tab="coverage" type="button">Coverage</button>
         <button class="portal-tab" data-tab="verifications" type="button">Verifications</button>
         <button class="portal-tab" data-tab="reviews" type="button">Reviews</button>
         <button class="portal-tab" data-tab="feedback" type="button">Feedback</button>
@@ -39,6 +42,11 @@
 
       <section class="admin-panel" data-panel="dashboard">
         <div id="statsBody"></div>
+      </section>
+
+      <section class="admin-panel" data-panel="coverage" hidden>
+        <p class="wizard-lede">How many active cleaners can service each suburb. Hollow rings are suburbs no cleaner covers - those are the gaps to recruit into.</p>
+        <div id="coverageBody"></div>
       </section>
 
       <section class="admin-panel" data-panel="verifications" hidden>
@@ -65,7 +73,8 @@
     </footer>
     <script>document.querySelector('.pf-year').textContent = new Date().getFullYear();</script>
 
+    <script src="vendor/leaflet/leaflet.js"></script>
     <script src="session.js?v=87"></script>
-    <script src="admin.js?v=91"></script>
+    <script src="admin.js?v=92"></script>
   </body>
 </html>

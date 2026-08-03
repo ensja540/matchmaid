@@ -182,6 +182,31 @@ async function gateRemoved(user, reactivate) {
   return null;
 }
 
+// First-touch attribution off the signup call. Client-supplied, so it is
+// clamped rather than trusted: five short strings, lowercased where they are
+// grouped on. Missing or unusable -> all nulls, which the dashboard reports as
+// "unknown". Never defaulted to 'direct': an untagged campaign would then be
+// silently credited to a channel it had nothing to do with.
+function cleanAttribution(a) {
+  const NONE = { source: null, medium: null, campaign: null, referrer: null, landing: null };
+  if (!a || typeof a !== 'object') return NONE;
+  const str = (v, max, lower) => {
+    if (typeof v !== 'string') return null;
+    const s = v.trim().slice(0, max);
+    if (!s) return null;
+    return lower ? s.toLowerCase() : s;
+  };
+  const source = str(a.source, 80, true);
+  if (!source) return NONE; // medium/campaign are meaningless without it
+  return {
+    source,
+    medium: str(a.medium, 80, true),
+    campaign: str(a.campaign, 120, true),
+    referrer: str(a.referrer, 300, false),
+    landing: str(a.landing, 200, false),
+  };
+}
+
 // Shared slot model (must match the front end).
 // Days: 0=Mon … 6=Sun. Three slots per day.
 const SLOT_START = { morning: '08:00', afternoon: '12:00', evening: '17:00' };
@@ -194,7 +219,7 @@ app.post('/api/register', async (req, res) => {
     const geo = geoBlockReason(req);
     if (geo) return res.status(403).json({ error: geo });
 
-    const { role, fullName, email, password, referralCode } = req.body ?? {};
+    const { role, fullName, email, password, referralCode, attribution } = req.body ?? {};
     const dbRole = ROLE_MAP[role];
     if (!dbRole) return res.status(400).json({ error: 'Choose maid or customer.' });
     if (!fullName || !email || !password)
@@ -207,11 +232,14 @@ app.post('/api/register', async (req, res) => {
     // gate entirely and sign them straight in (the pre-email behaviour).
     const gateOn = emailEnabled();
     const code = gateOn ? makeCode() : null;
+    const acq = cleanAttribution(attribution);
     const { rows } = await query(
-      `insert into users (email, role, full_name, password_hash, email_verified, verify_code, verify_expires)
-       values ($1, $2, $3, $4, $5, $6, ${gateOn ? "now() + interval '15 minutes'" : 'null'})
+      `insert into users (email, role, full_name, password_hash, email_verified, verify_code, verify_expires,
+                          acq_source, acq_medium, acq_campaign, acq_referrer, acq_landing)
+       values ($1, $2, $3, $4, $5, $6, ${gateOn ? "now() + interval '15 minutes'" : 'null'}, $7, $8, $9, $10, $11)
        returning id, role, full_name, email`,
-      [email.toLowerCase().trim(), dbRole, fullName.trim(), password_hash, !gateOn, code]
+      [email.toLowerCase().trim(), dbRole, fullName.trim(), password_hash, !gateOn, code,
+       acq.source, acq.medium, acq.campaign, acq.referrer, acq.landing]
     );
     const user = rows[0];
 
@@ -376,7 +404,7 @@ app.post('/api/login', async (req, res) => {
 // Requires GOOGLE_CLIENT_ID in the environment to be enforced (recommended).
 app.post('/api/auth/google', async (req, res) => {
   try {
-    const { credential, role, reactivate } = req.body ?? {};
+    const { credential, role, reactivate, attribution } = req.body ?? {};
     const dbRole = ROLE_MAP[role] || 'client';
     if (!credential) return res.status(400).json({ error: 'Missing Google credential.' });
 
@@ -407,10 +435,15 @@ app.post('/api/auth/google', async (req, res) => {
       const hash = await bcrypt.hash('google-' + credential.slice(0, 24) + Date.now(), 10);
       // Google already verified this address, so the account is confirmed on
       // creation — no code step for Google sign-ups.
+      // Only on creation: an existing user keeps whatever first touch they were
+      // recorded with, so signing in again never rewrites their origin.
+      const gacq = cleanAttribution(attribution);
       ({ rows } = await query(
-        `insert into users (email, role, full_name, password_hash, email_verified)
-         values ($1, $2, $3, $4, true) returning id, role, full_name, email`,
-        [email, dbRole, info.name || email.split('@')[0], hash]
+        `insert into users (email, role, full_name, password_hash, email_verified,
+                            acq_source, acq_medium, acq_campaign, acq_referrer, acq_landing)
+         values ($1, $2, $3, $4, true, $5, $6, $7, $8, $9) returning id, role, full_name, email`,
+        [email, dbRole, info.name || email.split('@')[0], hash,
+         gacq.source, gacq.medium, gacq.campaign, gacq.referrer, gacq.landing]
       ));
       user = rows[0];
     } else {
@@ -1278,6 +1311,26 @@ app.get('/api/admin/stats', async (req, res) => {
         where u.role in ('client','cleaner') and u.removed_at is null`
     )).rows[0];
 
+    // Where signups came from, over the same window as everything else.
+    //
+    // Attribution only started being recorded when the acq_* columns shipped, so
+    // anyone older has NULL. They are grouped as 'unknown' and kept visible
+    // rather than dropped: hiding them would make the attributed slice look like
+    // the whole picture, and early on it is the smaller half.
+    const sources = await query(
+      `select coalesce(u.acq_source, 'unknown') as source,
+              coalesce(u.acq_medium, '')        as medium,
+              count(*) filter (where u.role = 'cleaner')::int as cleaners,
+              count(*) filter (where u.role = 'client')::int  as customers,
+              count(*)::int as total
+         from users u
+        where u.role in ('client','cleaner') and u.removed_at is null and ${recent}
+        group by 1, 2
+        order by total desc, source
+        limit 20`,
+      [days]
+    );
+
     const removedRow = (await query(
       `select count(*) filter (where role = 'cleaner')::int as cleaners,
               count(*) filter (where role = 'client')::int  as customers
@@ -1320,6 +1373,7 @@ app.get('/api/admin/stats', async (req, res) => {
         removedCleaners: removedRow.cleaners,
         removedCustomers: removedRow.customers,
       },
+      sources: sources.rows,
       advanced: {
         activeListings: adv.active_listings,
         verifiedId: adv.verified_id,
@@ -1342,6 +1396,62 @@ app.get('/api/admin/stats', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load stats.' });
+  }
+});
+
+// How many active cleaners can service each suburb, for the coverage map.
+//
+// Framed as a radius around each city centre rather than the territorial
+// authority. Christchurch City as a council excludes Rangiora, Rolleston,
+// Lincoln and Kaiapoi, which are separate one-suburb TAs but plainly part of
+// the market a Christchurch cleaner works - drawing the boundary at the council
+// line would show those as absent rather than uncovered.
+const COVERAGE_CITIES = [
+  { key: 'chch', name: 'Christchurch', lat: -43.5321, lng: 172.6362, radiusKm: 35 },
+  { key: 'akl', name: 'Auckland', lat: -36.8485, lng: 174.7633, radiusKm: 45 },
+];
+app.get('/api/admin/coverage', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const withinKm = `6371 * acos(least(1,
+      cos(radians($1)) * cos(radians(s.lat)) * cos(radians(s.lng) - radians($2))
+      + sin(radians($1)) * sin(radians(s.lat))))`;
+    const cities = [];
+    for (const c of COVERAGE_CITIES) {
+      const { rows } = await query(
+        `select s.id, s.name, s.territorial_authority as town, s.lat, s.lng,
+                coalesce(a.n, 0)::int as cleaners
+           from suburbs s
+           left join lateral (
+             select count(distinct csa.cleaner_id)::int as n
+               from cleaner_service_areas csa
+               join cleaner_profiles cp on cp.id = csa.cleaner_id
+              where csa.suburb_id = s.id and cp.listing_status = 'active'
+           ) a on true
+          where s.lat is not null and ${withinKm} <= $3
+          order by coalesce(a.n, 0) desc, s.name`,
+        [c.lat, c.lng, c.radiusKm]
+      );
+      const suburbs = rows.map((r) => ({
+        id: r.id, name: r.name, town: r.town,
+        lat: Number(r.lat), lng: Number(r.lng), cleaners: r.cleaners,
+      }));
+      const counts = suburbs.map((s) => s.cleaners);
+      cities.push({
+        key: c.key, name: c.name, center: { lat: c.lat, lng: c.lng }, radiusKm: c.radiusKm,
+        suburbs,
+        stats: {
+          total: suburbs.length,
+          covered: counts.filter((n) => n > 0).length,
+          uncovered: counts.filter((n) => n === 0).length,
+          max: counts.length ? Math.max(...counts) : 0,
+        },
+      });
+    }
+    res.json({ cities });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load coverage.' });
   }
 });
 

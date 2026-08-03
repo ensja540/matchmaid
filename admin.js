@@ -87,6 +87,10 @@ adminTabs?.addEventListener('click', (e) => {
   if (!btn) return;
   adminTabs.querySelectorAll('.portal-tab').forEach((b) => b.classList.toggle('active', b === btn));
   document.querySelectorAll('.admin-panel').forEach((p) => { p.hidden = p.dataset.panel !== btn.dataset.tab; });
+  // Leaflet measures the container on creation. Built inside a hidden panel it
+  // reads 0x0 and renders a grey box, so the map is only built once its tab is
+  // first shown, and told to re-measure on every later visit.
+  if (btn.dataset.tab === 'coverage') showCoverage();
 });
 // A count on a tab, so a full review queue is visible without opening it.
 function setTabCount(tab, n) {
@@ -96,6 +100,156 @@ function setTabCount(tab, n) {
   if (!n) { b?.remove(); return; }
   if (!b) { b = document.createElement('span'); b.className = 'tab-count'; btn.appendChild(b); }
   b.textContent = n;
+}
+
+// ---------- Coverage heatmap ----------
+// How many active cleaners can service each suburb, as a point map per city.
+//
+// Colour is the encoding, so it is a sequential one-hue ramp (light -> dark),
+// not a rainbow: the reader should be able to rank two suburbs by shade alone.
+// Steps were checked with the palette validator rather than picked by eye - the
+// light end clears 2:1 on the map surface, lightness is monotone, and the hue
+// spread across the ramp is 1 degree.
+//
+// Zero is deliberately NOT the lightest step. "No cleaner at all" is a different
+// kind of fact from "not many", and it is the one worth acting on, so it gets a
+// hollow neutral ring that reads as a hole in the map rather than a pale fill.
+const COV_RAMP = ['#43c6b4', '#17a998', '#0e7d71', '#0a534b'];
+const COV_NONE = '#5b7480';
+const covBucket = (n) => (n <= 0 ? -1 : Math.min(n, COV_RAMP.length) - 1);
+const covColor = (n) => (n <= 0 ? COV_NONE : COV_RAMP[covBucket(n)]);
+
+const coverageBody = document.getElementById('coverageBody');
+let coverageData = null, coverageCity = 'chch', coverageMap = null, coverageTable = false;
+
+async function showCoverage() {
+  if (!coverageBody) return;
+  if (coverageData) { renderCoverage(); return; }
+  coverageBody.innerHTML = '<div class="panel-card"><p class="muted">Loading coverage…</p></div>';
+  try {
+    const res = await fetch(`/api/admin/coverage?userId=${encodeURIComponent(sessionUser.id)}`);
+    if (res.status === 403) {
+      coverageBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
+      return;
+    }
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    coverageData = await res.json();
+    renderCoverage();
+  } catch (err) {
+    console.error('coverage:', err);
+    coverageBody.innerHTML =
+      `<div class="panel-card"><p class="muted">Could not load coverage (${esc(err.message || 'network error')}).
+       <button class="btn ghost sm" type="button" data-cov-retry>Retry</button></p></div>`;
+    coverageBody.querySelector('[data-cov-retry]')?.addEventListener('click', showCoverage);
+  }
+}
+
+// The ramp as a key. Max drives how many steps are shown, so the legend never
+// advertises a "4+" band nobody has reached.
+function covLegendHTML(max) {
+  const steps = COV_RAMP.slice(0, Math.max(1, Math.min(max, COV_RAMP.length)))
+    .map((c, i) => {
+      const last = i === COV_RAMP.length - 1 || i === max - 1;
+      const label = last && max > i + 1 ? `${i + 1}+` : String(i + 1);
+      return `<span class="cov-key"><i style="background:${c}"></i>${label}</span>`;
+    })
+    .join('');
+  return `<div class="cov-legend">
+    <span class="cov-key"><i class="cov-key-none"></i>none</span>
+    ${steps}
+    <span class="cov-key-label">cleaners covering the suburb</span>
+  </div>`;
+}
+
+function renderCoverage() {
+  const d = coverageData;
+  if (!d || !coverageBody) return;
+  const city = (d.cities || []).find((c) => c.key === coverageCity) || (d.cities || [])[0];
+  if (!city) { coverageBody.innerHTML = '<div class="panel-card"><p class="muted">No coverage data.</p></div>'; return; }
+  coverageCity = city.key;
+  const s = city.stats;
+  const pct = s.total ? Math.round((s.covered / s.total) * 100) : 0;
+
+  coverageBody.innerHTML = `
+    <div class="panel-card">
+      <div class="sg-controls">
+        ${(d.cities || []).map((c) =>
+          `<button class="chip select ${c.key === coverageCity ? 'on' : ''}" type="button" data-city="${esc(c.key)}">${esc(c.name)}</button>`
+        ).join('')}
+        <button class="btn ghost sm sg-toggle" type="button" data-cov-table>${coverageTable ? 'Show map' : 'Show table'}</button>
+      </div>
+      <div class="sg-kpis">
+        <div class="sg-kpi"><span class="sg-kpi-label">Suburbs in range</span><span class="sg-kpi-value">${s.total}</span><span class="sg-kpi-sub">within ${city.radiusKm}km of the centre</span></div>
+        <div class="sg-kpi"><span class="sg-kpi-label">Covered</span><span class="sg-kpi-value">${s.covered}</span><span class="sg-kpi-sub">${pct}% of them</span></div>
+        <div class="sg-kpi"><span class="sg-kpi-label">No cleaner</span><span class="sg-kpi-value">${s.uncovered}</span><span class="sg-kpi-sub">gaps to recruit into</span></div>
+        <div class="sg-kpi"><span class="sg-kpi-label">Best covered</span><span class="sg-kpi-value">${s.max}</span><span class="sg-kpi-sub">cleaners on one suburb</span></div>
+      </div>
+      ${coverageTable ? covTableHTML(city) : `${covLegendHTML(s.max)}<div class="cov-map" id="covMap"></div>`}
+    </div>`;
+
+  coverageBody.querySelectorAll('[data-city]').forEach((b) =>
+    b.addEventListener('click', () => { coverageCity = b.dataset.city; renderCoverage(); })
+  );
+  coverageBody.querySelector('[data-cov-table]')?.addEventListener('click', () => {
+    coverageTable = !coverageTable;
+    renderCoverage();
+  });
+  if (!coverageTable) drawCoverageMap(city);
+}
+
+// A table view of the same numbers, so the map is never the only way to read it
+// (and so a suburb can be found by name rather than by hunting for a dot).
+function covTableHTML(city) {
+  const rows = city.suburbs.slice().sort((a, b) => b.cleaners - a.cleaners || a.name.localeCompare(b.name));
+  return `<div class="sg-tablewrap"><table class="sg-table cov-table">
+    <thead><tr><th>Suburb</th><th>Town</th><th class="cov-num">Cleaners</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr>
+      <td>${esc(r.name)}</td><td class="muted">${esc(r.town || '')}</td>
+      <td class="cov-num">${r.cleaners === 0
+        ? '<span class="cov-zero">0</span>'
+        : `<span class="cov-swatch" style="background:${covColor(r.cleaners)}"></span>${r.cleaners}`}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function drawCoverageMap(city) {
+  const mount = document.getElementById('covMap');
+  if (!mount || typeof L === 'undefined') return;
+  if (coverageMap) { coverageMap.remove(); coverageMap = null; }
+
+  const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true })
+    .setView([city.center.lat, city.center.lng], 11);
+  coverageMap = map;
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+
+  // Covered suburbs are drawn last so a filled dot is never hidden under a
+  // hollow one where two suburb centres nearly coincide.
+  const ordered = city.suburbs.slice().sort((a, b) => a.cleaners - b.cleaners);
+  const pts = [];
+  for (const sub of ordered) {
+    const none = sub.cleaners === 0;
+    pts.push([sub.lat, sub.lng]);
+    L.circleMarker([sub.lat, sub.lng], {
+      radius: none ? 5 : 7,
+      color: none ? COV_NONE : '#ffffff', // white ring separates touching marks
+      weight: none ? 1.5 : 1.5,
+      opacity: 1,
+      fillColor: none ? '#ffffff' : covColor(sub.cleaners),
+      fillOpacity: none ? 0.35 : 0.92,
+    })
+      .bindTooltip(
+        `<strong>${esc(sub.name)}</strong><br />${sub.cleaners} cleaner${sub.cleaners === 1 ? '' : 's'}` +
+          (sub.town && sub.town !== sub.name ? `<br /><span class="cov-tip-town">${esc(sub.town)}</span>` : ''),
+        { direction: 'top', className: 'cov-tip' }
+      )
+      .addTo(map);
+  }
+  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.06));
+  // The panel was hidden until a moment ago; re-measure once it has real size.
+  setTimeout(() => { if (coverageMap === map) map.invalidateSize(); }, 60);
 }
 
 async function loadStats() {
@@ -144,6 +298,7 @@ function renderStats() {
       ${statsTable ? tableHTML(series) : chartHTML(series)}
     </div>
     ${funnelHTML(d)}
+    ${sourcesHTML(d)}
     ${advancedHTML(d)}
     ${topTownsHTML(d)}`;
 
@@ -216,6 +371,68 @@ function funnelHTML(d) {
       ${funnelSideHTML('Cleaners', f.cleaners, f.removedCleaners)}
       ${funnelSideHTML('Customers', f.customers, f.removedCustomers)}
     </div>
+  </div>`;
+}
+
+// Where signups came from. A ranked bar per channel, split cleaner/customer.
+//
+// "unknown" is shown, never hidden and never folded into direct. It is everyone
+// who signed up before attribution was recorded, plus anyone whose browser
+// cleared storage between landing and signing up. Dropping it would make the
+// attributed slice read as 100% of signups when it isn't - so it is called out
+// above the list with how much of the window it accounts for.
+const SOURCE_LABEL = {
+  direct: 'Direct / typed the address',
+  google: 'Google',
+  flyer: 'Flyer',
+  unknown: 'Unknown',
+  bing: 'Bing',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  neighbourly: 'Neighbourly',
+  trademe: 'Trade Me',
+};
+const MEDIUM_LABEL = { organic: 'organic', cpc: 'paid', social: 'social', referral: 'referral', print: 'print', none: '', unknown: '' };
+function sourceName(s) {
+  return SOURCE_LABEL[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown');
+}
+function sourcesHTML(d) {
+  const rows = d.sources || [];
+  if (!rows.length) {
+    return `<div class="panel-card">
+      <h3 class="adv-head">Where signups came from</h3>
+      <p class="muted">No signups in the last ${d.days} days.</p>
+    </div>`;
+  }
+  const total = rows.reduce((n, r) => n + r.total, 0);
+  const unknown = rows.filter((r) => r.source === 'unknown').reduce((n, r) => n + r.total, 0);
+  const max = Math.max(...rows.map((r) => r.total));
+  // Same two colours, same two meanings, as Top towns directly below - a reader
+  // shouldn't have to relearn which side is which between two adjacent charts.
+  const list = rows.map((r) => {
+    const med = MEDIUM_LABEL[r.medium] != null ? MEDIUM_LABEL[r.medium] : r.medium;
+    const pct = total ? Math.round((r.total / total) * 100) : 0;
+    return `<li class="tt-row">
+      <span class="tt-name">${esc(sourceName(r.source))}${med ? `<span class="src-medium">${esc(med)}</span>` : ''}</span>
+      <span class="tt-bar" aria-hidden="true">
+        <i class="tt-fill tt-cust" style="width:${max ? (r.customers / max) * 100 : 0}%"></i>
+        <i class="tt-fill tt-clean" style="width:${max ? (r.cleaners / max) * 100 : 0}%"></i>
+      </span>
+      <span class="tt-count">${r.total}<span class="tt-split">${pct}% · ${r.customers}c · ${r.cleaners}m</span></span>
+    </li>`;
+  }).join('');
+  const attributed = total - unknown;
+  return `<div class="panel-card">
+    <h3 class="tt-head">Where signups came from <span class="muted tt-sub">last ${d.days} days</span></h3>
+    <p class="muted src-note">First touch: the channel that first brought them to the site, not the last one before signing up.
+      ${unknown
+        ? `<strong>${attributed} of ${total}</strong> carry a source - the other ${unknown} signed up before attribution was recorded.`
+        : `All ${total} carry a source.`}</p>
+    <div class="sg-legend tt-legend">
+      <span class="sg-key"><i class="tt-cust"></i>Customers</span>
+      <span class="sg-key"><i class="tt-clean"></i>Cleaners</span>
+    </div>
+    <ol class="tt-list">${list}</ol>
   </div>`;
 }
 

@@ -82,6 +82,10 @@ form.addEventListener('submit', async (e) => {
   if (mode === 'signup') {
     body.fullName = form.fullName.value;
     if (role === 'maid') body.referralCode = form.referralCode?.value.trim() || refFromLink || undefined;
+    // Where they first came from. Null when we never saw an entry (a returning
+    // visitor whose storage was cleared) - the server then stores NULL rather
+    // than crediting a channel we'd be guessing at.
+    body.attribution = (window.mmAttribution && window.mmAttribution()) || undefined;
   }
   // Set by the "Reactivate" prompt below, for a removed account signing back in.
   if (pendingReactivate) body.reactivate = true;
@@ -258,7 +262,12 @@ function onGoogleCredential(resp) {
   fetch('/api/auth/google', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ credential: resp.credential, role, reactivate: pendingGoogleReactivate }),
+    // Google sign-in doubles as signup for a new account, so it carries the
+    // same first-touch record; the server ignores it for an existing user.
+    body: JSON.stringify({
+      credential: resp.credential, role, reactivate: pendingGoogleReactivate,
+      attribution: (window.mmAttribution && window.mmAttribution()) || undefined,
+    }),
   })
     .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
     .then(({ ok, d }) => {
