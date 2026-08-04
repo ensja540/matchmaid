@@ -5,13 +5,14 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
 import {
   emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail,
   sendVerificationDecisionEmail, sendVerificationPendingEmail,
+  sendNudgeEmail, sendPreLaunchUpdateEmail,
 } from './email.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -2128,6 +2129,193 @@ app.post('/api/tasks/post-review-prompts', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not post review prompts.' });
+  }
+});
+
+// --- Nudges: finish your profile, and the pre-launch update -----------------
+//
+// DRY RUN BY DEFAULT. Nothing is sent unless the caller passes send=1, and
+// nothing is recorded unless it actually sent. Emailing real people is not
+// undoable, so the default had to be the harmless one - a plain call returns
+// exactly who WOULD be mailed and why, which is also what makes it reviewable
+// before it ever goes near an inbox.
+//
+// Each (user, kind) can only ever be sent once - the unique index on nudges
+// enforces it even if this endpoint is called twice concurrently.
+//
+// A grace period keeps this from landing on someone mid-signup: NUDGE_MIN_AGE
+// after they created the account, so anyone still working through the wizard is
+// left alone.
+const NUDGE_MIN_AGE_HOURS = 48;
+
+// Unsubscribe links are signed rather than stored: an HMAC of the user id under
+// CRON_SECRET. No column to keep in sync, and a link can't be guessed or
+// enumerated from a user id.
+function unsubToken(userId) {
+  return createHmac('sha256', process.env.CRON_SECRET || '').update(String(userId)).digest('hex').slice(0, 32);
+}
+function unsubUrlFor(userId) {
+  const base = process.env.APP_URL || 'https://matchmaid.co.nz';
+  return `${base}/api/unsubscribe?u=${encodeURIComponent(userId)}&t=${unsubToken(userId)}`;
+}
+
+app.get('/api/unsubscribe', async (req, res) => {
+  const { u, t } = req.query;
+  const page = (msg) =>
+    res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>Match Maid</title>
+      <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:12vh auto;padding:0 24px;color:#123b4a">
+        <div style="font-size:20px;font-weight:700;margin-bottom:20px">Match&nbsp;Maid</div>
+        <p style="font-size:16px;line-height:1.6">${msg}</p>
+        <p style="font-size:14px"><a href="/" style="color:#0e9384">Back to matchmaid.co.nz</a></p>
+      </div>`);
+  if (!process.env.CRON_SECRET) return res.status(503).type('html').send('Unsubscribe is not configured.');
+  if (!u || !t) return page('That unsubscribe link is incomplete.');
+  const expected = Buffer.from(unsubToken(u));
+  const given = Buffer.from(String(t));
+  if (given.length !== expected.length || !timingSafeEqual(given, expected))
+    return page('That unsubscribe link is not valid. If you keep getting mail you did not ask for, reply to any of it and we will sort it out.');
+  try {
+    await query('update users set nudge_opt_out = true where id = $1', [u]);
+    return page("You're unsubscribed from Match Maid updates and reminders. You'll still get essential account email - things like a confirmation code, or an enquiry someone has sent you.");
+  } catch {
+    return res.status(500).type('html').send('Could not process that just now.');
+  }
+});
+
+// Who is eligible for each nudge. Every segment excludes anyone already sent
+// that kind, anyone opted out, removed accounts, and anyone too new.
+const NUDGE_SEGMENTS = {
+  cleaner_no_rate: `
+    select u.id, u.email, u.full_name, u.role from users u
+      join cleaner_profiles cp on cp.user_id = u.id
+     where u.role = 'cleaner' and u.email_verified and cp.hourly_rate_min is null`,
+  cleaner_no_id: `
+    select u.id, u.email, u.full_name, u.role from users u
+      join cleaner_profiles cp on cp.user_id = u.id
+     where u.role = 'cleaner' and u.email_verified
+       and cp.listing_status = 'active' and not cp.id_verified`,
+  customer_no_suburb: `
+    select u.id, u.email, u.full_name, u.role from users u
+      join client_profiles lp on lp.user_id = u.id
+     where u.role = 'client' and u.email_verified and lp.default_suburb_id is null`,
+};
+
+async function nudgeCandidates(kind) {
+  const base = NUDGE_SEGMENTS[kind];
+  if (!base) return [];
+  const { rows } = await query(
+    `${base}
+       and u.removed_at is null and u.status = 'active' and not u.nudge_opt_out
+       and u.created_at < now() - interval '${NUDGE_MIN_AGE_HOURS} hours'
+       and not exists (select 1 from nudges n where n.user_id = u.id and n.kind = $1)
+     order by u.created_at`,
+    [kind]
+  );
+  return rows;
+}
+
+app.post('/api/tasks/nudges', async (req, res) => {
+  if (!process.env.CRON_SECRET)
+    return res.status(503).json({ error: 'CRON_SECRET is not set on this server.' });
+  if (!cronAuthorised(req)) return res.status(403).json({ error: 'Forbidden.' });
+
+  const send = String(req.query.send || '') === '1';
+  // With no RESEND_API_KEY every send is a logged no-op that still looks like a
+  // success. Claiming the nudge rows against that would mark all these people
+  // as "already nudged" for good, and they could never be nudged again - a
+  // silent, unrecoverable burn. Refuse instead.
+  if (send && !emailEnabled())
+    return res.status(503).json({ error: 'Email is not configured (RESEND_API_KEY unset) - refusing to send, since it would mark everyone as nudged without sending anything. Dry run works without it.' });
+  const only = String(req.query.kind || '').trim();
+  const kinds = only ? [only].filter((k) => NUDGE_SEGMENTS[k]) : Object.keys(NUDGE_SEGMENTS);
+  if (only && !kinds.length) return res.status(400).json({ error: `Unknown nudge kind "${only}".` });
+
+  try {
+    const report = {};
+    let sent = 0;
+    for (const kind of kinds) {
+      const people = await nudgeCandidates(kind);
+      report[kind] = { eligible: people.length, emails: people.map((p) => p.email) };
+      if (!send) continue;
+      let ok = 0;
+      for (const p of people) {
+        // Claim it FIRST. If the send then fails we have burnt one attempt,
+        // which is the right way round: a double-send is worse than a miss,
+        // and the admin can see it never went out.
+        try {
+          await query('insert into nudges (user_id, kind) values ($1, $2)', [p.id, kind]);
+        } catch { continue; } // already sent by a concurrent run
+        const r = await sendNudgeEmail({
+          to: p.email, name: p.full_name, kind, unsubUrl: unsubUrlFor(p.id),
+        });
+        // Belt and braces behind the emailEnabled() guard above: if a send is
+        // skipped rather than attempted, give the claim back so this person can
+        // still be nudged once email works.
+        if (r && r.skipped) { await query('delete from nudges where user_id = $1 and kind = $2', [p.id, kind]); continue; }
+        if (r && r.ok) ok++;
+      }
+      report[kind].sent = ok;
+      sent += ok;
+    }
+    console.log(`nudges: ${send ? `sent ${sent}` : 'dry run'} ${JSON.stringify(report)}`);
+    res.json({ dryRun: !send, emailConfigured: emailEnabled(), sent, report });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not run nudges.' });
+  }
+});
+
+// The pre-launch update. A one-off broadcast rather than a funnel nudge, so it
+// is its own kind and its own call - and the same dry-run rule applies.
+app.post('/api/tasks/prelaunch-update', async (req, res) => {
+  if (!process.env.CRON_SECRET)
+    return res.status(503).json({ error: 'CRON_SECRET is not set on this server.' });
+  if (!cronAuthorised(req)) return res.status(403).json({ error: 'Forbidden.' });
+  const send = String(req.query.send || '') === '1';
+  if (send && !emailEnabled())
+    return res.status(503).json({ error: 'Email is not configured (RESEND_API_KEY unset) - refusing to send, since it would mark everyone as already-updated without sending anything. Dry run works without it.' });
+  // Dated, so a later update is a different kind and goes to everyone again
+  // rather than being silently swallowed as "already sent".
+  const kind = String(req.query.tag || 'prelaunch_2026_08').trim().slice(0, 60);
+  try {
+    const { rows } = await query(
+      `select u.id, u.email, u.full_name, u.role, cp.referral_code
+         from users u
+         left join cleaner_profiles cp on cp.user_id = u.id
+        where u.role in ('client','cleaner')
+          and u.email_verified and u.removed_at is null and u.status = 'active'
+          and not u.nudge_opt_out
+          and not exists (select 1 from nudges n where n.user_id = u.id and n.kind = $1)
+        order by u.role, u.created_at`,
+      [kind]
+    );
+    const report = { kind, eligible: rows.length, cleaners: rows.filter((r) => r.role === 'cleaner').length,
+      customers: rows.filter((r) => r.role === 'client').length, emails: rows.map((r) => r.email) };
+    let sent = 0;
+    if (send) {
+      const base = process.env.APP_URL || 'https://matchmaid.co.nz';
+      for (const p of rows) {
+        try {
+          await query('insert into nudges (user_id, kind) values ($1, $2)', [p.id, kind]);
+        } catch { continue; }
+        const r = await sendPreLaunchUpdateEmail({
+          to: p.email, name: p.full_name, role: p.role,
+          referralLink: p.referral_code
+            ? `${base}/login?role=maid&mode=signup&ref=${encodeURIComponent(p.referral_code)}`
+            : `${base}/for-maids`,
+          creditDollars: REFERRAL_CREDIT_CENTS / 100,
+          unsubUrl: unsubUrlFor(p.id),
+        });
+        if (r && r.skipped) { await query('delete from nudges where user_id = $1 and kind = $2', [p.id, kind]); continue; }
+        if (r && r.ok) sent++;
+      }
+    }
+    console.log(`prelaunch update: ${send ? `sent ${sent}` : 'dry run'} of ${rows.length}`);
+    res.json({ dryRun: !send, emailConfigured: emailEnabled(), sent, report });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not run the pre-launch update.' });
   }
 });
 

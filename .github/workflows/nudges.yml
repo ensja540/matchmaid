@@ -1,0 +1,61 @@
+name: Nudges and updates
+
+# Manual only, deliberately. These send mail to real people, and unlike the
+# review prompts there is no event that makes "now" the right moment - you
+# decide when. Add a `schedule:` here once email is configured and you have
+# watched a couple of runs.
+#
+# Both jobs default to a DRY RUN: they report who would be mailed and send
+# nothing. Set send = true to actually send.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Which mail to run
+        required: true
+        default: nudges
+        type: choice
+        options:
+          - nudges            # finish-your-profile, per stalled funnel stage
+          - prelaunch-update  # the "where we're up to" broadcast
+      send:
+        description: Actually send (unticked = dry run, sends nothing)
+        required: false
+        default: false
+        type: boolean
+      kind:
+        description: "nudges only: limit to one segment (cleaner_no_rate, cleaner_no_id, customer_no_suburb)"
+        required: false
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send (or dry-run) the selected mail
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TASK: ${{ inputs.task }}
+          SEND: ${{ inputs.send }}
+          KIND: ${{ inputs.kind }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET repository secret is not set"
+            exit 1
+          fi
+          QS=""
+          [ "$SEND" = "true" ] && QS="?send=1"
+          if [ -n "$KIND" ] && [ "$TASK" = "nudges" ]; then
+            if [ -z "$QS" ]; then QS="?kind=$KIND"; else QS="$QS&kind=$KIND"; fi
+          fi
+          if [ "$SEND" = "true" ]; then
+            echo "::warning::SENDING REAL EMAIL for $TASK"
+          else
+            echo "Dry run - nothing will be sent."
+          fi
+          # A sleeping service answers only once it has booted, so allow the
+          # full cold start. --fail-with-body surfaces the API's own message,
+          # which is how the "email is not configured" refusal shows up here.
+          curl -sS --fail-with-body --max-time 120 \
+            -X POST "https://matchmaid.onrender.com/api/tasks/$TASK$QS" \
+            -H "x-cron-secret: $CRON_SECRET"

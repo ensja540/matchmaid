@@ -53,13 +53,21 @@ export async function sendEmail({ to, subject, html, text }) {
 
 // Shared shell so every email reads as one brand. Kept inline (no external CSS
 // or images) so it renders the same in every client.
-function shell(bodyHtml) {
+// `unsubUrl` is passed for nudges and campaign mail, which need a one-click
+// opt-out. Transactional mail (a confirmation code, an enquiry someone sent
+// you) deliberately does NOT get one: unsubscribing from those would break the
+// account, and they aren't the kind of message the opt-out governs.
+function shell(bodyHtml, unsubUrl) {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#1a1a1a">
     <div style="font-size:20px;font-weight:700;letter-spacing:-0.01em;color:#123b4a;margin-bottom:24px">Match&nbsp;Maid</div>
     ${bodyHtml}
     <hr style="border:none;border-top:1px solid #e6e6e6;margin:28px 0 16px" />
     <p style="font-size:12px;color:#8a8a8a;line-height:1.5;margin:0">Match Maid · Christchurch, NZ<br/>
-      You're receiving this because someone used this address on matchmaid.co.nz.</p>
+      You're receiving this because someone used this address on matchmaid.co.nz.${
+        unsubUrl
+          ? `<br/><a href="${unsubUrl}" style="color:#8a8a8a">Unsubscribe from these updates</a>`
+          : ''
+      }</p>
   </div>`;
 }
 
@@ -133,6 +141,86 @@ export async function sendVerificationPendingEmail({ to, cleanerName, cleanerEma
 
 ${APP_URL}/admin`;
   return sendEmail({ to, subject: `Match Maid: ${what} to verify from ${cleanerName || 'a cleaner'}`, html, text });
+}
+
+// --- Email: finish what you started (nudges) --------------------------------
+// One per stalled stage of the onboarding funnel. Each is sent at most once
+// ever (the nudges table enforces it), so these read as a single helpful
+// reminder rather than a drip campaign.
+//
+// Each says plainly what is missing and what happens once it's done. No
+// urgency, no fake deadline: the only honest lever we have is that a finished
+// profile is the one customers can actually find.
+const NUDGE = {
+  // Confirmed their email, never set a rate - so they never went live.
+  cleaner_no_rate: {
+    subject: 'Your Match Maid listing is nearly there',
+    lead: 'You created a Match Maid account but haven\'t set your rate yet, so your profile isn\'t showing to customers.',
+    body: 'Setting an hourly fee for at least one clean type is all that\'s left - it takes about a minute, and it\'s what puts you in search.',
+    cta: 'Finish my listing',
+    href: '/maid',
+  },
+  // Live in search, but no ID badge - the single biggest trust signal.
+  cleaner_no_id: {
+    subject: 'Add your ID badge and get picked more often',
+    lead: 'Your Match Maid listing is live - nice one.',
+    body: 'One thing would make it stronger: customers can filter for ID-verified cleaners, and profiles with the badge get chosen more often. Uploading a photo ID and a selfie takes a couple of minutes.',
+    cta: 'Get verified',
+    href: '/maid',
+  },
+  // Signed up, never told us where they live - so we can't match them at all.
+  customer_no_suburb: {
+    subject: 'Which suburb are you in?',
+    lead: 'You signed up to Match Maid but haven\'t told us where you are yet.',
+    body: 'We match you to cleaners who cover your suburb, so without it we can\'t line anyone up for you. Adding it takes a few seconds.',
+    cta: 'Add my suburb',
+    href: '/customer',
+  },
+};
+
+export async function sendNudgeEmail({ to, name, kind, unsubUrl }) {
+  const n = NUDGE[kind];
+  if (!n) return { ok: false, error: `unknown nudge kind ${kind}` };
+  const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${n.lead}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${n.body}</p>
+    <p style="margin:0 0 8px"><a href="${APP_URL}${n.href}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">${escapeHtml(n.cta)}</a></p>`, unsubUrl);
+  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${n.lead}\n\n${n.body}\n\n${n.cta}: ${APP_URL}${n.href}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`;
+  return sendEmail({ to, subject: n.subject, html, text });
+}
+
+// --- Email: where we're up to (the pre-launch update) -----------------------
+// Two versions of one message, because the two sides are owed different things.
+//
+// Cleaners get the referral ask: the $10 credit is real, it is theirs to earn,
+// and referring another cleaner genuinely is the thing that brings launch
+// forward. Customers get the same honesty about timing but NO credit offer -
+// there is no customer referral scheme, and inventing one in an email is how
+// you end up owing people something you can't pay.
+export async function sendPreLaunchUpdateEmail({ to, name, role, referralLink, creditDollars, unsubUrl }) {
+  const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
+  const isCleaner = role === 'cleaner';
+  const thanks = 'Thanks for your patience while we get Match Maid off the ground.';
+  const status = 'We\'re holding off on switching search on until there are enough cleaners for it to be worth using - a directory nobody can find anyone in helps nobody. We\'re close.';
+
+  const body = isCleaner
+    ? `<p style="font-size:15px;line-height:1.6;margin:0 0 16px">${thanks}</p>
+       <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${status}</p>
+       <p style="font-size:15px;line-height:1.6;margin:0 0 20px">If you know another cleaner who'd be a good fit, sending them your link is the fastest way to bring that forward - and you earn <strong>$${creditDollars} credit</strong> once they're ID-verified.</p>
+       <p style="margin:0 0 16px"><a href="${escapeHtml(referralLink)}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Share your referral link</a></p>
+       <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:0">Your link: ${escapeHtml(referralLink)}</p>`
+    : `<p style="font-size:15px;line-height:1.6;margin:0 0 16px">${thanks}</p>
+       <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${status}</p>
+       <p style="font-size:15px;line-height:1.6;margin:0 0 20px">If you know a cleaner who might want the work, pointing them our way genuinely does bring launch forward - the hold-up is cleaners, not customers. You'll be first to hear when search opens in your area.</p>
+       <p style="margin:0 0 8px"><a href="${APP_URL}/for-maids" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Send a cleaner our way</a></p>`;
+
+  const html = shell(`<p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>${body}`, unsubUrl);
+  const text = isCleaner
+    ? `${thanks}\n\n${status}\n\nRefer a cleaner and earn $${creditDollars} credit once they're ID-verified:\n${referralLink}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`
+    : `${thanks}\n\n${status}\n\nKnow a cleaner? Send them to ${APP_URL}/for-maids - the hold-up is cleaners, not customers.${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`;
+  return sendEmail({ to, subject: 'Where Match Maid is up to', html, text });
 }
 
 function escapeHtml(s) {
