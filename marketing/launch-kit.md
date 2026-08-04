@@ -38,7 +38,7 @@ are to cite you — so the social posts below *also* feed AI discovery.
 > We're building Match Maid, a local directory that sends cleaning enquiries
 > straight to you — no commission, ever. You keep 100% of what you charge.
 >
-> ✅ Free to list for your first 3 months
+> ✅ Free for everyone while we build NZ's biggest network
 > ✅ You set your own rates and hours
 > ✅ Customers contact you directly — you keep the client
 > ✅ Add ID / criminal check / insured badges to stand out

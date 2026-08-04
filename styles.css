@@ -1218,7 +1218,9 @@ a { color: inherit; text-decoration: none; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .profile-form .field, .find-form .field { margin-bottom: 1rem; }
 
-.plan-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin: 1rem 0; }
+/* auto-fit, not a fixed 1fr 1fr: there is a single plan now that everything is
+   free, and a two-column grid would leave half the card empty. */
+.plan-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin: 1rem 0; }
 .plan { padding: 1.8rem; border-right: 1px solid var(--line); transition: background 0.15s ease; }
 .plan:last-child { border-right: none; }
 .plan:hover { background: var(--paper-2); }

@@ -555,10 +555,9 @@ const PANELS = {
       <div class="trial-banner">
         <div class="trial-top">
           <strong>Free access</strong>
-          <span>Free while we build out our user base</span>
+          <span>Free for everyone while we build NZ's biggest network</span>
         </div>
-        <p class="muted">Full access with no fees while we build out our user base. After that it's a flat
-          $30/month (or $40/month for premium - top of the list).</p>
+        <p class="muted">Full access, no fees, no commission on any job. Everything you earn is yours.</p>
       </div>
 
       <div class="portal-note">
@@ -667,36 +666,24 @@ const PANELS = {
 
   subscription() {
     return `
-      <h1>Subscription</h1>
+      <h1>Your plan</h1>
       <div class="trial-banner">
-        <strong>You're listed for free</strong>
-        <p class="muted">Listed free while we build out our user base. Full access, no fees yet.</p>
+        <strong>Free for everyone while we build NZ's biggest network</strong>
+        <p class="muted">Full access, no fees, and no commission on any job - every cent a customer
+          pays you is yours. We'll give you plenty of notice before that ever changes.</p>
       </div>
       <div class="plan-cards">
-        <div class="plan">
-          <p class="tag">Standard</p>
-          <p class="price">$30<span>/month</span></p>
+        <div class="plan featured">
+          <p class="tag">What you get</p>
+          <p class="price">$0</p>
           <ul class="checks">
-            <li>Stay listed in your suburbs</li>
+            <li>Stay listed in every suburb you cover</li>
             <li>Unlimited exclusive enquiries</li>
             <li>No commission on any job</li>
+            <li>Verified badges on your profile</li>
           </ul>
-          <button class="btn outline full" type="button" disabled>Coming soon</button>
-        </div>
-        <div class="plan featured">
-          <p class="tag">Premium</p>
-          <p class="price">$40<span>/month</span></p>
-          <ul class="checks">
-            <li>Everything in Standard</li>
-            <li><strong>Top of the list</strong> in your suburbs</li>
-            <li>Premium badge on your profile</li>
-          </ul>
-          <button class="btn outline full" type="button" disabled>Coming soon</button>
         </div>
       </div>
-      <p class="muted" style="max-width:62ch">We want to make a platform that's affordable for everyone
-        and that maximises profits for cleaners. As we grow, we'll lower monthly costs for our cleaners.
-        <strong>Pricing is subject to fall at launch, depending on demand.</strong></p>
       <p class="save-msg" id="planMsg"></p>
       ${referralsHTML()}`;
   },
@@ -995,7 +982,7 @@ const HOWFLOW_STEPS = [
   { n: '03', h: 'Set your price', b: `Add your hourly rate. You set it, and it's shown openly; no race to the bottom.` },
   { n: '04', h: 'Add your locations', b: `Search a town and toggle the suburbs you cover, or wider areas near you.` },
   { n: '05', h: `Get <span class="hi">exclusive</span> enquiries`, b: `Clients who want your services at your times reach out to <span class="hi">you alone</span>. Reply and arrange directly; <span class="hi">you keep 100%</span>.` },
-  { n: '06', h: 'Free while we build out our user base', b: `Try it now for free while we build out our user base; after that it's a flat <span class="hi">$30/month</span> (or <span class="hi">$40 for premium</span>).` },
+  { n: '06', h: 'Free for everyone', b: `<span class="hi">Free for everyone</span> while we build New Zealand's biggest network of cleaners. No fees, and <span class="hi">no commission</span> on any job.` },
 ];
 
 function howflowHTML() {

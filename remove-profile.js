@@ -30,7 +30,7 @@ window.RemoveProfile = (function () {
            <p>${
              paused
                ? "You're hidden from browse, search and matches. Your account, messages and reviews are untouched. Resume whenever you're ready."
-               : 'Pause instead: stay listed for half the monthly fee and switch back on whenever you want more work. No cooling-off period.'
+               : 'Pause instead: hide your listing and switch back on whenever you want more work. Your profile, messages and reviews stay put, and there is no cooling-off period.'
            }</p>
            <div class="save-row">
              <button class="btn ${paused ? 'solid' : 'outline'}" id="pauseBtn" type="button" data-paused="${paused}">
@@ -47,7 +47,7 @@ window.RemoveProfile = (function () {
           ['Straight away', 'Your profile leaves Match Maid and you lose access to your account.'],
           ['Nothing is deleted', 'Your messages, reviews and history are all kept.'],
           [`${COOLDOWN_MONTHS}-month wait`, 'You cannot reactivate until the cooling-off period ends.'],
-          ['Billing', 'You are billed to the end of the current cycle. Restoring access means re-subscribing.'],
+          ['Cost', 'Nothing - Match Maid is free for everyone while we build the network. There is no bill to settle and nothing to cancel.'],
         ]
       : [
           ['Straight away', 'Your profile leaves Match Maid and you lose access to your account.'],
