@@ -1448,7 +1448,7 @@ function locSectionHTML() {
   const covered = coveredSuburbs();
   return `<div class="field" id="locField">
     <span>Where you work</span>
-    <p class="loc-note muted">Move the map to centre it where you set out from, then set how far you'll travel. Clients inside the circle can find you.</p>
+    <p class="loc-note muted">Drag the pin to where you set out from, then set how far you'll travel. Clients inside the circle can find you.</p>
     <div class="area-map" id="areaMap"></div>
     <div class="radius-row">
       <input type="range" id="radiusRange" min="1" max="100" step="1" value="${mpRadiusKm}"
@@ -1512,8 +1512,9 @@ function wireLocSection(root = panel) {
   // setView is not optional: Leaflet cannot project a layer onto a map with no
   // centre, so adding the circle first throws and takes the whole picker with it.
   // maxBounds is the validation box (165..180 E, -48..-33 S), not a looser frame
-  // around it: the centre can never leave the visible area, so pinning the
-  // circle to the centre can never produce a point the server would reject.
+  // around it: the pin cannot be dragged outside the visible map, so keeping the
+  // view inside the box keeps the pin inside it too. The clamp on drag is the
+  // real guarantee; this just stops you being able to aim somewhere invalid.
   const map = L.map(mount, {
     scrollWheelZoom: false, zoomControl: true,
     maxBounds: [[-48, 165], [-33, 180]], maxBoundsViscosity: 1,
@@ -1524,33 +1525,63 @@ function wireLocSection(root = panel) {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
 
-  // interactive:false - the circle is not a thing you grab. The whole map is the
-  // control: the circle stays pinned to the centre and you move the map beneath
-  // it, the way Facebook Marketplace's radius picker works.
+  // Drag the pin, not the map.
+  //
+  // This used to pin the circle to the map centre and have you pan the map
+  // underneath it. That reads as inverted: to move your area north you had to
+  // drag the map south, because the thing under your finger goes the opposite
+  // way to the thing you are aiming. Now the pin is the handle - it follows your
+  // finger - and panning the map just looks around, leaving your area where you
+  // put it on the ground.
+  //
+  // interactive:false on the circle so a drag starting anywhere over it still
+  // pans the map, rather than the fill swallowing the gesture.
   const circle = L.circle(mpCenter, {
     radius: mpRadiusKm * 1000, className: 'area-circle', interactive: false,
     color: '#b87333', weight: 1.5, fillColor: '#b87333', fillOpacity: 0.12,
   }).addTo(map);
 
-  // A crosshair fixed at the centre of the container, marking where you set out
-  // from. pointer-events:none so it never eats a drag. It never moves - the map
-  // moves under it - so it needs no repositioning.
-  L.DomUtil.create('div', 'area-cross', mount);
+  // A draggable marker rather than a hand-rolled pointer handler: L.Marker
+  // already does touch, inertia and keyboard, which a custom mousedown/mousemove
+  // would have to reimplement and get wrong on phones.
+  const pin = L.marker(mpCenter, {
+    draggable: true,
+    keyboard: true,
+    // Pan the map when the pin is dragged to the edge, so reaching the next
+    // suburb over doesn't mean drop, pan, pick it up again.
+    autoPan: true,
+    autoPanPadding: [40, 40],
+    title: 'Drag to where you set out from',
+    icon: L.divIcon({ className: 'area-pin', iconSize: [18, 18], iconAnchor: [9, 9] }),
+  }).addTo(map);
 
+  const clamp = (ll) => ({
+    lat: Math.min(-33, Math.max(-48, ll.lat)),
+    lng: Math.min(180, Math.max(165, ll.lng)),
+  });
   const fitRadius = () => map.fitBounds(circle.getBounds().pad(0.12));
   fitRadius();
 
-  // The map's centre IS the service centre. 'move' fires continuously through a
-  // drag (and a fling's inertia), so the circle and the covered-suburb count
-  // follow the map live - suburbs drop in and out as you pan. maxBounds keeps
-  // the centre inside NZ in the browser; the clamp is a belt-and-braces so a
-  // value the server would reject can never be what's saved, even mid-inertia.
-  map.on('move', () => {
-    const c = map.getCenter();
-    mpCenter = {
-      lat: Math.min(-33, Math.max(-48, c.lat)),
-      lng: Math.min(180, Math.max(165, c.lng)),
-    };
+  // 'drag' fires continuously, so the circle and the covered-suburb count follow
+  // the pin live - suburbs drop in and out as you move it. The clamp is
+  // belt-and-braces: a centre the server would reject can never be what is
+  // saved, even if a fling carries the pin past the edge.
+  pin.on('drag', () => {
+    mpCenter = clamp(pin.getLatLng());
+    circle.setLatLng(mpCenter);
+    refreshCoverage(root);
+  });
+  // Snap the pin back onto the clamped point, so what you see is what saves.
+  pin.on('dragend', () => {
+    pin.setLatLng(mpCenter);
+    circle.setLatLng(mpCenter);
+    refreshCoverage(root);
+  });
+  // Tapping the map is a second way to place it - easier than a long drag when
+  // the spot is off in the corner.
+  map.on('click', (e) => {
+    mpCenter = clamp(e.latlng);
+    pin.setLatLng(mpCenter);
     circle.setLatLng(mpCenter);
     refreshCoverage(root);
   });
