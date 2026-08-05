@@ -25,6 +25,12 @@ const Session = {
   },
   clear() {
     localStorage.removeItem(KEY);
+    // The splash gateway remembers which side you last picked and redirects
+    // straight back into it. Leaving that behind means "Log out" sends you to
+    // '/' which immediately bounces you into the maid funnel - so logging out
+    // looks like it logged you into the other side. Logging out resets the
+    // gateway too.
+    try { localStorage.removeItem('mm_side'); } catch {}
   },
   // Redirect a role to its portal.
   homeFor(role) {
@@ -64,7 +70,16 @@ function reflectAuthNav() {
   const myRoleWord = user.role === 'cleaner' ? 'maid' : 'customer';
   document.querySelectorAll('main a[href*="/login"]').forEach((el) => {
     const m = (el.getAttribute('href') || '').match(/[?&]role=(maid|customer)/);
-    if (m && m[1] !== myRoleWord) return; // a cross-role CTA - don't touch it
+    if (m && m[1] !== myRoleWord) {
+      // A cross-role CTA. Still valid - a logged-in cleaner may well want a
+      // customer account - so the link stands. But a bare "Log in" in the body
+      // while the header says "Log out" reads as a broken page, so say which
+      // side it is for.
+      if (/^\s*log\s?in\s*$/i.test(el.textContent.trim())) {
+        el.textContent = m[1] === 'maid' ? 'Log in as a maid' : 'Log in as a customer';
+      }
+      return;
+    }
     const wasLogin = /log\s?in/i.test(el.textContent);
     el.href = portalHref;
     if (wasLogin) el.textContent = portalLabel;

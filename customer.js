@@ -45,6 +45,10 @@ function parseLoc(val) {
 // sends the id.
 let suburbList = [];
 let suburbsFailed = false; // the /api/suburbs fetch errored - say so, don't show a dead picker
+// Whether search/messaging is open to THIS account. The server decides; this
+// only picks which Find panel to draw. Defaults closed, so a failed check shows
+// the waitlist card rather than a dead end.
+let canSearch = false;
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
 let pendingReviews = []; // cleans the customer has been asked to rate, and hasn't
@@ -159,6 +163,12 @@ const postJSON = (url, body) =>
       )
     : Promise.reject();
 
+function loadCanSearch() {
+  if (!uid) return;
+  getJSON(`/api/can-message?userId=${encodeURIComponent(uid)}`)
+    .then((d) => { if (d && d.allowed) { canSearch = true; reRenderIf('find', 'overview'); } })
+    .catch(() => {});
+}
 function loadSuburbs() {
   getJSON('/api/suburbs')
     .then((list) => { suburbList = Array.isArray(list) ? list : []; reRenderIf('find', 'profile'); refreshCwizForSuburbs(); })
@@ -288,6 +298,7 @@ async function initMessages() {
 
 // Kick off all loads for the logged-in customer.
 if (uid) {
+  loadCanSearch();
   loadSuburbs();
   loadDirectory();
   loadProfile();
@@ -329,10 +340,12 @@ const PANELS = {
       ${pendingReviewsHTML()}
       <div class="cta-card">
         <div>
-          <h2>Cleaner search is coming soon</h2>
-          <p class="muted">We're building our network of local cleaners first. You're on the waitlist - we'll email you the moment they're available in your area.</p>
+          <h2>${canSearch ? 'Find a cleaner' : 'Cleaner search is coming soon'}</h2>
+          <p class="muted">${canSearch
+            ? 'Search is open on your account. Browse local cleaners, compare rates and message whoever you pick - replies come back to your Messages tab.'
+            : "We're building our network of local cleaners first. You're on the waitlist - we'll email you the moment they're available in your area."}</p>
         </div>
-        <button class="btn solid" data-goto="find" type="button">Learn more</button>
+        <button class="btn solid" data-goto="find" type="button">${canSearch ? 'Find a cleaner' : 'Learn more'}</button>
       </div>
 
       ${howflowHTML()}`;
@@ -382,7 +395,24 @@ const PANELS = {
 
   // Search is switched off while we build up the cleaner network. Customers can
   // still complete their profile, which is their place on the waitlist.
+  //
+  // Accounts search is open to (the admin, or everyone once MESSAGING_OPEN is
+  // set) get a way through instead of the waitlist card. The real search lives
+  // on /browse - it is the ungated public one, and it is better than the portal
+  // search that was removed: live availability, the price histogram, and areas
+  // derived from each cleaner's service circle.
   find() {
+    if (canSearch) {
+      return `
+        <h1>Find a cleaner</h1>
+        <div class="panel-card">
+          <p class="wizard-lede">Search is open on your account while it stays closed to everyone
+            else. Browse is the full search - filter by suburb, clean type, availability and price,
+            then message whoever you pick.</p>
+          <p class="muted">Their replies come back here, in <strong>Messages</strong>.</p>
+          <a class="btn solid" href="/browse">Search cleaners</a>
+        </div>`;
+    }
     return `
       <h1>Cleaner search is coming soon</h1>
       <div class="panel-card waitlist-card">
