@@ -1,13 +1,23 @@
 name: Nudges and updates
 
-# Manual only, deliberately. These send mail to real people, and unlike the
-# review prompts there is no event that makes "now" the right moment - you
-# decide when. Add a `schedule:` here once email is configured and you have
-# watched a couple of runs.
+# Weekly on a schedule, plus manual whenever you want.
 #
-# Both jobs default to a DRY RUN: they report who would be mailed and send
-# nothing. Set send = true to actually send.
+# The scheduled run sends the profile nudges for real. That is safe because of
+# what the endpoint itself guarantees, not because of anything here: each person
+# can only ever receive each nudge once (a unique index enforces it), nobody is
+# nudged inside 48 hours of signing up, and opting out excludes you. So a weekly
+# run only ever reaches people who newly stalled during that week - it cannot
+# re-mail the same person, however many times it fires.
+#
+# The pre-launch broadcast is deliberately NOT scheduled. It is a one-off, and
+# the schedule defaults to the nudges task so it can never pick it up by
+# accident - run that one by hand.
+#
+# 20:00 UTC Sunday = Monday 8am NZST / 9am NZDT. A weekday morning, so anyone
+# who acts on it lands on the site during the day.
 on:
+  schedule:
+    - cron: '0 20 * * 0'
   workflow_dispatch:
     inputs:
       task:
@@ -35,8 +45,12 @@ jobs:
       - name: Send (or dry-run) the selected mail
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          TASK: ${{ inputs.task }}
-          SEND: ${{ inputs.send }}
+          # A scheduled run carries no inputs at all - every `inputs.*` is empty.
+          # Left as-is that would post to /api/tasks/ (a 404) and, because an
+          # empty SEND is not "true", would dry-run forever and never actually
+          # send. Both have to be defaulted explicitly for the schedule.
+          TASK: ${{ inputs.task || 'nudges' }}
+          SEND: ${{ github.event_name == 'schedule' && 'true' || inputs.send }}
           KIND: ${{ inputs.kind }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
