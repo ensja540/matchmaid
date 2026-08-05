@@ -144,6 +144,17 @@
         <div id="capNotice" hidden>
           <button class="btn solid full" type="button" id="capNoticeOk">Got it</button>
         </div>
+        <!-- Compose half: only for accounts messaging is open to (see /api/can-message). -->
+        <div id="capCompose" hidden>
+          <form id="composeForm" novalidate>
+            <label class="field"><span>Your message</span>
+              <textarea id="composeMsg" rows="5" placeholder="Hi - I'm after a regular clean, roughly fortnightly. Are you taking new clients?"></textarea>
+            </label>
+            <button class="btn solid full" type="submit" id="composeSend">Send enquiry</button>
+            <p class="auth-msg" id="composeMsgOut" role="status"></p>
+          </form>
+          <p class="reassure">Goes only to this cleaner. Replies land in your portal.</p>
+        </div>
       </div>
     </div>
 

@@ -189,11 +189,17 @@ function paintResults() {
   meta.textContent = `${scored.length} relevant cleaner${scored.length > 1 ? 's' : ''} in ${p.locLabel}, ${lead}.`;
 
   const cards = scored.map((r) => resultCard(r, p));
-  if (cards.length > 2) cards.splice(2, 0, hookCard());
+  // The hook card says cleaners aren't taking enquiries yet - which would flatly
+  // contradict a working Contact button, so it only shows while messaging is off.
+  if (cards.length > 2 && !messagingOpen) cards.splice(2, 0, hookCard());
   results.innerHTML = cards.join('');
 
   results.querySelectorAll('[data-contact]').forEach((b) =>
-    b.addEventListener('click', () => goWaitlist(b.dataset.contact))
+    b.addEventListener('click', () =>
+      messagingOpen
+        ? openCompose(b.dataset.contact, b.dataset.contactId)
+        : goWaitlist(b.dataset.contact)
+    )
   );
   results.querySelectorAll('[data-hook]').forEach((b) => b.addEventListener('click', () => goWaitlist(null)));
   results.querySelectorAll('[data-cleaner]').forEach((b) =>
@@ -224,7 +230,7 @@ function resultCard(r, p) {
     ${offeredChips || missingChips ? `<div class="chips">${offeredChips}${missingChips}</div>` : ''}
     ${(r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
     <div class="result-actions">
-      <button class="btn solid sm" type="button" data-contact="${r.name}">Contact ${first}</button>
+      <button class="btn solid sm" type="button" data-contact="${escapeHtml(r.name)}" data-contact-id="${escapeHtml(r.id)}">Contact ${first}</button>
     </div>
   </article>`;
 }
@@ -252,9 +258,12 @@ async function openCleanerModal(id) {
     const c = await res.json();
     cleanerModalBody.innerHTML = cleanerCardHTML(c);
     const btn = cleanerModalBody.querySelector('[data-cpcontact]');
+    // Same fork as the Contact button on a result card - the profile modal must
+    // not still dead-end into the waitlist once messaging is open.
     btn?.addEventListener('click', () => {
       cleanerModal.hidden = true;
-      goWaitlist(btn.dataset.cpname);
+      if (messagingOpen) openCompose(btn.dataset.cpname, btn.dataset.cpcontact);
+      else goWaitlist(btn.dataset.cpname);
     });
   } catch {
     cleanerModalBody.innerHTML = '<p class="muted">Could not load this profile.</p>';
@@ -370,7 +379,28 @@ const capForm = document.getElementById('capForm');
 const capMsg = document.getElementById('capMsg');
 const capBody = document.getElementById('capBody');
 const capNotice = document.getElementById('capNotice');
+const capCompose = document.getElementById('capCompose');
 let pendingCleaner = null;
+let pendingCleanerId = null;
+
+// Messaging is off for the public while the network is being built, but open to
+// specific accounts so the flow can be used and watched before launch. The
+// server decides (admin, or MESSAGING_OPEN); this only decides what to render.
+let messagingOpen = false;
+(function checkMessaging() {
+  const u = window.Session && Session.get();
+  if (!u || !u.id) return;
+  fetch(`/api/can-message?userId=${encodeURIComponent(u.id)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (!d || !d.allowed) return;
+      messagingOpen = true;
+      // Results may already be on screen - repaint so the waitlist hook card
+      // goes away and Contact starts meaning contact.
+      if (lastResults && lastResults.length) paintResults();
+    })
+    .catch(() => {});
+})();
 
 document.getElementById('signupHook')?.addEventListener('click', () => goWaitlist(null));
 document.getElementById('capNoticeOk')?.addEventListener('click', closeModal);
@@ -387,9 +417,65 @@ function goWaitlist(cleanerName) {
   openModal(cleanerName || null, !!(window.Session && Session.get()));
 }
 
+// Real enquiry, for accounts messaging is open to. Posts to /api/contact, which
+// reuses an existing thread with this cleaner rather than starting a second one.
+function openCompose(cleanerName, cleanerId) {
+  pendingCleaner = cleanerName;
+  pendingCleanerId = cleanerId;
+  capBody.hidden = true;
+  capNotice.hidden = true;
+  capCompose.hidden = false;
+  modalTitle.textContent = `Message ${cleanerName}`;
+  modalSub.textContent = 'Exclusively yours - this goes to this cleaner only, not out to a pool.';
+  const out = document.getElementById('composeMsgOut');
+  out.textContent = '';
+  out.className = 'auth-msg';
+  modal.hidden = false;
+  setTimeout(() => document.getElementById('composeMsg')?.focus(), 30);
+}
+
+document.getElementById('composeForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('composeSend');
+  const out = document.getElementById('composeMsgOut');
+  const body = document.getElementById('composeMsg').value.trim();
+  const user = window.Session && Session.get();
+  if (!user || !user.id) { out.className = 'auth-msg error'; out.textContent = 'Log in first.'; return; }
+  if (!body) { out.className = 'auth-msg error'; out.textContent = 'Write a short message first.'; return; }
+  btn.disabled = true;
+  out.className = 'auth-msg';
+  out.textContent = 'Sending…';
+  try {
+    const p = lastPrefs || currentPrefs();
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientUserId: user.id,
+        cleanerId: pendingCleanerId,
+        message: body,
+        serviceSlug: p.baseService,
+        // The search may be a whole town, so send one real suburb rather than
+        // a label like "Christchurch (all)" that resolves to nothing.
+        suburb: p.suburbs && p.suburbs.length === 1 ? p.suburbs[0] : '',
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'could not send');
+    out.className = 'auth-msg ok';
+    out.innerHTML = `Sent to ${escapeHtml(pendingCleaner)}. <a class="ulink" href="/customer">Read replies in your portal</a>.`;
+    document.getElementById('composeMsg').value = '';
+  } catch (err) {
+    out.className = 'auth-msg error';
+    out.textContent = `Could not send that (${err.message}). Try again.`;
+  }
+  btn.disabled = false;
+});
+
 function openModal(cleanerName, alreadyOnWaitlist) {
   pendingCleaner = cleanerName;
   const who = cleanerName ? `message ${cleanerName}` : 'message your cleaner';
+  capCompose.hidden = true;
   capBody.hidden = !!alreadyOnWaitlist;
   capNotice.hidden = !alreadyOnWaitlist;
   if (alreadyOnWaitlist) {

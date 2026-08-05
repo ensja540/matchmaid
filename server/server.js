@@ -1785,6 +1785,26 @@ async function notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, su
   });
 }
 
+// Who may actually message a cleaner while the marketplace is still in its
+// waitlist phase. Two ways in: the admin (so the account can be used and the
+// flow exercised end to end before anyone else sees it), or MESSAGING_OPEN set
+// on the server, which is the switch to flip at launch for everybody.
+//
+// Note this is a UI gate, not a security boundary: /api/contact below has never
+// been restricted, and a determined visitor could always have called it directly.
+// What it governs is whether the button is offered, not who the server trusts.
+async function canMessage(userId) {
+  if (String(process.env.MESSAGING_OPEN || '').toLowerCase() === 'on') return true;
+  return isAdmin(userId);
+}
+app.get('/api/can-message', async (req, res) => {
+  try {
+    res.json({ allowed: await canMessage(req.query.userId) });
+  } catch {
+    res.json({ allowed: false });
+  }
+});
+
 // Contact a cleaner: reuse the existing thread with them, or create an enquiry
 // + conversation, then (optionally) post the first message.
 app.post('/api/contact', async (req, res) => {
