@@ -2148,6 +2148,21 @@ app.post('/api/tasks/post-review-prompts', async (req, res) => {
 // left alone.
 const NUDGE_MIN_AGE_HOURS = 48;
 
+// Quiet period after ANY nudge or campaign mail. The per-kind unique index stops
+// the same message twice; this stops two *different* messages landing on the
+// same person back to back - which is what a broadcast run does to whoever was
+// nudged that morning. Two emails in one day from a service you signed up to and
+// haven't used yet is how you get marked as spam.
+//
+// It is a cooldown, not an exclusion: they become eligible again once the window
+// passes, so a one-off broadcast will simply skip them unless it is re-run later.
+// Suppressed people are counted in the report rather than silently dropped.
+const NUDGE_COOLDOWN_DAYS = 14;
+const RECENTLY_MAILED = `exists (
+  select 1 from nudges n2
+   where n2.user_id = u.id
+     and n2.sent_at > now() - interval '${NUDGE_COOLDOWN_DAYS} days')`;
+
 // Unsubscribe links are signed rather than stored: an HMAC of the user id under
 // CRON_SECRET. No column to keep in sync, and a link can't be guessed or
 // enumerated from a user id.
@@ -2201,18 +2216,22 @@ const NUDGE_SEGMENTS = {
      where u.role = 'client' and u.email_verified and lp.default_suburb_id is null`,
 };
 
+// Returns { ready, cooling } - cooling are people who match the segment but were
+// mailed too recently, kept visible so the report never reads as "nobody left"
+// when it means "not yet".
 async function nudgeCandidates(kind) {
   const base = NUDGE_SEGMENTS[kind];
-  if (!base) return [];
+  if (!base) return { ready: [], cooling: [] };
   const { rows } = await query(
-    `${base}
+    `${base.replace('select u.id, u.email, u.full_name, u.role',
+                    `select u.id, u.email, u.full_name, u.role, ${RECENTLY_MAILED} as cooling`)}
        and u.removed_at is null and u.status = 'active' and not u.nudge_opt_out
        and u.created_at < now() - interval '${NUDGE_MIN_AGE_HOURS} hours'
        and not exists (select 1 from nudges n where n.user_id = u.id and n.kind = $1)
      order by u.created_at`,
     [kind]
   );
-  return rows;
+  return { ready: rows.filter((r) => !r.cooling), cooling: rows.filter((r) => r.cooling) };
 }
 
 app.post('/api/tasks/nudges', async (req, res) => {
@@ -2235,8 +2254,14 @@ app.post('/api/tasks/nudges', async (req, res) => {
     const report = {};
     let sent = 0;
     for (const kind of kinds) {
-      const people = await nudgeCandidates(kind);
-      report[kind] = { eligible: people.length, emails: people.map((p) => p.email) };
+      const { ready: people, cooling } = await nudgeCandidates(kind);
+      report[kind] = {
+        eligible: people.length,
+        emails: people.map((p) => p.email),
+        // Visible, not silently dropped: these are due, just not yet.
+        coolingOff: cooling.length,
+        coolingEmails: cooling.map((p) => p.email),
+      };
       if (!send) continue;
       let ok = 0;
       for (const p of people) {
@@ -2279,8 +2304,8 @@ app.post('/api/tasks/prelaunch-update', async (req, res) => {
   // rather than being silently swallowed as "already sent".
   const kind = String(req.query.tag || 'prelaunch_2026_08').trim().slice(0, 60);
   try {
-    const { rows } = await query(
-      `select u.id, u.email, u.full_name, u.role, cp.referral_code
+    const all = await query(
+      `select u.id, u.email, u.full_name, u.role, cp.referral_code, ${RECENTLY_MAILED} as cooling
          from users u
          left join cleaner_profiles cp on cp.user_id = u.id
         where u.role in ('client','cleaner')
@@ -2290,8 +2315,11 @@ app.post('/api/tasks/prelaunch-update', async (req, res) => {
         order by u.role, u.created_at`,
       [kind]
     );
+    const rows = all.rows.filter((r) => !r.cooling);
+    const cooling = all.rows.filter((r) => r.cooling);
     const report = { kind, eligible: rows.length, cleaners: rows.filter((r) => r.role === 'cleaner').length,
-      customers: rows.filter((r) => r.role === 'client').length, emails: rows.map((r) => r.email) };
+      customers: rows.filter((r) => r.role === 'client').length, emails: rows.map((r) => r.email),
+      coolingOff: cooling.length, coolingEmails: cooling.map((r) => r.email) };
     let sent = 0;
     if (send) {
       const base = process.env.APP_URL || 'https://matchmaid.co.nz';
