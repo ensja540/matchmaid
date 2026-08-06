@@ -249,6 +249,8 @@ function drawCoverageMap(city) {
   const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true, preferCanvas: true })
     .setView([city.center.lat, city.center.lng], city.zoom || 11);
   coverageMap = map;
+  // Wheel zoom only while the pointer is over the map - see map-gestures.js.
+  if (window.mmHoverZoom) mmHoverZoom(map, mount);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',

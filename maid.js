@@ -1507,8 +1507,11 @@ function wireLocSection(root = panel) {
   if (!mpCenter) mpCenter = defaultCenter();
 
   if (areaMap) { areaMap.remove(); areaMap = null; }
-  // scrollWheelZoom off on purpose: the map sits mid-form, and hijacking the
-  // page scroll to zoom is the single most hated map behaviour there is.
+  // scrollWheelZoom starts off on purpose: the map sits mid-form, and hijacking
+  // the page scroll to zoom is the single most hated map behaviour there is.
+  // mmHoverZoom below arms it only while the pointer is over the map, which is
+  // the compromise - two fingers zoom when you are on it, and never when you are
+  // just scrolling past.
   // setView is not optional: Leaflet cannot project a layer onto a map with no
   // centre, so adding the circle first throws and takes the whole picker with it.
   // maxBounds is the validation box (165..180 E, -48..-33 S), not a looser frame
@@ -1520,6 +1523,7 @@ function wireLocSection(root = panel) {
     maxBounds: [[-48, 165], [-33, 180]], maxBoundsViscosity: 1,
   }).setView([mpCenter.lat, mpCenter.lng], 11);
   areaMap = map;
+  if (window.mmHoverZoom) mmHoverZoom(map, mount);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',

@@ -2265,6 +2265,15 @@ const NUDGE_SEGMENTS = {
     select u.id, u.email, u.full_name, u.role from users u
       join cleaner_profiles cp on cp.user_id = u.id
      where u.role = 'cleaner' and u.email_verified and cp.hourly_rate_min is null`,
+  // Ordered before the ID nudge on purpose: an unmatched listing is a worse
+  // problem than an unbadged one, and the 14-day cooldown means whichever fires
+  // first is the only one they hear for a fortnight.
+  cleaner_no_availability: `
+    select u.id, u.email, u.full_name, u.role from users u
+      join cleaner_profiles cp on cp.user_id = u.id
+     where u.role = 'cleaner' and u.email_verified
+       and cp.listing_status = 'active'
+       and not exists (select 1 from availability_rules ar where ar.cleaner_id = cp.id)`,
   cleaner_no_id: `
     select u.id, u.email, u.full_name, u.role from users u
       join cleaner_profiles cp on cp.user_id = u.id

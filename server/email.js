@@ -160,6 +160,16 @@ const NUDGE = {
     cta: 'Finish my listing',
     href: '/maid',
   },
+  // Live in search with a rate, but no hours - so nothing to match a customer's
+  // requested time against. The most consequential gap of the lot: this one
+  // makes a listing look present and behave absent.
+  cleaner_no_availability: {
+    subject: 'Add your hours so customers can match with you',
+    lead: 'Your Match Maid listing is live, but you haven\'t marked which times you can work.',
+    body: 'Customers search by when they need someone, and we match them to cleaners who are free then - so without any hours set, your profile sits below cleaners who have them. Tapping the mornings and afternoons you\'re usually free takes a minute, and you can change it whenever.',
+    cta: 'Set my availability',
+    href: '/maid',
+  },
   // Live in search, but no ID badge - the single biggest trust signal.
   cleaner_no_id: {
     subject: 'Add your ID badge and get picked more often',
