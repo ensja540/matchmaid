@@ -1131,6 +1131,21 @@ app.post('/api/verification', async (req, res) => {
 
 // --- Admin: review uploaded verification documents --------------------------
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'ensor.jack@gmail.com').toLowerCase();
+
+// The admin's own accounts are test data, not market signal. Left in they
+// overstate every number on the dashboard - and materially, at this size: the
+// admin's cleaner listing is active, ID-verified and covers 12 suburbs, so it
+// was one of only three verified cleaners and a visible blob on the heatmap.
+//
+// A literal rather than a bound parameter because these fragments are spliced
+// into queries whose placeholder numbering varies; the quote-doubling keeps it
+// safe even though the value comes from our own env.
+const ADMIN_EMAIL_SQL = `'${ADMIN_EMAIL.replace(/'/g, "''")}'`;
+// For a query that already has the users table in scope.
+const notAdmin = (alias = 'u') => `lower(${alias}.email) <> ${ADMIN_EMAIL_SQL}`;
+// For one that only has cleaner_profiles - the row carries no email of its own.
+const cpNotAdmin = (alias = 'cp') =>
+  `not exists (select 1 from users au where au.id = ${alias}.user_id and lower(au.email) = ${ADMIN_EMAIL_SQL})`;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function isAdmin(userId) {
   // Check the shape first. Postgres rejects anything that is not a uuid, so a
@@ -1186,6 +1201,7 @@ app.get('/api/admin/stats', async (req, res) => {
          left join users u
            on (u.created_at at time zone 'Pacific/Auckland')::date = span.d
           and u.role in ('client','cleaner')
+          and ${notAdmin()}
         group by span.d
         order by span.d`,
       [days]
@@ -1193,10 +1209,10 @@ app.get('/api/admin/stats', async (req, res) => {
 
     // All-time totals, and how many of those are still active.
     const totals = await query(
-      `select role,
+      `select u.role,
               count(*)::int as total,
-              count(*) filter (where status = 'active')::int as active
-         from users where role in ('client','cleaner') group by role`
+              count(*) filter (where u.status = 'active')::int as active
+         from users u where u.role in ('client','cleaner') and ${notAdmin()} group by u.role`
     );
     const byRole = Object.fromEntries(totals.rows.map((r) => [r.role, r]));
 
@@ -1212,7 +1228,8 @@ app.get('/api/admin/stats', async (req, res) => {
     // suburb-name part back to a row, preferring the one whose own town matches.
     // The trailing " City"/" District" is dropped for a friendlier label.
     const recent = `(u.created_at at time zone 'Pacific/Auckland')::date
-                    > (now() at time zone 'Pacific/Auckland')::date - $1::int`;
+                    > (now() at time zone 'Pacific/Auckland')::date - $1::int
+                    and ${notAdmin()}`;
     const topTowns = await query(
       `with signups as (
          select 'client' as role, s.territorial_authority as ta
@@ -1256,25 +1273,25 @@ app.get('/api/admin/stats', async (req, res) => {
     // enquiries they send), so the numbers are grouped that way.
     const adv = (await query(
       `select
-         (select count(*) filter (where listing_status = 'active') from cleaner_profiles)::int as active_listings,
-         (select count(*) filter (where id_verified) from cleaner_profiles)::int         as verified_id,
-         (select count(*) filter (where police_verified) from cleaner_profiles)::int      as verified_police,
-         (select count(*) filter (where insurance_verified) from cleaner_profiles)::int   as verified_insurance,
+         (select count(*) filter (where cp.listing_status = 'active') from cleaner_profiles cp where ${cpNotAdmin()})::int as active_listings,
+         (select count(*) filter (where cp.id_verified) from cleaner_profiles cp where ${cpNotAdmin()})::int         as verified_id,
+         (select count(*) filter (where cp.police_verified) from cleaner_profiles cp where ${cpNotAdmin()})::int      as verified_police,
+         (select count(*) filter (where cp.insurance_verified) from cleaner_profiles cp where ${cpNotAdmin()})::int   as verified_insurance,
          (select count(distinct csa.suburb_id)
             from cleaner_service_areas csa
             join cleaner_profiles cp on cp.id = csa.cleaner_id
-           where cp.listing_status = 'active')::int as suburbs_covered,
+           where cp.listing_status = 'active' and ${cpNotAdmin()})::int as suburbs_covered,
          (select count(*) from enquiries)::int                                            as enquiries_total,
          (select count(*) filter (where responded_at is not null) from enquiries)::int    as enquiries_responded,
          (select count(*) from enquiries where created_at > now() - ($1 || ' days')::interval)::int as enquiries_window,
          (select count(*) from bookings)::int                                             as bookings_total,
          (select count(*) filter (where status = 'published') from reviews)::int          as reviews_total,
          (select round(avg(overall), 2) from reviews where status = 'published')          as avg_rating,
-         (select count(*) filter (where created_at > now() - interval '7 days')
-            from users where role in ('client','cleaner'))::int as signups_this_week,
-         (select count(*) filter (where created_at <= now() - interval '7 days'
-                               and created_at >  now() - interval '14 days')
-            from users where role in ('client','cleaner'))::int as signups_prev_week`,
+         (select count(*) filter (where u.created_at > now() - interval '7 days')
+            from users u where u.role in ('client','cleaner') and ${notAdmin()})::int as signups_this_week,
+         (select count(*) filter (where u.created_at <= now() - interval '7 days'
+                               and u.created_at >  now() - interval '14 days')
+            from users u where u.role in ('client','cleaner') and ${notAdmin()})::int as signups_prev_week`,
       [String(days)]
     )).rows[0];
 
@@ -1309,7 +1326,7 @@ app.get('/api/admin/stats', async (req, res) => {
          from users u
          left join cleaner_profiles cp on cp.user_id = u.id
          left join client_profiles  lp on lp.user_id = u.id
-        where u.role in ('client','cleaner') and u.removed_at is null`
+        where u.role in ('client','cleaner') and u.removed_at is null and ${notAdmin()}`
     )).rows[0];
 
     // Where signups came from, over the same window as everything else.
@@ -1333,9 +1350,9 @@ app.get('/api/admin/stats', async (req, res) => {
     );
 
     const removedRow = (await query(
-      `select count(*) filter (where role = 'cleaner')::int as cleaners,
-              count(*) filter (where role = 'client')::int  as customers
-         from users where role in ('client','cleaner') and removed_at is not null`
+      `select count(*) filter (where u.role = 'cleaner')::int as cleaners,
+              count(*) filter (where u.role = 'client')::int  as customers
+         from users u where u.role in ('client','cleaner') and u.removed_at is not null and ${notAdmin()}`
     )).rows[0];
 
     const totalCleaners = byRole.cleaner?.total ?? 0;
@@ -1434,6 +1451,7 @@ app.get('/api/admin/coverage', async (req, res) => {
                from cleaner_service_areas csa
                join cleaner_profiles cp on cp.id = csa.cleaner_id
               where csa.suburb_id = s.id and cp.listing_status = 'active'
+                and ${cpNotAdmin()}
            ) a on true
           where s.lat is not null${national ? '' : ` and ${withinKm} <= $3`}
           order by coalesce(a.n, 0) desc, s.name`,

@@ -333,6 +333,8 @@ function renderStats() {
 
       ${kpiRowHTML(d, totalInRange)}
       ${statsTable ? tableHTML(series) : chartHTML(series)}
+      <p class="muted stats-note">Your own accounts are left out of every number here, and off the
+        coverage map - they are test data, not market signal.</p>
     </div>
     ${funnelHTML(d)}
     ${sourcesHTML(d)}
