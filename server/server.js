@@ -1407,9 +1407,14 @@ app.get('/api/admin/stats', async (req, res) => {
 // Lincoln and Kaiapoi, which are separate one-suburb TAs but plainly part of
 // the market a Christchurch cleaner works - drawing the boundary at the council
 // line would show those as absent rather than uncovered.
+// A view with no radius covers the whole country. That is the one that answers
+// "where are we not?", which is a different question from "how deep are we in
+// the two cities we launched in" - and the answer is mostly "everywhere", so it
+// is worth being able to see at a glance.
 const COVERAGE_CITIES = [
   { key: 'chch', name: 'Christchurch', lat: -43.5321, lng: 172.6362, radiusKm: 35 },
   { key: 'akl', name: 'Auckland', lat: -36.8485, lng: 174.7633, radiusKm: 45 },
+  { key: 'nz', name: 'All of NZ', lat: -41.0, lng: 173.5, radiusKm: null, zoom: 5 },
 ];
 app.get('/api/admin/coverage', async (req, res) => {
   try {
@@ -1419,8 +1424,9 @@ app.get('/api/admin/coverage', async (req, res) => {
       + sin(radians($1)) * sin(radians(s.lat))))`;
     const cities = [];
     for (const c of COVERAGE_CITIES) {
+      const national = c.radiusKm == null;
       const { rows } = await query(
-        `select s.id, s.name, s.territorial_authority as town, s.lat, s.lng,
+        `select s.id, s.name, s.territorial_authority as town, s.region, s.lat, s.lng,
                 coalesce(a.n, 0)::int as cleaners
            from suburbs s
            left join lateral (
@@ -1429,23 +1435,39 @@ app.get('/api/admin/coverage', async (req, res) => {
                join cleaner_profiles cp on cp.id = csa.cleaner_id
               where csa.suburb_id = s.id and cp.listing_status = 'active'
            ) a on true
-          where s.lat is not null and ${withinKm} <= $3
+          where s.lat is not null${national ? '' : ` and ${withinKm} <= $3`}
           order by coalesce(a.n, 0) desc, s.name`,
-        [c.lat, c.lng, c.radiusKm]
+        national ? [] : [c.lat, c.lng, c.radiusKm]
       );
       const suburbs = rows.map((r) => ({
-        id: r.id, name: r.name, town: r.town,
+        id: r.id, name: r.name, town: r.town, region: r.region,
         lat: Number(r.lat), lng: Number(r.lng), cleaners: r.cleaners,
       }));
       const counts = suburbs.map((s) => s.cleaners);
+      // Nationally, "86 of 1688 suburbs" is a number nobody can hold. The
+      // regions with any coverage at all is the readable version of the same
+      // fact, and it is what says how far from nationwide we actually are.
+      const byRegion = new Map();
+      for (const s of suburbs) {
+        const cur = byRegion.get(s.region) || { region: s.region, total: 0, covered: 0 };
+        cur.total++;
+        if (s.cleaners > 0) cur.covered++;
+        byRegion.set(s.region, cur);
+      }
+      const regions = [...byRegion.values()].sort((a, b) => b.covered - a.covered || a.region.localeCompare(b.region));
       cities.push({
         key: c.key, name: c.name, center: { lat: c.lat, lng: c.lng }, radiusKm: c.radiusKm,
+        zoom: c.zoom || null,
+        national,
         suburbs,
+        regions,
         stats: {
           total: suburbs.length,
           covered: counts.filter((n) => n > 0).length,
           uncovered: counts.filter((n) => n === 0).length,
           max: counts.length ? Math.max(...counts) : 0,
+          regionsCovered: regions.filter((r) => r.covered > 0).length,
+          regionsTotal: regions.length,
         },
       });
     }

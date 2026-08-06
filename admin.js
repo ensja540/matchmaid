@@ -161,6 +161,29 @@ function covLegendHTML(max) {
   </div>`;
 }
 
+// Region-by-region coverage, for the national view only. The map shows where
+// the dots are; this says how thin they are - a region with 3 of 233 suburbs
+// covered looks like a presence on a map and is barely one in fact.
+function regionBarsHTML(city) {
+  const regions = (city.regions || []).filter((r) => r.region);
+  if (!regions.length) return '';
+  const shown = regions.filter((r) => r.covered > 0);
+  const empty = regions.length - shown.length;
+  if (!shown.length) return '<p class="muted cov-regions-note">No region has a single covered suburb yet.</p>';
+  return `<div class="cov-regions">
+    <h4 class="adv-group-title">Where we actually reach</h4>
+    <ol class="tt-list">${shown.map((r) => {
+      const pct = r.total ? Math.round((r.covered / r.total) * 100) : 0;
+      return `<li class="tt-row">
+        <span class="tt-name">${esc(r.region)}</span>
+        <span class="tt-bar" aria-hidden="true"><i class="tt-fill tt-cust" style="width:${pct}%"></i></span>
+        <span class="tt-count">${r.covered}<span class="tt-split">of ${r.total} · ${pct}%</span></span>
+      </li>`;
+    }).join('')}</ol>
+    ${empty ? `<p class="muted cov-regions-note">${empty} other region${empty === 1 ? '' : 's'} with no cleaner at all.</p>` : ''}
+  </div>`;
+}
+
 function renderCoverage() {
   const d = coverageData;
   if (!d || !coverageBody) return;
@@ -179,11 +202,14 @@ function renderCoverage() {
         <button class="btn ghost sm sg-toggle" type="button" data-cov-table>${coverageTable ? 'Show map' : 'Show table'}</button>
       </div>
       <div class="sg-kpis">
-        <div class="sg-kpi"><span class="sg-kpi-label">Suburbs in range</span><span class="sg-kpi-value">${s.total}</span><span class="sg-kpi-sub">within ${city.radiusKm}km of the centre</span></div>
+        <div class="sg-kpi"><span class="sg-kpi-label">${city.national ? 'Suburbs in NZ' : 'Suburbs in range'}</span><span class="sg-kpi-value">${s.total.toLocaleString()}</span><span class="sg-kpi-sub">${city.national ? 'every suburb we know of' : `within ${city.radiusKm}km of the centre`}</span></div>
         <div class="sg-kpi"><span class="sg-kpi-label">Covered</span><span class="sg-kpi-value">${s.covered}</span><span class="sg-kpi-sub">${pct}% of them</span></div>
-        <div class="sg-kpi"><span class="sg-kpi-label">No cleaner</span><span class="sg-kpi-value">${s.uncovered}</span><span class="sg-kpi-sub">gaps to recruit into</span></div>
-        <div class="sg-kpi"><span class="sg-kpi-label">Best covered</span><span class="sg-kpi-value">${s.max}</span><span class="sg-kpi-sub">cleaners on one suburb</span></div>
+        <div class="sg-kpi"><span class="sg-kpi-label">No cleaner</span><span class="sg-kpi-value">${s.uncovered.toLocaleString()}</span><span class="sg-kpi-sub">gaps to recruit into</span></div>
+        ${city.national
+          ? `<div class="sg-kpi"><span class="sg-kpi-label">Regions reached</span><span class="sg-kpi-value">${s.regionsCovered} <span class="sg-kpi-of">/ ${s.regionsTotal}</span></span><span class="sg-kpi-sub">with at least one cleaner</span></div>`
+          : `<div class="sg-kpi"><span class="sg-kpi-label">Best covered</span><span class="sg-kpi-value">${s.max}</span><span class="sg-kpi-sub">cleaners on one suburb</span></div>`}
       </div>
+      ${city.national ? regionBarsHTML(city) : ''}
       ${coverageTable ? covTableHTML(city) : `${covLegendHTML(s.max)}<div class="cov-map" id="covMap"></div>`}
     </div>`;
 
@@ -217,8 +243,11 @@ function drawCoverageMap(city) {
   if (!mount || typeof L === 'undefined') return;
   if (coverageMap) { coverageMap.remove(); coverageMap = null; }
 
-  const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true })
-    .setView([city.center.lat, city.center.lng], 11);
+  // preferCanvas: the national view draws 1,688 markers, and one SVG node each
+  // makes panning crawl. Canvas renders them as paint rather than DOM, which is
+  // the difference between smooth and unusable at that count.
+  const map = L.map(mount, { scrollWheelZoom: false, zoomControl: true, preferCanvas: true })
+    .setView([city.center.lat, city.center.lng], city.zoom || 11);
   coverageMap = map;
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -229,13 +258,21 @@ function drawCoverageMap(city) {
   // hollow one where two suburb centres nearly coincide.
   const ordered = city.suburbs.slice().sort((a, b) => a.cleaners - b.cleaners);
   const pts = [];
+  // Zoomed out to the whole country the dots would merge into one smear, so they
+  // shrink. Covered stays a touch bigger than uncovered either way - at national
+  // zoom the handful of covered suburbs is the signal, and it has to survive
+  // being surrounded by 1,500 empty ones.
+  const rNone = city.national ? 2.5 : 5;
+  const rSome = city.national ? 4.5 : 7;
   for (const sub of ordered) {
     const none = sub.cleaners === 0;
     pts.push([sub.lat, sub.lng]);
     L.circleMarker([sub.lat, sub.lng], {
-      radius: none ? 5 : 7,
+      radius: none ? rNone : rSome,
       color: none ? COV_NONE : '#ffffff', // white ring separates touching marks
-      weight: none ? 1.5 : 1.5,
+      // A 1.5px ring on a 2.5px dot is mostly ring, which turns the national
+      // view grey. Thinner outlines when zoomed out.
+      weight: city.national ? 0.8 : 1.5,
       opacity: 1,
       fillColor: none ? '#ffffff' : covColor(sub.cleaners),
       fillOpacity: none ? 0.35 : 0.92,

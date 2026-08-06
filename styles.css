@@ -1691,6 +1691,9 @@ a { color: inherit; text-decoration: none; }
 }
 .cov-key i.cov-key-none { background: #fff; border-color: #5b7480; box-shadow: none; }
 .cov-key-label { font-size: 0.72rem; color: var(--muted); }
+.cov-regions { margin-top: 1.4rem; }
+.cov-regions-note { font-size: 0.78rem; margin: 0.8rem 0 0; }
+.sg-kpi-of { font-size: 0.7em; color: var(--muted); font-weight: 600; }
 .cov-num { text-align: right; white-space: nowrap; }
 .cov-swatch {
   display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%;
