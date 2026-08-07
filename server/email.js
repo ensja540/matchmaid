@@ -218,7 +218,7 @@ export async function sendPreLaunchUpdateEmail({ to, name, role, referralLink, c
   const body = isCleaner
     ? `<p style="font-size:15px;line-height:1.6;margin:0 0 16px">${thanks}</p>
        <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${status}</p>
-       <p style="font-size:15px;line-height:1.6;margin:0 0 20px">If you know another cleaner who'd be a good fit, sending them your link is the fastest way to bring that forward - and you earn <strong>$${creditDollars} credit</strong> once they're ID-verified.</p>
+       <p style="font-size:15px;line-height:1.6;margin:0 0 20px">If you know another cleaner who'd be a good fit, sending them your link is the fastest way to bring that forward - and you earn <strong>$${creditDollars} credit</strong> once they've been on a paid plan for a month. Everyone is free while we build the network, so referrals you make now bank until then.</p>
        <p style="margin:0 0 16px"><a href="${escapeHtml(referralLink)}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Share your referral link</a></p>
        <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:0">Your link: ${escapeHtml(referralLink)}</p>`
     : `<p style="font-size:15px;line-height:1.6;margin:0 0 16px">${thanks}</p>
@@ -228,7 +228,7 @@ export async function sendPreLaunchUpdateEmail({ to, name, role, referralLink, c
 
   const html = shell(`<p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>${body}`, unsubUrl);
   const text = isCleaner
-    ? `${thanks}\n\n${status}\n\nRefer a cleaner and earn $${creditDollars} credit once they're ID-verified:\n${referralLink}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`
+    ? `${thanks}\n\n${status}\n\nRefer a cleaner and earn $${creditDollars} credit once they've been on a paid plan for a month. Everyone is free while we build the network, so referrals you make now bank until then.\n${referralLink}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`
     : `${thanks}\n\n${status}\n\nKnow a cleaner? Send them to ${APP_URL}/for-maids - the hold-up is cleaners, not customers.${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`;
   return sendEmail({ to, subject: 'Where Match Maid is up to', html, text });
 }

@@ -1115,9 +1115,11 @@ function referralBannerHTML() {
       <div class="rb-body">
         <span class="rb-kicker">Grow the network, get paid for it</span>
         <h2 class="rb-head">Refer a cleaner${per ? `, earn $${per} credit` : ''}</h2>
-        <p class="rb-copy">Know a great cleaner? Share your invite link. When they join and get
-          ID-verified${per ? `, you earn <strong>$${per}</strong> off your future payments` : ', you earn credit off your future payments'} -
+        <p class="rb-copy">Know a great cleaner? Share your invite link. Once they've been on a
+          paid plan for a month${per ? `, you earn <strong>$${per}</strong> off your own` : ', you earn credit off your own'} -
           and there's no cap on how many you can bring in.</p>
+        <p class="rb-copy muted rb-note">Everyone is free while we build the network, so nothing
+          is payable yet - referrals you make now are banked and credit once paid plans begin.</p>
         ${referrals
           ? `<div class="rb-actions">
               <code class="ref-code">${escapeHtml(referrals.code)}</code>
@@ -1147,8 +1149,9 @@ function wireRefCopy(root) {
 }
 
 // Referral card: your code, your credit, and who you've brought in. The credit
-// only lands once a referred cleaner is ID-verified, so pending ones are
-// shown as such rather than silently missing.
+// only lands once a referred cleaner has held a paid plan for a month, so
+// everyone else is shown as pending rather than silently missing - and while
+// the whole platform is free, that means everyone.
 function referralsHTML() {
   if (!loggedIn) return '';
   if (!referrals) return '<div class="panel-card"><h2>Refer a cleaner</h2><p class="muted">Loading your referral code…</p></div>';
@@ -1161,7 +1164,7 @@ function referralsHTML() {
         <span>${escapeHtml(r.name)}</span>
         ${r.credited
           ? `<span class="status status-accepted">+$${r.creditDollars} credited</span>`
-          : '<span class="status status-new">Awaiting ID verification</span>'}
+          : '<span class="status status-new">Credits after a paid month</span>'}
       </div>`
     )
     .join('');
@@ -1169,8 +1172,9 @@ function referralsHTML() {
   return `
     <div class="panel-card referral-card">
       <h2>Refer a cleaner</h2>
-      <p class="muted">Share your code. When a cleaner you refer becomes ID-verified,
-        you earn <strong>$${per}</strong> of credit toward your future payments.</p>
+      <p class="muted">Share your code. Once a cleaner you refer has been on a paid plan for at
+        least one month, you earn <strong>$${per}</strong> of credit toward your own payments.
+        Match Maid is free for everyone right now, so referrals bank until paid plans start.</p>
 
       <div class="ref-credit">
         <span class="ref-amount">$${referrals.creditDollars}</span>
@@ -1182,7 +1186,7 @@ function referralsHTML() {
         <button class="btn outline sm js-ref-copy" type="button" data-link="${escapeHtml(link)}">Copy invite link</button>
       </div>
       <p class="muted ref-counts">
-        ${referrals.earned} ID-verified · ${referrals.pending} awaiting verification
+        ${referrals.earned} credited · ${referrals.pending} pending a paid month
       </p>
 
       ${rows ? `<div class="ref-list">${rows}</div>` : '<p class="muted">No referrals yet. Share your code to get started.</p>'}

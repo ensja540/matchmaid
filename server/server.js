@@ -125,21 +125,56 @@ async function linkReferral(newCleanerId, code) {
   }
 }
 
-// Called after a verification is approved. Idempotent: the credit is only
-// stamped when credited_at is still null, so re-approving can't pay twice.
-// The credit lands as soon as the referred cleaner is ID-verified — the police
-// check and insurance are no longer required to earn it.
-async function awardReferralIfIdVerified(cleanerId) {
-  const { rows } = await query(
-    'select id_verified from cleaner_profiles where id = $1',
-    [cleanerId]
-  );
-  if (!rows[0]?.id_verified) return;
+// Idempotent: the credit is only stamped when credited_at is still null, so
+// nothing can pay twice however often this runs.
+//
+// The credit is earned when the person you referred has held a PAID plan for at
+// least a month - not when they verify their ID, which is what it used to be.
+//
+// The distinction that matters: a paid month is revenue, an ID check is not. The
+// old rule paid out on a signal anyone could produce in five minutes, which is
+// fine as a growth hack and wrong as a commission.
+//
+// "A paid contract for a minimum period of one month" is read strictly:
+//   - a real tier, not 'none'
+//   - status 'active' or 'past_due' (past_due is a failed charge on a live
+//     contract, not a cancellation - they are still on the hook for the month)
+//   - trialing does NOT count; a trial is not a paid contract
+//   - the paid period must have STARTED at least a month ago, and if they have
+//     since cancelled, the cancellation must be at least a month after it began.
+//     Signing up and cancelling inside the month earns nothing.
+const REFERRAL_QUALIFY_SQL = `
+  exists (
+    select 1 from subscriptions sub
+     where sub.cleaner_id = r.referred_cleaner_id
+       and sub.tier <> 'none'
+       and sub.status in ('active','past_due')
+       and coalesce(sub.current_period_start, sub.created_at) <= now() - interval '1 month'
+       and (sub.cancelled_at is null
+            or sub.cancelled_at >= coalesce(sub.current_period_start, sub.created_at) + interval '1 month')
+  )`;
+
+// Award any referral this cleaner has earned. Safe to call repeatedly - the
+// `credited_at is null` guard means a credit is only ever stamped once.
+async function awardReferralIfQualified(cleanerId) {
   await query(
-    `update referrals set credit_cents = $2, credited_at = now()
-      where referred_cleaner_id = $1 and credited_at is null`,
+    `update referrals r set credit_cents = $2, credited_at = now()
+      where r.referred_cleaner_id = $1 and r.credited_at is null and ${REFERRAL_QUALIFY_SQL}`,
     [cleanerId, REFERRAL_CREDIT_CENTS]
   );
+}
+
+// Sweep every uncredited referral. Nothing in the app creates a subscription
+// yet, so today this awards nothing and that is correct - it starts paying out
+// by itself the moment paid plans are real, rather than needing to be
+// remembered and wired up then.
+async function sweepReferralCredits() {
+  const { rowCount } = await query(
+    `update referrals r set credit_cents = $1, credited_at = now()
+      where r.credited_at is null and ${REFERRAL_QUALIFY_SQL}`,
+    [REFERRAL_CREDIT_CENTS]
+  );
+  return rowCount;
 }
 
 // A removed account keeps every row it owns — enquiries, threads, reviews all
@@ -1626,8 +1661,11 @@ app.post('/api/admin/verification-decision', async (req, res) => {
       await query("update verifications set status = 'verified', verified_at = now() where id = $1", [id]);
       const col = VERIF_COL[type];
       if (col) await query(`update cleaner_profiles set ${col} = true where id = $1`, [cleaner_id]);
-      // ID verification is all it takes to earn the referrer their credit.
-      await awardReferralIfIdVerified(cleaner_id);
+      // Verification no longer earns a referral credit - a paid month does (see
+      // awardReferralIfQualified). Still worth checking here: this is a moment
+      // we know something changed about the cleaner, and the call is a no-op
+      // unless they genuinely qualify.
+      await awardReferralIfQualified(cleaner_id);
     } else {
       await query("update verifications set status = 'failed' where id = $1", [id]);
     }
@@ -2243,6 +2281,24 @@ app.post('/api/tasks/post-review-prompts', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not post review prompts.' });
+  }
+});
+
+// Credits any referral whose referred cleaner has now held a paid plan for a
+// month. Qualifying happens by the passage of time rather than by an event, so
+// something has to come and look - a subscription that quietly ticks past a
+// month raises nothing to hook onto.
+app.post('/api/tasks/referral-credits', async (req, res) => {
+  if (!process.env.CRON_SECRET)
+    return res.status(503).json({ error: 'CRON_SECRET is not set on this server.' });
+  if (!cronAuthorised(req)) return res.status(403).json({ error: 'Forbidden.' });
+  try {
+    const credited = await sweepReferralCredits();
+    console.log(`referral credits: awarded ${credited}`);
+    res.json({ credited, creditCents: REFERRAL_CREDIT_CENTS });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not sweep referral credits.' });
   }
 });
 

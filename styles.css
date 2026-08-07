@@ -901,6 +901,9 @@ a { color: inherit; text-decoration: none; }
 }
 .rb-head { margin: 0 0 0.5rem; font-size: 1.5rem; line-height: 1.15; }
 .rb-copy { margin: 0 0 1.1rem; max-width: 64ch; color: var(--ink); }
+/* The "nothing is payable yet" caveat: present and readable, but it must not
+   compete with the offer above it. */
+.rb-note { font-size: 0.82rem; }
 .rb-actions { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
 
 .browse-prompt { text-align: center; max-width: 34ch; margin: 0.6rem auto 0; color: var(--muted); }
