@@ -1692,6 +1692,29 @@ a { color: inherit; text-decoration: none; }
 .cov-key i.cov-key-none { background: #fff; border-color: #5b7480; box-shadow: none; }
 .cov-key-label { font-size: 0.72rem; color: var(--muted); }
 .stats-note { font-size: 0.74rem; margin: 1rem 0 0; }
+
+/* ---------- Admin: the register ---------- */
+.pp-search {
+  flex: 1; min-width: 12rem; padding: 0.45rem 0.7rem; font: inherit; font-size: 0.85rem;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--ink);
+}
+.pp-table td { vertical-align: top; }
+.pp-nowrap { white-space: nowrap; }
+.pp-biz { display: block; font-size: 0.78rem; color: var(--muted); }
+.pp-you {
+  display: inline-block; margin-left: 0.35rem; font-size: 0.62rem; letter-spacing: 0.08em;
+  text-transform: uppercase; font-weight: 700; color: var(--copper-dark);
+  border: 1px solid var(--copper); border-radius: 999px; padding: 0 0.35rem;
+}
+/* Gaps are the point of the last column, so they read as flags, not decoration. */
+.pp-gap {
+  display: inline-block; margin: 0 0.25rem 0.25rem 0; font-size: 0.68rem; font-weight: 600;
+  color: #a3402f; background: #fdf1ef; border: 1px solid #f0d3cd;
+  border-radius: 999px; padding: 0.05rem 0.45rem; white-space: nowrap;
+}
+.pp-ok { font-size: 0.72rem; color: var(--muted); }
+.pp-removed { opacity: 0.55; }
+.pp-removed td strong { text-decoration: line-through; }
 .cov-regions { margin-top: 1.4rem; }
 .cov-regions-note { font-size: 0.78rem; margin: 0.8rem 0 0; }
 .sg-kpi-of { font-size: 0.7em; color: var(--muted); font-weight: 600; }

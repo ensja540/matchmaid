@@ -91,6 +91,7 @@ adminTabs?.addEventListener('click', (e) => {
   // reads 0x0 and renders a grey box, so the map is only built once its tab is
   // first shown, and told to re-measure on every later visit.
   if (btn.dataset.tab === 'coverage') showCoverage();
+  if (btn.dataset.tab === 'people') showPeople();
 });
 // A count on a tab, so a full review queue is visible without opening it.
 function setTabCount(tab, n) {
@@ -100,6 +101,126 @@ function setTabCount(tab, n) {
   if (!n) { b?.remove(); return; }
   if (!b) { b = document.createElement('span'); b.className = 'tab-count'; btn.appendChild(b); }
   b.textContent = n;
+}
+
+// ---------- People: the register ----------
+const peopleBody = document.getElementById('peopleBody');
+let peopleData = null, peopleFilter = 'all', peopleQuery = '';
+
+async function showPeople() {
+  if (!peopleBody) return;
+  if (peopleData) { renderPeople(); return; }
+  peopleBody.innerHTML = '<div class="panel-card"><p class="muted">Loading…</p></div>';
+  try {
+    const res = await fetch(`/api/admin/users?userId=${encodeURIComponent(sessionUser.id)}`);
+    if (res.status === 403) {
+      peopleBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
+      return;
+    }
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    peopleData = await res.json();
+    renderPeople();
+  } catch (err) {
+    console.error('people:', err);
+    peopleBody.innerHTML =
+      `<div class="panel-card"><p class="muted">Could not load the register (${esc(err.message || 'network error')}).
+       <button class="btn ghost sm" type="button" data-people-retry>Retry</button></p></div>`;
+    peopleBody.querySelector('[data-people-retry]')?.addEventListener('click', showPeople);
+  }
+}
+
+const fmtDate = (iso) => {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getFullYear()}`;
+};
+
+// What is still missing for this person, as short chips. The register doubles as
+// a to-do list this way - "who has signed up" and "who needs chasing" are the
+// same question at this size.
+function gapChips(p) {
+  const gaps = [];
+  if (!p.verified) gaps.push('email unconfirmed');
+  if (p.role === 'cleaner') {
+    if (!p.hasRate) gaps.push('no rate');
+    if (!p.slots) gaps.push('no hours');
+    if (!p.areas) gaps.push('no areas');
+    if (!p.badges.id) gaps.push('no ID');
+    if (p.listing && p.listing !== 'active') gaps.push(p.listing);
+  } else {
+    if (!p.suburb) gaps.push('no suburb');
+  }
+  return gaps.map((g) => `<span class="pp-gap">${esc(g)}</span>`).join('');
+}
+
+function renderPeople() {
+  const d = peopleData;
+  if (!d || !peopleBody) return;
+  const q = peopleQuery.trim().toLowerCase();
+  const all = d.users || [];
+  const rows = all.filter((p) => {
+    if (peopleFilter === 'cleaner' && p.role !== 'cleaner') return false;
+    if (peopleFilter === 'client' && p.role !== 'client') return false;
+    if (!q) return true;
+    return [p.name, p.email, p.business, p.suburb, p.source].some((v) => v && String(v).toLowerCase().includes(q));
+  });
+  const counts = {
+    all: all.length,
+    cleaner: all.filter((p) => p.role === 'cleaner').length,
+    client: all.filter((p) => p.role === 'client').length,
+  };
+
+  peopleBody.innerHTML = `
+    <div class="panel-card">
+      <div class="sg-controls">
+        ${[['all', 'Everyone'], ['cleaner', 'Cleaners'], ['client', 'Customers']].map(([k, label]) =>
+          `<button class="chip select ${k === peopleFilter ? 'on' : ''}" type="button" data-pf="${k}">${label} <span class="muted">${counts[k]}</span></button>`
+        ).join('')}
+        <input class="pp-search" type="search" id="ppSearch" placeholder="Search name, email, suburb…" value="${esc(peopleQuery)}" />
+        <button class="btn ghost sm" type="button" data-copy-emails>Copy ${rows.length} email${rows.length === 1 ? '' : 's'}</button>
+      </div>
+      <div class="sg-tablewrap">
+        <table class="sg-table pp-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th>From</th><th>Still missing</th></tr></thead>
+          <tbody>${rows.map((p) => `
+            <tr class="${p.removed ? 'pp-removed' : ''}">
+              <td>
+                <strong>${esc(p.name || '(no name)')}</strong>
+                ${p.business ? `<span class="pp-biz">${esc(p.business)}</span>` : ''}
+                ${p.email.toLowerCase() === (d.adminEmail || '') ? '<span class="pp-you">you</span>' : ''}
+                ${p.removed ? '<span class="pp-gap">removed</span>' : ''}
+              </td>
+              <td><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></td>
+              <td>${p.role === 'cleaner' ? 'Cleaner' : 'Customer'}</td>
+              <td class="pp-nowrap">${fmtDate(p.joined)}</td>
+              <td>${p.source ? esc(p.source) : '<span class="muted">unknown</span>'}</td>
+              <td>${gapChips(p) || '<span class="pp-ok">nothing</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${rows.length ? '' : '<p class="muted" style="margin-top:1rem">Nobody matches that.</p>'}
+    </div>`;
+
+  peopleBody.querySelectorAll('[data-pf]').forEach((b) =>
+    b.addEventListener('click', () => { peopleFilter = b.dataset.pf; renderPeople(); })
+  );
+  const search = peopleBody.querySelector('#ppSearch');
+  search?.addEventListener('input', () => {
+    peopleQuery = search.value;
+    renderPeople();
+    // Re-rendering blows away focus and the caret, which makes typing
+    // impossible - put both back where they were.
+    const again = peopleBody.querySelector('#ppSearch');
+    again.focus();
+    again.setSelectionRange(again.value.length, again.value.length);
+  });
+  peopleBody.querySelector('[data-copy-emails]')?.addEventListener('click', (e) => {
+    const list = rows.map((p) => p.email).join(', ');
+    navigator.clipboard?.writeText(list).then(
+      () => { e.target.textContent = 'Copied'; setTimeout(() => renderPeople(), 1200); },
+      () => { e.target.textContent = 'Copy failed'; }
+    );
+  });
 }
 
 // ---------- Coverage heatmap ----------

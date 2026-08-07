@@ -1496,6 +1496,60 @@ app.get('/api/admin/coverage', async (req, res) => {
   }
 });
 
+// Everyone who has registered. A roster, not a metric - so unlike the stats
+// endpoints this deliberately DOES include the admin's own accounts (flagged as
+// such) and removed accounts: a list of who signed up that quietly omits people
+// is worse than no list, because you cannot tell it is doing it.
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const { rows } = await query(
+      `select u.id, u.email, u.full_name, u.role, u.created_at, u.email_verified,
+              u.status, u.removed_at, u.acq_source, u.acq_medium,
+              cp.business_name, cp.listing_status, cp.hourly_rate_min,
+              cp.id_verified, cp.police_verified, cp.insurance_verified,
+              (select count(*) from availability_rules ar where ar.cleaner_id = cp.id)::int as slots,
+              (select count(*) from cleaner_service_areas csa where csa.cleaner_id = cp.id)::int as areas,
+              s.name as suburb,
+              (select count(*) from enquiries e where e.client_id = lp.id)::int as enquiries
+         from users u
+         left join cleaner_profiles cp on cp.user_id = u.id
+         left join client_profiles  lp on lp.user_id = u.id
+         left join suburbs s on s.id = lp.default_suburb_id
+        where u.role in ('client','cleaner')
+        order by u.created_at desc`
+    );
+    res.json({
+      adminEmail: ADMIN_EMAIL,
+      users: rows.map((r) => ({
+        id: r.id,
+        email: r.email,
+        name: r.full_name || '',
+        business: r.business_name || '',
+        role: r.role,
+        joined: r.created_at,
+        verified: r.email_verified,
+        removed: !!r.removed_at,
+        status: r.status,
+        source: r.acq_source || null,
+        medium: r.acq_medium || null,
+        // Cleaner-side completeness, so the roster doubles as a to-do list.
+        listing: r.listing_status || null,
+        hasRate: r.hourly_rate_min != null,
+        slots: r.slots ?? 0,
+        areas: r.areas ?? 0,
+        badges: { id: !!r.id_verified, police: !!r.police_verified, insurance: !!r.insurance_verified },
+        // Customer-side.
+        suburb: r.suburb || null,
+        enquiries: r.enquiries ?? 0,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load the register.' });
+  }
+});
+
 app.get('/api/admin/feedback', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });

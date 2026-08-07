@@ -34,6 +34,7 @@
 
       <nav class="portal-tabs" id="adminTabs">
         <button class="portal-tab active" data-tab="dashboard" type="button">Dashboard</button>
+        <button class="portal-tab" data-tab="people" type="button">People</button>
         <button class="portal-tab" data-tab="coverage" type="button">Coverage</button>
         <button class="portal-tab" data-tab="verifications" type="button">Verifications</button>
         <button class="portal-tab" data-tab="reviews" type="button">Reviews</button>
@@ -42,6 +43,11 @@
 
       <section class="admin-panel" data-panel="dashboard">
         <div id="statsBody"></div>
+      </section>
+
+      <section class="admin-panel" data-panel="people" hidden>
+        <p class="wizard-lede">Everyone who has registered, newest first. Includes your own accounts and any that have been removed, so the list is the whole register rather than a filtered view of it.</p>
+        <div id="peopleBody"></div>
       </section>
 
       <section class="admin-panel" data-panel="coverage" hidden>
