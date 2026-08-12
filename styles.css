@@ -1694,6 +1694,28 @@ a { color: inherit; text-decoration: none; }
 }
 .cov-key i.cov-key-none { background: #fff; border-color: #5b7480; box-shadow: none; }
 .cov-key-label { font-size: 0.72rem; color: var(--muted); }
+/* ---------- Header social links ----------
+   Icon-only, so they sit beside text links without competing with the CTAs.
+   The 40px min hit area is the reason for the padding: an 18px icon is not a
+   fingertip target, and these sit next to "Log out". */
+.social-links { display: inline-flex; align-items: center; gap: 0.15rem; }
+.social-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 40px; min-height: 40px; margin: -0.4rem 0;
+  color: var(--muted); border-radius: 50%;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.social-link:hover, .social-link:focus-visible { color: var(--accent); background: var(--paper-2); }
+.social-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The splash has no nav bar, so these sit under the badges on their own line. */
+.social-links-splash { margin-top: 1.4rem; justify-content: center; width: 100%; }
+.social-links-splash .social-link { color: var(--ink-soft); }
+@media (max-width: 560px) {
+  /* The pitch header wraps hard on a phone; the icons give up their padding
+     before the text links give up their labels. */
+  .social-link { min-width: 34px; min-height: 34px; }
+}
+
 .stats-note { font-size: 0.74rem; margin: 1rem 0 0; }
 
 /* ---------- Admin: the register ---------- */
