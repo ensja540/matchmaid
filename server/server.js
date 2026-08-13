@@ -1785,6 +1785,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'id is required.' });
     const { rows } = await query(
       `select cp.id, coalesce(cp.business_name, u.full_name) as name, cp.bio, cp.years_experience,
+              nullif(cp.business_name, '') is not null as is_business,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
               cp.clean_rates, cp.profile_photo_url
@@ -1809,6 +1810,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
     res.json({
       id: cp.id,
       name: cp.name,
+      isBusiness: !!cp.is_business,
       bio: cp.bio || '',
       years: cp.years_experience,
       rateMin: cp.hourly_rate_min != null ? Number(cp.hourly_rate_min) : null,
@@ -2714,6 +2716,10 @@ app.post('/api/match', async (req, res) => {
       select
         cp.id,
         coalesce(cp.business_name, u.full_name) as name,
+        -- Whether that name is a trading name or a person's. The card shortens a
+        -- person to their first name ("Contact Ana") but must never do that to a
+        -- business - "Contact Simply" is not who they are.
+        nullif(cp.business_name, '') is not null as is_business,
         cp.hourly_rate, cp.hourly_rate_min, cp.hourly_rate_max, cp.clean_rates,
         cp.avg_rating, cp.review_count, cp.addons,
         cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
@@ -2819,6 +2825,7 @@ app.post('/api/match', async (req, res) => {
         return {
           id: r.id,
           name: r.name,
+          isBusiness: !!r.is_business,
           atCapacity,
           rateMin: cMin, rateMax: cMax, fair,
           // Hourly fee x hours, plus any flat-priced extras they ticked.

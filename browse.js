@@ -218,7 +218,7 @@ function resultCard(r, p) {
   const rateStr = serviceRateLabel(r, p);
   const fairStr = '';
   const costStr = r.estCost != null ? ` · ~$${r.estCost} for ${p.hours}h` : '';
-  const first = r.name.split(/['\s]/)[0];
+  const first = contactName(r.name, r.isBusiness);
   return `<article class="result ${r.featured ? 'featured' : ''}">
     <div class="result-head">
       <div><h3><button class="linklike" type="button" data-cleaner="${r.id}">${r.name}</button>${Rating.badge(r.rating, r.reviews)} ${r.featured ? '<span class="pin">Promoted</span>' : ''}</h3>
@@ -269,6 +269,19 @@ async function openCleanerModal(id) {
     cleanerModalBody.innerHTML = '<p class="muted">Could not load this profile.</p>';
   }
 }
+// What to put after "Contact" / "Message".
+//
+// A person gets their first name, which is friendlier and keeps the button
+// short. A trading name is used whole: "Contact Simply" reads as a typo, and
+// splitting a business name at the first space produces a company that does not
+// exist. The server says which it is - the display name is business_name when
+// there is one and the person's name otherwise, and the two are not
+// distinguishable from the string alone.
+function contactName(name, isBusiness) {
+  const full = String(name || 'them').trim();
+  if (isBusiness) return full;
+  return full.split(/['\s]/)[0] || full;
+}
 function rateLabel(min, max) {
   // Single price only - never a range.
   const r = min ?? max;
@@ -313,7 +326,7 @@ function escapeHtml(s) {
 }
 function cleanerCardHTML(c) {
   const initial = escapeHtml((c.name || '?').slice(0, 1).toUpperCase());
-  const first = escapeHtml((c.name || 'them').split(/['\s]/)[0]);
+  const first = escapeHtml(contactName(c.name || 'them', c.isBusiness));
   const svc = c.services.length ? c.services.map((s) => `<span class="chip on">${escapeHtml(s)}</span>`).join('') : '<span class="muted">-</span>';
   const SLOTLBL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
   const avail = c.availability.length
