@@ -3,6 +3,13 @@
 const { DAYS, SLOTS } = DEMO;
 
 const sessionUser = Session.get();
+// The mirror of the guard in maid.js: a cleaner session here would render the
+// customer portal against a cleaner's id and every client endpoint would miss.
+// Unknown roles are left alone so this can never bounce in a loop.
+const ROLE_HOME = { cleaner: '/maid', client: '/customer' };
+if (sessionUser && sessionUser.role !== 'client' && ROLE_HOME[sessionUser.role]) {
+  location.replace(ROLE_HOME[sessionUser.role]);
+}
 const uid = sessionUser?.id && sessionUser.id !== 'demo' ? sessionUser.id : null;
 const displayName = sessionUser?.fullName || 'there';
 const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpperCase());

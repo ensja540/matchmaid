@@ -9,6 +9,19 @@ let enquiries = []; // real enquiries load from the API when logged in
 const sessionUser = Session.get();
 const loggedIn = !!sessionUser?.id;
 
+// A client session on the maid portal used to render the whole portal against a
+// client's id. Nothing failed loudly - the page looked fine - but every maid
+// endpoint 404s for that id, so the referral card sat on "Loading your invite
+// link…" forever with nothing to say why. Send them to their own portal.
+//
+// Keyed on a known role rather than "not a cleaner": homeFor() falls back to
+// /customer for anything it doesn't recognise, so an unexpected role would
+// bounce /customer -> /customer forever. An unknown role stays put instead.
+const ROLE_HOME = { cleaner: '/maid', client: '/customer' };
+if (sessionUser && sessionUser.role !== 'cleaner' && ROLE_HOME[sessionUser.role]) {
+  location.replace(ROLE_HOME[sessionUser.role]);
+}
+
 // Verification process state (demo: persisted in localStorage).
 const VERIF_KEY = 'mm_maid_verif';
 const VERIF_ITEMS = [
@@ -28,6 +41,21 @@ function loadVerif() {
   };
 }
 let referrals = null; // { code, creditDollars, earned, pending, referrals[] }
+let referralsError = null; // why the fetch failed, so the card can say so
+// A failure has to be visible: swallowing it left the card reading "Loading
+// your invite link…" indefinitely, which reads as a slow network rather than
+// as something that is never going to arrive. Named so Retry can call it again.
+function loadReferrals() {
+  if (!sessionUser?.id) return;
+  fetch(`/api/referrals?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`server returned ${r.status}`))))
+    .then((d) => { referrals = d; referralsError = null; updateRefPill(); render(); })
+    .catch((err) => {
+      console.error('referrals:', err);
+      referralsError = err.message || 'network error';
+      render();
+    });
+}
 // Header pill showing referral credit; clicking it jumps to the Subscription tab
 // (where the full referral card lives). Hidden until credit data loads.
 function updateRefPill() {
@@ -422,11 +450,7 @@ if (sessionUser?.id) {
     })
     .catch(() => {});
 
-  // Referral code + earned credit.
-  fetch(`/api/referrals?userId=${encodeURIComponent(sessionUser.id)}`)
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d) => { if (d) { referrals = d; updateRefPill(); render(); } })
-    .catch(() => {});
+  loadReferrals();
 
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
@@ -1126,7 +1150,10 @@ function referralBannerHTML() {
               <button class="btn solid sm js-ref-copy" type="button" data-link="${escapeHtml(link)}">Copy invite link</button>
               <button class="btn outline sm" type="button" data-start="subscription">See your referrals</button>
             </div>`
-          : '<p class="muted">Loading your invite link…</p>'}
+          : referralsError
+            ? `<p class="muted">Couldn't load your invite link (${escapeHtml(referralsError)}).
+                 <button class="btn outline sm js-ref-retry" type="button">Try again</button></p>`
+            : '<p class="muted">Loading your invite link…</p>'}
       </div>
     </div>`;
 }
@@ -1134,6 +1161,16 @@ function referralBannerHTML() {
 // Copy-to-clipboard wiring for every invite-link button under `root`. Falls back
 // to a prompt when the clipboard is blocked (insecure origin / permissions).
 function wireRefCopy(root) {
+  // Retry lives here rather than in its own wiring pass: both referral surfaces
+  // already call wireRefCopy, so a second hook would be one more thing to
+  // remember on whichever surface got added next.
+  root.querySelectorAll('.js-ref-retry').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      btn.textContent = 'Trying…';
+      loadReferrals();
+    })
+  );
   root.querySelectorAll('.js-ref-copy').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const link = btn.dataset.link;
@@ -1154,7 +1191,13 @@ function wireRefCopy(root) {
 // the whole platform is free, that means everyone.
 function referralsHTML() {
   if (!loggedIn) return '';
-  if (!referrals) return '<div class="panel-card"><h2>Refer a cleaner</h2><p class="muted">Loading your referral code…</p></div>';
+  if (!referrals) {
+    return referralsError
+      ? `<div class="panel-card"><h2>Refer a cleaner</h2>
+           <p class="muted">Couldn't load your referral code (${escapeHtml(referralsError)}).
+             <button class="btn outline sm js-ref-retry" type="button">Try again</button></p></div>`
+      : '<div class="panel-card"><h2>Refer a cleaner</h2><p class="muted">Loading your referral code…</p></div>';
+  }
 
   const per = referrals.perReferralDollars;
   const link = `${location.origin}/login?role=maid&mode=signup&ref=${encodeURIComponent(referrals.code)}`;
