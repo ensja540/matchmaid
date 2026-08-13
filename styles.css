@@ -1694,6 +1694,15 @@ a { color: inherit; text-decoration: none; }
 }
 .cov-key i.cov-key-none { background: #fff; border-color: #5b7480; box-shadow: none; }
 .cov-key-label { font-size: 0.72rem; color: var(--muted); }
+/* An enquiry already sent this visit. Reads as done rather than disabled-and-
+   broken: the tick and the accent colour carry the meaning, the muted fill says
+   there is nothing left to press. */
+.btn.contacted,
+.btn.contacted[disabled] {
+  background: var(--paper-2); border-color: var(--accent); color: var(--accent-dark);
+  opacity: 1; cursor: default;
+}
+
 /* ---------- Header social links ----------
    Icon-only, so they sit beside text links without competing with the CTAs.
    The 40px min hit area is the reason for the padding: an 18px icon is not a

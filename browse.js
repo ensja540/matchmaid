@@ -230,7 +230,9 @@ function resultCard(r, p) {
     ${offeredChips || missingChips ? `<div class="chips">${offeredChips}${missingChips}</div>` : ''}
     ${(r.matched || []).length ? `<div class="chips">${slotChips}</div>` : ''}
     <div class="result-actions">
-      <button class="btn solid sm" type="button" data-contact="${escapeHtml(r.name)}" data-contact-id="${escapeHtml(r.id)}">Contact ${first}</button>
+      ${contacted.has(r.id)
+        ? `<button class="btn sm contacted" type="button" disabled>Sent ✓</button>`
+        : `<button class="btn solid sm" type="button" data-contact="${escapeHtml(r.name)}" data-contact-id="${escapeHtml(r.id)}">Contact ${first}</button>`}
     </div>
   </article>`;
 }
@@ -354,7 +356,9 @@ function cleanerCardHTML(c) {
     <div class="cv-section"><h4>Areas covered</h4><p>${c.areas.length ? escapeHtml(c.areas.join(', ')) : '-'}</p></div>
     <div class="cv-section"><h4>Availability</h4><div class="chips">${avail}</div></div>
     ${Review.barsHTML(c.breakdown)}
-    <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${escapeHtml(c.id)}" data-cpname="${escapeHtml(c.name)}">Message ${first}</button></div>`;
+    <div class="cp-actions">${contacted.has(c.id)
+      ? '<button class="btn full contacted" type="button" disabled>Sent ✓</button>'
+      : `<button class="btn solid full" type="button" data-cpcontact="${escapeHtml(c.id)}" data-cpname="${escapeHtml(c.name)}">Message ${first}</button>`}</div>`;
 }
 
 // ---- Calendar helpers ----
@@ -395,6 +399,11 @@ const capNotice = document.getElementById('capNotice');
 const capCompose = document.getElementById('capCompose');
 let pendingCleaner = null;
 let pendingCleanerId = null;
+// Cleaners already contacted this visit. Held here rather than read off the
+// button, because sorting the results rebuilds every card and would otherwise
+// forget. Not persisted: a reload legitimately starts over, and the portal is
+// the real record of who has been messaged.
+const contacted = new Set();
 
 // Messaging is off for the public while the network is being built, but open to
 // specific accounts so the flow can be used and watched before launch. The
@@ -475,9 +484,27 @@ document.getElementById('composeForm')?.addEventListener('submit', async (e) => 
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'could not send');
+    // Confirm, then get out of the way. Leaving the composer open after a
+    // successful send invites a second copy of the same message, and the reply
+    // does not arrive here anyway - it lands in the portal.
     out.className = 'auth-msg ok';
-    out.innerHTML = `Sent to ${escapeHtml(pendingCleaner)}. <a class="ulink" href="/customer">Read replies in your portal</a>.`;
+    out.textContent = `Sent to ${pendingCleaner}.`;
     document.getElementById('composeMsg').value = '';
+    contacted.add(pendingCleanerId);
+    btn.textContent = 'Sent';
+    // Long enough to read, short enough not to feel stuck. The button stays
+    // disabled through it - re-enabling on success would leave a live Send
+    // button sitting under the cursor for most of a second, and the second
+    // press posts the message again.
+    setTimeout(() => {
+      closeModal();
+      btn.textContent = 'Send enquiry';
+      btn.disabled = false;
+      // Repaint so the card for this cleaner now reads "Sent" - the modal has
+      // gone, so the list is the only place left that can say so.
+      if (lastResults && lastResults.length) paintResults();
+    }, 900);
+    return; // don't fall through to the re-enable below
   } catch (err) {
     out.className = 'auth-msg error';
     out.textContent = `Could not send that (${err.message}). Try again.`;
