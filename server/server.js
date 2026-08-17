@@ -2056,7 +2056,7 @@ app.get('/api/conversations', async (req, res) => {
     const userId = req.query.userId;
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const { rows } = await query(
-      `select c.id, c.cleaner_id, c.client_id, c.last_message_at,
+      `select c.id, c.enquiry_id, c.cleaner_id, c.client_id, c.last_message_at,
               cpf.user_id as cleaner_user_id, clpf.user_id as client_user_id,
               cu.full_name as cleaner_person, nullif(cpf.business_name, '') as cleaner_business,
               clu.full_name as client_name,
@@ -2079,6 +2079,9 @@ app.get('/api/conversations', async (req, res) => {
         with: viewerIsCleaner ? r.client_name : r.cleaner_person,
         withBusiness: viewerIsCleaner ? '' : r.cleaner_business || '',
         cleanerId: r.cleaner_id,
+        // The house profile is keyed on the enquiry, so Messages needs it to
+        // open the same modal the Enquiries tab already has.
+        enquiryId: r.enquiry_id,
         lastBody: r.last_body || 'New conversation',
         lastAt: r.last_at || '',
       };

@@ -1454,7 +1454,19 @@ a { color: inherit; text-decoration: none; }
 .convo.active { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--copper); }
 .unread { position: absolute; top: 0.7rem; right: 0.7rem; background: var(--copper); color: var(--paper); font-size: 0.66rem; font-weight: 700; border-radius: 999px; padding: 0.05rem 0.42rem; }
 .thread { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-.thread-head { padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--line); font-family: var(--serif); }
+.thread-head {
+  padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--line); font-family: var(--serif);
+  /* Name on the left, the profile button pushed to the right; they wrap onto
+     two lines rather than squashing the button on a narrow thread column. */
+  display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap;
+}
+/* The name is a button now, so it has to shed the button chrome and keep the
+   serif face the header is set in. */
+.thread-who {
+  font-family: inherit; font-size: 1.05rem; font-weight: 600; text-align: left;
+  color: var(--ink); cursor: pointer;
+}
+.thread-who:hover { color: var(--accent-dark); text-decoration: underline; }
 /* Faint canvas so the white "me" bubbles read as objects on a white portal. */
 .bubbles { flex: 1; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; overflow-y: auto; background: var(--bg-mist); }
 .bubble { max-width: 78%; padding: 0.6rem 0.85rem; border-radius: var(--radius); border: 1px solid var(--line); }

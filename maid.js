@@ -792,6 +792,11 @@ const WIRE = {
   },
   messages() {
     bindConvoButtons();
+    // Same modal the Enquiries tab uses - keyed on the enquiry the conversation
+    // hangs off, so there is nothing new to load or keep in step.
+    panel.querySelectorAll('[data-house]').forEach((b) =>
+      b.addEventListener('click', () => openClientModal(b.dataset.house))
+    );
     const composer = panel.querySelector('#composer');
     composer?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1327,7 +1332,15 @@ function withLabel(c) {
   return `${escapeHtml(c.with)}${c.withBusiness ? `<span class="with-biz">${escapeHtml(c.withBusiness)}</span>` : ''}`;
 }
 function threadHTML(c, msgs) {
-  return `<div class="thread-head"><strong>${withLabel(c)}</strong></div>
+  // The name opens the house profile, and there is a labelled button beside it
+  // as well: a clickable name is easy to miss, and "what does their place look
+  // like" is the question you have before answering, not after.
+  return `<div class="thread-head">
+      ${c.enquiryId
+        ? `<button class="linklike thread-who" type="button" data-house="${escapeHtml(c.enquiryId)}">${withLabel(c)}</button>
+           <button class="btn outline sm" type="button" data-house="${escapeHtml(c.enquiryId)}">View house profile</button>`
+        : `<strong>${withLabel(c)}</strong>`}
+    </div>
     <div class="bubbles" id="bubbles">${bubblesHTML(msgs)}</div>
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />

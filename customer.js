@@ -536,6 +536,9 @@ const WIRE = {
   },
   messages() {
     bindConvoButtons();
+    // bindCleanerLinks already knows how to open the profile modal from a
+    // data-cleaner attribute - the thread header just needed to carry one.
+    bindCleanerLinks(panel);
     const composer = panel.querySelector('#composer');
     composer?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1033,7 +1036,14 @@ function bubblesHTML(msgs, review) {
     .join('');
 }
 function threadHTML(c, msgs) {
-  return `<div class="thread-head"><strong>${withLabel(c)}</strong></div>
+  // The mirror of the maid side: their name opens the cleaner's profile, with a
+  // labelled button beside it so it is discoverable rather than a hidden click.
+  return `<div class="thread-head">
+      ${c.cleanerId
+        ? `<button class="linklike thread-who" type="button" data-cleaner="${attr(c.cleanerId)}">${withLabel(c)}</button>
+           <button class="btn outline sm" type="button" data-cleaner="${attr(c.cleanerId)}">View profile</button>`
+        : `<strong>${withLabel(c)}</strong>`}
+    </div>
     <div class="bubbles" id="bubbles">${bubblesHTML(msgs, reviewCache[c.id])}</div>
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
