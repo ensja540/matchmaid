@@ -143,6 +143,29 @@ ${APP_URL}/admin`;
   return sendEmail({ to, subject: `Match Maid: ${what} to verify from ${cleanerName || 'a cleaner'}`, html, text });
 }
 
+// --- Email: someone replied ------------------------------------------------
+// Transactional, so no unsubscribe: opting out of "someone messaged you" would
+// break the thing they signed up for. The nudge opt-out deliberately does not
+// govern this.
+//
+// The message is quoted rather than summarised - most replies are short enough
+// to answer from the inbox, and a notification that makes you log in to find
+// out whether it needs an answer is a worse notification.
+export async function sendNewMessageEmail({ to, toName, fromName, body, portal }) {
+  const hi = toName ? `Hi ${escapeHtml(String(toName).split(' ')[0])},` : 'Hi,';
+  const who = escapeHtml(fromName || 'Someone');
+  const trimmed = String(body || '').trim();
+  const preview = trimmed.length > 400 ? `${trimmed.slice(0, 400)}…` : trimmed;
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px"><strong>${who}</strong> has sent you a message on Match Maid.</p>
+    ${preview ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#f4f1ea;border-left:3px solid #14b8a6;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333">${escapeHtml(preview)}</blockquote>` : ''}
+    <p style="margin:0 0 8px"><a href="${APP_URL}${portal || '/customer'}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Reply in your portal</a></p>
+    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">We'll only email you once about this conversation until you have read it, so a quick back-and-forth won't fill your inbox.</p>`);
+  const text = `${toName ? String(toName).split(' ')[0] + ',\n\n' : ''}${fromName || 'Someone'} has sent you a message on Match Maid.${preview ? `\n\n"${preview}"` : ''}\n\nReply: ${APP_URL}${portal || '/customer'}`;
+  return sendEmail({ to, subject: `New message from ${fromName || 'a Match Maid user'}`, html, text });
+}
+
 // --- Email: finish what you started (nudges) --------------------------------
 // One per stalled stage of the onboarding funnel. Each is sent at most once
 // ever (the nudges table enforces it), so these read as a single helpful

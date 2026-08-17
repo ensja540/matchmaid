@@ -12,7 +12,7 @@ import { query } from './db.js';
 import {
   emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail,
   sendVerificationDecisionEmail, sendVerificationPendingEmail,
-  sendNudgeEmail, sendPreLaunchUpdateEmail,
+  sendNudgeEmail, sendPreLaunchUpdateEmail, sendNewMessageEmail,
 } from './email.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -1939,6 +1939,67 @@ app.get('/api/can-message', async (req, res) => {
   }
 });
 
+// Both sides of a conversation, with the names and addresses an email needs.
+async function conversationParties(conversationId) {
+  const { rows } = await query(
+    `select cu.id  as client_user_id,  cu.email as client_email,  cu.full_name as client_name,
+            mu.id  as cleaner_user_id, mu.email as cleaner_email,
+            coalesce(nullif(cp.business_name, ''), mu.full_name) as cleaner_name
+       from conversations c
+       join client_profiles  lp on lp.id = c.client_id
+       join users            cu on cu.id = lp.user_id
+       join cleaner_profiles cp on cp.id = c.cleaner_id
+       join users            mu on mu.id = cp.user_id
+      where c.id = $1`,
+    [conversationId]
+  );
+  return rows[0] || null;
+}
+
+// Email whoever did NOT send this message that it arrived.
+//
+// Only while there is nothing else waiting for them. A live back-and-forth
+// would otherwise put an email in the inbox for every line, which is how a
+// useful notification becomes one people filter away. So: one email, then
+// silence until they open the thread (which marks it read), then the next
+// message notifies again.
+//
+// Fire-and-forget everywhere it is called - a mail hiccup must never fail the
+// message itself, which is already safely in the database by then.
+async function notifyNewMessage({ conversationId, senderUserId, kind }) {
+  if (kind && kind !== 'text') return; // system prompts speak for themselves
+  const p = await conversationParties(conversationId);
+  if (!p) return;
+
+  const toCleaner = String(senderUserId) === String(p.client_user_id);
+  const recipientId = toCleaner ? p.cleaner_user_id : p.client_user_id;
+  const to = toCleaner ? p.cleaner_email : p.client_email;
+  if (!to || String(recipientId) === String(senderUserId)) return;
+
+  const { rows } = await query(
+    `select count(*)::int as n from messages
+      where conversation_id = $1 and sender_user_id <> $2
+        and read_at is null and coalesce(kind, 'text') = 'text'`,
+    [conversationId, recipientId]
+  );
+  if ((rows[0]?.n ?? 0) !== 1) return; // already told them; nothing new to say
+
+  const { rows: last } = await query(
+    `select body from messages
+      where conversation_id = $1 and sender_user_id = $2 and coalesce(kind,'text') = 'text'
+      order by sent_at desc limit 1`,
+    [conversationId, senderUserId]
+  );
+
+  await sendNewMessageEmail({
+    to,
+    toName: toCleaner ? p.cleaner_name : p.client_name,
+    fromName: toCleaner ? p.client_name : p.cleaner_name,
+    body: last[0]?.body || '',
+    portal: toCleaner ? '/maid' : '/customer',
+  });
+}
+
 // Contact a cleaner: reuse the existing thread with them, or create an enquiry
 // + conversation, then (optionally) post the first message.
 app.post('/api/contact', async (req, res) => {
@@ -1952,6 +2013,7 @@ app.post('/api/contact', async (req, res) => {
       [clientId, cleanerId]
     );
     let conversationId = existing.rows[0]?.id;
+    const isNewConversation = !conversationId;
     if (!conversationId) {
       const svc = serviceSlug ? await query('select id from service_types where slug = $1', [serviceSlug]) : { rows: [] };
       const subId = await resolveSuburbId(req.body?.suburbId, suburb);
@@ -1976,6 +2038,11 @@ app.post('/api/contact', async (req, res) => {
       await query('insert into messages (conversation_id, sender_user_id, body) values ($1, $2, $3)',
         [conversationId, clientUserId, message]);
       await query('update conversations set last_message_at = now() where id = $1', [conversationId]);
+      // A brand-new enquiry already sent the cleaner an email above; this covers
+      // messaging someone you have contacted before, which sent nothing at all.
+      if (!isNewConversation) {
+        notifyNewMessage({ conversationId, senderUserId: clientUserId }).catch((e) => console.error('[email] new message:', e));
+      }
     }
     res.json({ conversationId });
   } catch (err) {
@@ -2043,6 +2110,17 @@ app.get('/api/messages', async (req, res) => {
          from messages where conversation_id = $1 order by sent_at`,
       [conversationId]
     );
+    // Opening the thread is reading it. read_at was in the schema and never
+    // written, which left it useless - and it is what stops the new-message
+    // email firing on every line of a live back-and-forth (see
+    // notifyNewMessage): one email while there is something unread, then
+    // nothing more until they have actually looked.
+    query(
+      `update messages set read_at = now()
+        where conversation_id = $1 and sender_user_id <> $2 and read_at is null`,
+      [conversationId, userId]
+    ).catch((e) => console.error('[messages] mark read:', e));
+
     res.json({
       messages: rows.map((m) => ({
         from: m.sender_user_id === userId ? 'me' : 'them',
@@ -2064,6 +2142,7 @@ app.post('/api/messages', async (req, res) => {
     if (!(await isParticipant(conversationId, senderUserId))) return res.status(403).json({ error: 'Not your conversation.' });
     await query('insert into messages (conversation_id, sender_user_id, body) values ($1, $2, $3)', [conversationId, senderUserId, body]);
     await query('update conversations set last_message_at = now() where id = $1', [conversationId]);
+    notifyNewMessage({ conversationId, senderUserId }).catch((e) => console.error('[email] new message:', e));
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
