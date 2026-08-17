@@ -224,6 +224,10 @@ function wirePayments(root) {
 // Which cleans the maid offers (a slug is offered once ticked). Kept separate
 // from the fee so a type can be "offered" while its price is still being typed.
 let mpOffers = new Set(Object.keys(mpCleanRates));
+// Mirrors MIN_HOURLY_RATE on the server. The server is the one that decides -
+// this just stops someone typing $5, filling in the rest of the form and only
+// then being told.
+const MIN_HOURLY_RATE = 20;
 const CLEAN_TYPES = [
   { slug: 'regular', name: 'Regular clean' },
   { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash', endOfLeaseOption: true },
@@ -239,7 +243,7 @@ function cleanFeesHTML() {
     return `<div class="fee-row ${offered ? 'on' : ''}" data-fee="${t.slug}">
         <div class="fee-head">
           <label class="check-inline fee-offer"><input type="checkbox" class="offer-toggle" ${offered ? 'checked' : ''} /> <span class="fee-name">${escapeHtml(t.name)}</span></label>
-          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="0" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="-" ${offered ? '' : 'disabled'} /><span class="fee-per">/hr</span></span>
+          <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="${MIN_HOURLY_RATE}" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="-" ${offered ? '' : 'disabled'} /><span class="fee-per">/hr</span></span>
         </div>
         ${t.includes ? `<p class="fee-includes">Includes: ${escapeHtml(t.includes)}</p>` : ''}
         ${t.endOfLeaseOption ? `
@@ -1893,6 +1897,8 @@ function captureWizStep(key) {
     const wp = wizEl.querySelector('#wizProducts');
     if (wp) { mpProductsOption = wp.value; mp.bringsProducts = mpProductsOption !== 'supplied'; }
     if (!mpCleanRates.regular && !mpCleanRates.deep) { wizSetMsg('Offer at least one clean and set its hourly fee to continue.', 'err'); return false; }
+    const tooLow = Object.entries(mpCleanRates).filter(([, v]) => typeof v === 'number' && v > 0 && v < MIN_HOURLY_RATE);
+    if (tooLow.length) { wizSetMsg(`The lowest hourly rate on Match Maid is $${MIN_HOURLY_RATE}. Please raise your fee to continue.`, 'err'); return false; }
     return true;
   }
   if (key === 'availability') {

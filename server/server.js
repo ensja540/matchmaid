@@ -76,6 +76,16 @@ const SIDE_NAME = { cleaner: 'maid', client: 'hirer' };
 // catalogue is a flat-priced "extra". Must match DEMO.baseServiceSlugs.
 const BASE_SERVICE_SLUGS = ['regular', 'deep', 'end-of-tenancy'];
 
+// The lowest hourly rate a cleaner may advertise. A floor protects the cleaners
+// as much as the customers: a listing at a few dollars an hour drags the whole
+// directory's perceived price down, sorts to the top of every cheapest-first
+// search, and is usually a typo or a test value rather than an offer.
+//
+// Enforced on save. Listings already below it keep their price until the next
+// time they save - rewriting someone's advertised rate underneath them would
+// have them quoting a number they never chose.
+const MIN_HOURLY_RATE = 20;
+
 // Capacity throttle: once a cleaner has this many active (accepted, not yet
 // completed) jobs, they're treated as "at capacity" and drop below cleaners
 // with spare capacity in search — so no single listing can hoard every request.
@@ -833,6 +843,17 @@ app.put('/api/profile', async (req, res) => {
     const hourlyFeeVals = [];
     if (cleanRates && typeof cleanRates === 'object') {
       cleanRatesClean = {};
+      // Rejected, not clamped. Quietly rounding someone's $5 up to $20 would
+      // have them advertising a price they never agreed to, and they would find
+      // out from a customer rather than from us.
+      const under = BASE_SERVICE_SLUGS
+        .map((slug) => ({ slug, v: Math.max(0, Math.round(Number(cleanRates[slug]) || 0)) }))
+        .filter((f) => f.v > 0 && f.v < MIN_HOURLY_RATE);
+      if (under.length) {
+        return res.status(400).json({
+          error: `The lowest hourly rate on Match Maid is $${MIN_HOURLY_RATE}. Please set at least $${MIN_HOURLY_RATE} for every clean you offer.`,
+        });
+      }
       for (const slug of BASE_SERVICE_SLUGS) {
         const v = Math.max(0, Math.round(Number(cleanRates[slug]) || 0));
         if (v > 0) { cleanRatesClean[slug] = v; hourlyFeeVals.push(v); }

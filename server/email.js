@@ -187,9 +187,9 @@ const NUDGE = {
   // requested time against. The most consequential gap of the lot: this one
   // makes a listing look present and behave absent.
   cleaner_no_availability: {
-    subject: 'Add your hours so customers can match with you',
-    lead: 'Your Match Maid listing is live, but you haven\'t marked which times you can work.',
-    body: 'Customers search by when they need someone, and we match them to cleaners who are free then - so without any hours set, your profile sits below cleaners who have them. Tapping the mornings and afternoons you\'re usually free takes a minute, and you can change it whenever.',
+    subject: 'Add your hours - customers are searching now',
+    lead: 'Match Maid is now open to customers in Christchurch and Auckland, and they are searching. Your listing is live, but you haven\'t marked which times you can work.',
+    body: 'Here\'s why that matters: customers pick the days and times they need someone, and we rank cleaners by how well they match. With no hours set there is nothing to match against, so you fall below cleaners who have filled theirs in - even when you\'re cheaper, closer or better reviewed. Tapping the mornings and afternoons you\'re usually free takes about a minute, and you can change it whenever your week changes.',
     cta: 'Set my availability',
     href: '/maid',
   },
