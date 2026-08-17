@@ -1919,17 +1919,21 @@ async function notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, su
   });
 }
 
-// Who may actually message a cleaner while the marketplace is still in its
-// waitlist phase. Two ways in: the admin (so the account can be used and the
-// flow exercised end to end before anyone else sees it), or MESSAGING_OPEN set
-// on the server, which is the switch to flip at launch for everybody.
+// Messaging is open to every logged-in customer. It was admin-only while the
+// cleaner network was being built; that phase is over.
 //
-// Note this is a UI gate, not a security boundary: /api/contact below has never
-// been restricted, and a determined visitor could always have called it directly.
+// Open by DEFAULT rather than by environment variable: holding it open from a
+// dashboard setting means the live behaviour of the product is invisible in the
+// codebase, and one wrong env edit silently closes the marketplace.
+// MESSAGING_OPEN=off remains as a kill switch for deliberately closing it,
+// rather than as the thing that holds it open.
+//
+// Note this is a UI gate, not a security boundary: /api/contact has never been
+// restricted, and a determined visitor could always have called it directly.
 // What it governs is whether the button is offered, not who the server trusts.
 async function canMessage(userId) {
-  if (String(process.env.MESSAGING_OPEN || '').toLowerCase() === 'on') return true;
-  return isAdmin(userId);
+  if (String(process.env.MESSAGING_OPEN || '').toLowerCase() === 'off') return isAdmin(userId);
+  return !!userId;
 }
 app.get('/api/can-message', async (req, res) => {
   try {

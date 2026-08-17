@@ -585,9 +585,10 @@ const PANELS = {
       </div>
 
       <div class="portal-note">
-        <strong>We're onboarding cleaners first.</strong> Right now we're only accepting cleaner
-        registrations while we build out the directory - households join once there's a strong network
-        of cleaners for them to choose from. Get your profile ready so you're first in line.
+        <strong>Households are searching now.</strong> Customers can browse cleaners and message
+        whoever they pick, so anything missing from your profile costs you enquiries: a rate puts
+        you in search, your hours decide which jobs you match, and an ID badge is what customers
+        filter for.
       </div>
 
       <div class="dash-grid">

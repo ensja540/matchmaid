@@ -26,11 +26,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700;800&display=swap" />
-    <link rel="stylesheet" href="styles.css?v=107" />
+    <link rel="stylesheet" href="styles.css?v=108" />
   </head>
   <body class="app-body role-customer">
     <div class="notice-bar">
-      🧽 We're building our network in Christchurch and Auckland - more cleaners and homes to clean are coming soon.
+      🧽 Now open in Christchurch and Auckland - browse local cleaners, see their rates up front, and message the one you pick. Free for households.
     </div>
     <header class="pitch-top">
       <a class="brand" href="/"><img class="brand-mark" src="assets/logo-mark.svg" alt="Match Maid" /></a>
@@ -128,19 +128,19 @@
         <button class="modal-close" id="modalClose" aria-label="Close">×</button>
         <h2 id="modalTitle">Create your free account</h2>
         <p class="msub" id="modalSub">Free forever, and about 20 seconds.</p>
-        <!-- Signup half: shown to visitors without an account (their waitlist entry). -->
+        <!-- Signup half: shown to visitors without an account - the step between picking a cleaner and messaging them. -->
         <div id="capBody">
           <form id="capForm" novalidate>
             <label class="field"><span>Full name</span><input name="fullName" autocomplete="name" placeholder="Alex Taylor" required /></label>
             <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
             <label class="field"><span>Password</span><input name="password" type="password" autocomplete="new-password" placeholder="••••••••" required /></label>
-            <button class="btn solid full create" type="submit" id="capSubmit">Join the waitlist</button>
+            <button class="btn solid full create" type="submit" id="capSubmit">Create my account</button>
             <p class="auth-msg" id="capMsg" role="status"></p>
           </form>
           <p class="reassure">Free for households, always. No card required.</p>
           <p class="switch">Already have an account? <a class="ulink" href="/login?role=customer">Log in</a></p>
         </div>
-        <!-- Notice half: shown to customers already on the waitlist - nothing to do but wait. -->
+        <!-- Notice half: shown when a signed-in visitor cannot be checked, which is a fault rather than a phase. -->
         <div id="capNotice" hidden>
           <button class="btn solid full" type="button" id="capNoticeOk">Got it</button>
         </div>
@@ -184,7 +184,7 @@
     <script src="rating.js?v=87"></script>
     <script src="badges.js?v=87"></script>
     <script src="review.js?v=64"></script>
-    <script src="browse.js?v=91"></script>
+    <script src="browse.js?v=92"></script>
     <script src="install.js?v=1"></script>
     <script src="feedback.js?v=64"></script>
 

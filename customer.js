@@ -347,12 +347,11 @@ const PANELS = {
       ${pendingReviewsHTML()}
       <div class="cta-card">
         <div>
-          <h2>${canSearch ? 'Find a cleaner' : 'Cleaner search is coming soon'}</h2>
-          <p class="muted">${canSearch
-            ? 'Search is open on your account. Browse local cleaners, compare rates and message whoever you pick - replies come back to your Messages tab.'
-            : "We're building our network of local cleaners first. You're on the waitlist - we'll email you the moment they're available in your area."}</p>
+          <h2>Find a cleaner</h2>
+          <p class="muted">Browse local cleaners, compare rates and availability, and message
+            whoever you pick. Replies come back to your Messages tab.</p>
         </div>
-        <button class="btn solid" data-goto="find" type="button">${canSearch ? 'Find a cleaner' : 'Learn more'}</button>
+        <button class="btn solid" data-goto="find" type="button">Find a cleaner</button>
       </div>
 
       ${howflowHTML()}`;
@@ -401,7 +400,7 @@ const PANELS = {
   },
 
   // Search is switched off while we build up the cleaner network. Customers can
-  // still complete their profile, which is their place on the waitlist.
+  // still complete their profile, which is what the search ranks them against.
   //
   // Accounts search is open to (the admin, or everyone once MESSAGING_OPEN is
   // set) get a way through instead of the waitlist card. The real search lives
@@ -421,18 +420,16 @@ const PANELS = {
         </div>`;
     }
     return `
-      <h1>Cleaner search is coming soon</h1>
-      <div class="panel-card waitlist-card">
-        <span class="waitlist-badge">Coming soon</span>
-        <h2>We're building our network of cleaners first.</h2>
-        <p class="wizard-lede">Match Maid is brand new. We're signing up trusted local cleaners
-          in your area right now - search switches on the moment there are cleaners near you to
-          match with.</p>
-        <p><strong>You're on the waitlist.</strong> We'll email you the moment cleaners are
-          available in your area.</p>
-        <p class="muted">Want the best match when they arrive? Fill out your profile so we know
-          your suburb, the clean you want and when suits you.</p>
-        <button class="btn solid" data-open-cwiz type="button">Complete your profile</button>
+      <h1>Find a cleaner</h1>
+      <div class="panel-card">
+        <p class="wizard-lede">Search is open. Browse local cleaners, compare their rates and
+          availability, and message whoever you pick - replies come back to your Messages tab.</p>
+        <p class="muted">Filling in your profile gets you better matches: we use your suburb, the
+          clean you want and the times that suit you to rank who comes up first.</p>
+        <div class="save-row">
+          <a class="btn solid" href="/browse">Search cleaners</a>
+          <button class="btn outline" data-open-cwiz type="button">Complete my profile</button>
+        </div>
       </div>`;
   },
 
@@ -539,6 +536,9 @@ const WIRE = {
     // bindCleanerLinks already knows how to open the profile modal from a
     // data-cleaner attribute - the thread header just needed to carry one.
     bindCleanerLinks(panel);
+    // toggleStar re-renders, so the box relabels itself between "Add to" and
+    // "Saved to" without anything else being wired up here.
+    wireStars(panel);
     const composer = panel.querySelector('#composer');
     composer?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -838,19 +838,21 @@ const enquiryModalBody = document.getElementById('enquiryModalBody');
 document.getElementById('enquiryModalClose')?.addEventListener('click', () => { if (enquiryModal) enquiryModal.hidden = true; });
 enquiryModal?.addEventListener('click', (e) => { if (e.target === enquiryModal) enquiryModal.hidden = true; });
 
-// Enquiries are switched off for the waitlist phase: every contact CTA opens a
-// "not open yet" notice instead of the form. Delete this block (and restore the
-// "Message X" button labels) to switch messaging back on.
+// Messaging happens on /browse, where the search that found them lives - the
+// suburb and clean type are already chosen there, so the enquiry carries them.
+// This points at it rather than duplicating a composer that would have to be
+// kept in step with the other one.
 function openEnquiryModal(cleanerId, cleanerName) {
   if (!uid) { location.href = '/login?role=customer'; return; }
   if (!enquiryModal) return;
   enquiryModalBody.innerHTML = `
-    <h2 style="margin-top:0">Not open just yet</h2>
-    <p>Once we open up the service you'll be able to message
-      ${escapeHtml(cleanerName || 'this cleaner')}.</p>
-    <p class="muted">You're on the waitlist - we'll email you the moment cleaners are
-      available in your area.</p>
-    <div class="cp-actions"><button class="btn solid full" type="button" data-enq-ok>Got it</button></div>`;
+    <h2 style="margin-top:0">Message ${escapeHtml(cleanerName || 'this cleaner')}</h2>
+    <p>Search picks up the suburb and the clean you want, so your message arrives with
+      the details already attached.</p>
+    <div class="cp-actions">
+      <a class="btn solid full" href="/browse">Find them on Browse</a>
+      <button class="btn outline full" type="button" data-enq-ok>Not now</button>
+    </div>`;
   enquiryModal.hidden = false;
   enquiryModalBody.querySelector('[data-enq-ok]')?.addEventListener('click', () => { enquiryModal.hidden = true; });
 }
@@ -1038,12 +1040,23 @@ function bubblesHTML(msgs, review) {
 function threadHTML(c, msgs) {
   // The mirror of the maid side: their name opens the cleaner's profile, with a
   // labelled button beside it so it is discoverable rather than a hidden click.
+  // Saving the cleaner you are mid-conversation with is the moment you decide
+  // you want them again, so the star belongs here rather than only on a search
+  // result you have already navigated away from. Labelled, not a bare icon -
+  // "what does this star do" is not a question worth making anyone ask.
+  const saved = c.cleanerId && starredIds.has(c.cleanerId);
   return `<div class="thread-head">
       ${c.cleanerId
         ? `<button class="linklike thread-who" type="button" data-cleaner="${attr(c.cleanerId)}">${withLabel(c)}</button>
            <button class="btn outline sm" type="button" data-cleaner="${attr(c.cleanerId)}">View profile</button>`
         : `<strong>${withLabel(c)}</strong>`}
     </div>
+    ${c.cleanerId
+      ? `<div class="thread-save ${saved ? 'on' : ''}">
+           ${starBtn(c.cleanerId, c.with)}
+           <span class="thread-save-text">${saved ? 'Saved to My cleaners' : 'Add to My cleaners'}</span>
+         </div>`
+      : ''}
     <div class="bubbles" id="bubbles">${bubblesHTML(msgs, reviewCache[c.id])}</div>
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
@@ -1100,7 +1113,7 @@ function wireCalendar(container, selected) {
 
 // ---------- Guided profile-setup wizard ----------
 // The customer analog of the maid setup wizard: a modal that walks a new
-// customer through their profile (their waitlist entry) and saves it in one
+// customer through their profile and saves it in one
 // call. Lives on document.body so background re-renders can't wipe it, and
 // reuses the shared .wiz-* styles.
 const CWIZ_STEPS = [
@@ -1123,7 +1136,7 @@ function maybeAutoOpenCwiz() {
 
 const CWIZ_CONTENT = {
   about: () => `
-    <p class="wiz-lede">Just the basics so a cleaner knows who they're helping. This is your place on the waitlist.</p>
+    <p class="wiz-lede">Just the basics so a cleaner knows who they're helping. So we can match you to the right cleaners.</p>
     <div class="avatar-row">
       <div class="avatar" id="cwizAvatar">${cprof.photo ? `<img src="${cprof.photo}" alt="" />` : '<span>Photo</span>'}</div>
       <label class="btn outline sm">Upload photo <span class="muted">(optional)</span><input type="file" id="cwizPhoto" accept="image/*" hidden /></label>
@@ -1275,7 +1288,7 @@ async function saveCwiz() {
   try {
     await putClientProfile({ userId: uid, ...cprof });
     try { sessionStorage.setItem('mm_cwiz_dismissed', '1'); } catch {}
-    cwizSetMsg("You're all set - you're on the waitlist!", 'ok');
+    cwizSetMsg("You're all set - go and find a cleaner.", 'ok');
     setTimeout(() => { closeCwiz(); render(); }, 1100);
   } catch {
     nextBtn.disabled = false;

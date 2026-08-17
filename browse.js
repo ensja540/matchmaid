@@ -239,8 +239,8 @@ function resultCard(r, p) {
 
 function hookCard() {
   return `<div class="hook-card">
-    <div><h3>Found someone you like?</h3><p>Cleaners aren't taking enquiries yet. Join the waitlist and we'll email you the moment they go live in your area.</p></div>
-    <button class="btn solid create" type="button" data-hook>Join the waitlist</button>
+    <div><h3>Found someone you like?</h3><p>Create a free account to message them directly. Rates are already shown above - no quotes to chase, and you only ever contact the one you pick.</p></div>
+    <button class="btn solid create" type="button" data-hook>Create free account</button>
   </div>`;
 }
 
@@ -512,27 +512,33 @@ document.getElementById('composeForm')?.addEventListener('submit', async (e) => 
   btn.disabled = false;
 });
 
-function openModal(cleanerName, alreadyOnWaitlist) {
+// Messaging is open, so this is no longer a waitlist - it is the signup that
+// stands between a visitor and the cleaner they just picked. Two cases only:
+// they have no account (make one, then message), or they have one and we could
+// not establish that they may message, which is a fault rather than a phase.
+function openModal(cleanerName, loggedIn) {
   pendingCleaner = cleanerName;
-  const who = cleanerName ? `message ${cleanerName}` : 'message your cleaner';
+  const who = cleanerName ? `message ${cleanerName}` : 'message a cleaner';
   capCompose.hidden = true;
-  capBody.hidden = !!alreadyOnWaitlist;
-  capNotice.hidden = !alreadyOnWaitlist;
-  if (alreadyOnWaitlist) {
-    modalTitle.textContent = 'Not open just yet';
-    modalSub.textContent = `Once we open up the service you'll be able to ${who}. You're on the waitlist - we'll email you the moment cleaners go live in your area.`;
+  capBody.hidden = !!loggedIn;
+  capNotice.hidden = !loggedIn;
+  if (loggedIn) {
+    // Signed in but the permission check never came back - say so plainly
+    // rather than inventing a launch date that has already passed.
+    modalTitle.textContent = "Couldn't open that just now";
+    modalSub.textContent = 'Something went wrong checking your account. Reload the page and try again - your message has not been sent.';
   } else if (cleanerName) {
-    modalTitle.textContent = 'Not open just yet';
-    modalSub.textContent = `Once we open up the service you'll be able to ${who}. Join the waitlist and we'll email you the moment cleaners go live in your area.`;
+    modalTitle.textContent = `Create your free account to ${who}`;
+    modalSub.textContent = 'About 20 seconds, free for households always, and your message goes straight to them once you are in.';
   } else {
-    modalTitle.textContent = 'Join the waitlist';
-    modalSub.textContent = "Free forever, about 20 seconds, and we'll email you the moment cleaners go live near you.";
+    modalTitle.textContent = 'Create your free account';
+    modalSub.textContent = 'Free for households, always. About 20 seconds, and you can message any cleaner you like.';
   }
   capMsg.textContent = '';
   capMsg.className = 'auth-msg';
   modal.hidden = false;
   // Don't focus a field that isn't there - the notice variant has no form.
-  setTimeout(() => (alreadyOnWaitlist ? capNotice.querySelector('button') : capForm.fullName)?.focus(), 30);
+  setTimeout(() => (loggedIn ? capNotice.querySelector('button') : capForm.fullName)?.focus(), 30);
 }
 function closeModal() {
   modal.hidden = true;
