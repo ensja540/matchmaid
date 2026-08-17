@@ -597,7 +597,6 @@ const WIRE = {
         await putClientProfile({ userId: uid, ...cprof });
         el.textContent = 'Saved to your account.';
         el.className = 'save-msg ok';
-        maybeShowAreaNotice();
       } catch {
         el.textContent = 'Could not save. Please try again.';
         el.className = 'save-msg err';
@@ -627,44 +626,16 @@ function mountSuburbCombo(root) {
       cprof.suburbId = item.id;
       cprof.suburb = item.name;
       cprof.suburbRegion = item.region;
-      maybeShowAreaNotice();
     },
   });
 }
 
-// Match Maid is only live in some areas. Everywhere else, say so plainly rather
-// than letting someone set up a profile expecting cleaners to appear.
-let areaNoticeShownFor = null;
-function maybeShowAreaNotice() {
-  if (!cprof.suburb) return;
-  const key = `${cprof.suburb}|${cprof.suburbRegion}`;
-  if (areaNoticeShownFor === key) return; // once per suburb per session
-  if (NZLoc.isLaunched(cprof.suburb, cprof.suburbRegion)) return;
-  areaNoticeShownFor = key;
-  showAreaNotice(cprof.suburb);
-}
-
-document.getElementById('areaModalClose')?.addEventListener('click', () => {
-  document.getElementById('areaModal').hidden = true;
-});
-document.getElementById('areaModal')?.addEventListener('click', (e) => {
-  if (e.target.id === 'areaModal') e.target.hidden = true;
-});
-
-function showAreaNotice(suburbName) {
-  const modal = document.getElementById('areaModal');
-  const body = document.getElementById('areaModalBody');
-  if (!modal || !body) return;
-  body.innerHTML = `
-    <h2 style="margin-top:0">Not in your area yet</h2>
-    <p>Match Maid is currently unavailable in ${escapeHtml(suburbName)}.
-      We'll notify you as soon as we launch.</p>
-    <p class="muted">Your profile is saved, so you're first in line when cleaners
-      start joining near you.</p>
-    <div class="cp-actions"><button class="btn solid full" type="button" data-area-ok>Got it</button></div>`;
-  modal.hidden = false;
-  body.querySelector('[data-area-ok]')?.addEventListener('click', () => { modal.hidden = true; });
-}
+// Match Maid is open everywhere in New Zealand, so nothing turns anyone away
+// by postcode. This used to check a hardcoded launched-areas list and tell
+// people outside it "not in your area yet" - a list that had already gone
+// stale (a cleaner works Dunedin, which was never on it), and a closed door
+// shown to exactly the households worth encouraging. Where there genuinely is
+// nobody yet, search says so with real numbers instead.
 
 // PUT via fetch (postJSON is POST; client-profile needs PUT).
 function putClientProfile(body) {

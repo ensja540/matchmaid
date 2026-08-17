@@ -84,4 +84,52 @@
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/ponsonby</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/mount-eden</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/remuera</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/takapuna</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/devonport</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/henderson</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/howick</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/manukau</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>

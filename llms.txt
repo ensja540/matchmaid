@@ -1,6 +1,6 @@
 # Match Maid
 
-> Match Maid is a New Zealand marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge - Match Maid never takes a commission on a job. Currently serving Christchurch and Auckland.
+> Match Maid is a New Zealand marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge - Match Maid never takes a commission on a job. Open across New Zealand, with the most cleaners in Auckland and Christchurch.
 
 ## What it is
 - A directory / marketplace, not a cleaning company. Match Maid introduces households to independent cleaners and does not employ cleaners, take bookings, or handle payments.
@@ -22,17 +22,14 @@
 - There is no booking fee, no commission and no charge to households at any point.
 
 ## Coverage
-- Christchurch and Auckland, New Zealand, with cleaners also covering parts of Dunedin.
+- Open to households and cleaners anywhere in New Zealand. Every suburb in the country is searchable.
+- Cleaner numbers are deepest in Auckland and Christchurch, with cleaners also covering parts of Dunedin. Other towns are open and filling in.
 - Cleaners set a service area as a radius, so coverage is by suburb rather than by whole city.
 
 ## Cleaners by suburb
-- [All areas](https://matchmaid.co.nz/cleaners): every Christchurch suburb covered, in one place.
-- [Riccarton](https://matchmaid.co.nz/cleaners/riccarton)
-- [Papanui](https://matchmaid.co.nz/cleaners/papanui)
-- [Fendalton](https://matchmaid.co.nz/cleaners/fendalton)
-- [Merivale](https://matchmaid.co.nz/cleaners/merivale)
-- [Halswell](https://matchmaid.co.nz/cleaners/halswell)
-- [Cashmere](https://matchmaid.co.nz/cleaners/cashmere)
+- [All areas](https://matchmaid.co.nz/cleaners): every suburb with a page of its own, in one place.
+- Auckland: [Ponsonby](https://matchmaid.co.nz/cleaners/ponsonby), [Mount Eden](https://matchmaid.co.nz/cleaners/mount-eden), [Remuera](https://matchmaid.co.nz/cleaners/remuera), [Takapuna](https://matchmaid.co.nz/cleaners/takapuna), [Devonport](https://matchmaid.co.nz/cleaners/devonport), [Henderson](https://matchmaid.co.nz/cleaners/henderson), [Howick](https://matchmaid.co.nz/cleaners/howick), [Manukau](https://matchmaid.co.nz/cleaners/manukau)
+- Christchurch: [Riccarton](https://matchmaid.co.nz/cleaners/riccarton), [Papanui](https://matchmaid.co.nz/cleaners/papanui), [Fendalton](https://matchmaid.co.nz/cleaners/fendalton), [Merivale](https://matchmaid.co.nz/cleaners/merivale), [Halswell](https://matchmaid.co.nz/cleaners/halswell), [Cashmere](https://matchmaid.co.nz/cleaners/cashmere)
 
 ## Key pages
 - [Home](https://matchmaid.co.nz/): overview and role gateway.
