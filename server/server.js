@@ -2002,12 +2002,26 @@ async function notifyNewMessage({ conversationId, senderUserId, kind }) {
   if (!to || String(recipientId) === String(senderUserId)) return;
 
   const { rows } = await query(
-    `select count(*)::int as n from messages
-      where conversation_id = $1 and sender_user_id <> $2
-        and read_at is null and coalesce(kind, 'text') = 'text'`,
+    `select
+       (select count(*)::int from messages m
+         where m.conversation_id = c.id and m.sender_user_id <> $2
+           and m.read_at is null and coalesce(m.kind, 'text') = 'text') as unread,
+       c.last_notified_at
+       from conversations c where c.id = $1`,
     [conversationId, recipientId]
   );
-  if ((rows[0]?.n ?? 0) !== 1) return; // already told them; nothing new to say
+  const unread = rows[0]?.unread ?? 0;
+  const lastNotified = rows[0]?.last_notified_at || null;
+  if (!unread) return;
+
+  // Quiet during a burst, but not silent forever. Suppressing on unread alone
+  // meant that whoever missed the first email never heard about the thread
+  // again, however many times the other side followed up - so a nudge is
+  // allowed once the previous one has had time to be seen and acted on.
+  const NUDGE_AGAIN_AFTER_HOURS = 12;
+  const stale = !lastNotified ||
+    Date.now() - new Date(lastNotified).getTime() > NUDGE_AGAIN_AFTER_HOURS * 3600 * 1000;
+  if (unread !== 1 && !stale) return;
 
   const { rows: last } = await query(
     `select body from messages
@@ -2016,13 +2030,18 @@ async function notifyNewMessage({ conversationId, senderUserId, kind }) {
     [conversationId, senderUserId]
   );
 
-  await sendNewMessageEmail({
+  const sent = await sendNewMessageEmail({
     to,
     toName: toCleaner ? p.cleaner_name : p.client_name,
     fromName: toCleaner ? p.client_name : p.cleaner_name,
     body: last[0]?.body || '',
     portal: toCleaner ? '/maid' : '/customer',
   });
+  // Only stamp it if something actually went out - otherwise a skipped or
+  // failed send would start the quiet period as though it had worked.
+  if (sent && sent.ok) {
+    await query('update conversations set last_notified_at = now() where id = $1', [conversationId]);
+  }
 }
 
 // Contact a cleaner: reuse the existing thread with them, or create an enquiry
@@ -2168,6 +2187,15 @@ app.post('/api/messages', async (req, res) => {
     const { conversationId, senderUserId, body } = req.body ?? {};
     if (!conversationId || !senderUserId || !body) return res.status(400).json({ error: 'conversationId, senderUserId and body are required.' });
     if (!(await isParticipant(conversationId, senderUserId))) return res.status(403).json({ error: 'Not your conversation.' });
+    // Replying proves you read what you are replying to. Without this, someone
+    // who answers from their inbox without opening the portal stays "unread"
+    // forever, and the unread count that governs notifications never resets -
+    // which is exactly how a live conversation went silent.
+    await query(
+      `update messages set read_at = now()
+        where conversation_id = $1 and sender_user_id <> $2 and read_at is null`,
+      [conversationId, senderUserId]
+    );
     await query('insert into messages (conversation_id, sender_user_id, body) values ($1, $2, $3)', [conversationId, senderUserId, body]);
     await query('update conversations set last_message_at = now() where id = $1', [conversationId]);
     notifyNewMessage({ conversationId, senderUserId }).catch((e) => console.error('[email] new message:', e));
