@@ -1163,7 +1163,7 @@ app.post('/api/verification', async (req, res) => {
         [cleanerId]
       );
       sendVerificationPendingEmail({
-        to: ADMIN_EMAIL,
+        to: ADMIN_NOTIFY_EMAIL,
         cleanerName: who.rows[0]?.full_name || '',
         cleanerEmail: who.rows[0]?.email || '',
         type,
@@ -1186,7 +1186,18 @@ app.post('/api/verification', async (req, res) => {
 });
 
 // --- Admin: review uploaded verification documents --------------------------
+// The address the admin SIGNS IN with. isAdmin compares it to the logged-in
+// user's email and the dashboard filters test data on it, so it must keep
+// matching the account that actually exists - changing it to a nicer-looking
+// address locks the admin out of their own dashboard. Move it only by also
+// changing the account's email.
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'ensor.jack@gmail.com').toLowerCase();
+
+// Where admin alerts are DELIVERED. Separate on purpose: these two were the same
+// value, so "stop sending things to my personal address" and "keep me able to
+// log in" were in direct conflict. Now the notification address can be the
+// company one while the identity stays whatever the account was created with.
+const ADMIN_NOTIFY_EMAIL = (process.env.ADMIN_NOTIFY_EMAIL || 'hello@matchmaid.co.nz').toLowerCase();
 
 // The admin's own accounts are test data, not market signal. Left in they
 // overstate every number on the dashboard - and materially, at this size: the
