@@ -52,10 +52,6 @@ function parseLoc(val) {
 // sends the id.
 let suburbList = [];
 let suburbsFailed = false; // the /api/suburbs fetch errored - say so, don't show a dead picker
-// Whether search/messaging is open to THIS account. The server decides; this
-// only picks which Find panel to draw. Defaults closed, so a failed check shows
-// the waitlist card rather than a dead end.
-let canSearch = false;
 let directory = []; // active cleaners (for the messages picker)
 let convos = []; // this user's conversations
 let pendingReviews = []; // cleans the customer has been asked to rate, and hasn't
@@ -170,12 +166,6 @@ const postJSON = (url, body) =>
       )
     : Promise.reject();
 
-function loadCanSearch() {
-  if (!uid) return;
-  getJSON(`/api/can-message?userId=${encodeURIComponent(uid)}`)
-    .then((d) => { if (d && d.allowed) { canSearch = true; reRenderIf('find', 'overview'); } })
-    .catch(() => {});
-}
 function loadSuburbs() {
   getJSON('/api/suburbs')
     .then((list) => { suburbList = Array.isArray(list) ? list : []; reRenderIf('find', 'profile'); refreshCwizForSuburbs(); })
@@ -305,7 +295,6 @@ async function initMessages() {
 
 // Kick off all loads for the logged-in customer.
 if (uid) {
-  loadCanSearch();
   loadSuburbs();
   loadDirectory();
   loadProfile();
@@ -407,23 +396,16 @@ const PANELS = {
   // on /browse - it is the ungated public one, and it is better than the portal
   // search that was removed: live availability, the price histogram, and areas
   // derived from each cleaner's service circle.
+  // One panel, no branching. Search used to be open to the admin account alone,
+  // so this had a second version explaining that - which survived the opening
+  // and told every customer their access was special while everyone else was
+  // locked out. It is open to all of them.
   find() {
-    if (canSearch) {
-      return `
-        <h1>Find a cleaner</h1>
-        <div class="panel-card">
-          <p class="wizard-lede">Search is open on your account while it stays closed to everyone
-            else. Browse is the full search - filter by suburb, clean type, availability and price,
-            then message whoever you pick.</p>
-          <p class="muted">Their replies come back here, in <strong>Messages</strong>.</p>
-          <a class="btn solid" href="/browse">Search cleaners</a>
-        </div>`;
-    }
     return `
       <h1>Find a cleaner</h1>
       <div class="panel-card">
-        <p class="wizard-lede">Search is open. Browse local cleaners, compare their rates and
-          availability, and message whoever you pick - replies come back to your Messages tab.</p>
+        <p class="wizard-lede">Browse local cleaners, compare their rates and availability, and
+          message whoever you pick - replies come back to your Messages tab.</p>
         <p class="muted">Filling in your profile gets you better matches: we use your suburb, the
           clean you want and the times that suit you to rank who comes up first.</p>
         <div class="save-row">
