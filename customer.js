@@ -367,7 +367,7 @@ const PANELS = {
     return `
       <h1>My enquiries</h1>
       <p class="wizard-lede">Every enquiry you've sent, and where it got to.</p>
-      <div class="panel-card">
+      <div class="panel-card enq-scroll">
         ${myEnquiries.length
           ? myEnquiries
               .map(

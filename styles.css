@@ -1125,6 +1125,14 @@ a { color: inherit; text-decoration: none; }
 .panel-card-head { display: flex; justify-content: space-between; align-items: center; }
 .panel-card h2 { font-size: 1.4rem; }
 
+/* Enquiry lists scroll inside themselves once they get long, so the page stays
+   the length of the page. Applied to the card that holds the customer's rows
+   and to the maid portal's list, which use different markup for the same job. */
+.enq-scroll, #enqList { max-height: clamp(360px, calc(100vh - 18rem), 720px); overflow-y: auto; }
+/* Room for the scrollbar so it never sits on top of a status pill or button. */
+.enq-scroll { padding-right: 0.4rem; }
+#enqList { padding-right: 0.4rem; }
+
 .enquiry-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.9rem 0; border-top: 1px solid var(--line); }
 .enquiry-row:first-of-type { border-top: none; }
 .enquiry { border: 1px solid var(--line); border-radius: var(--radius); padding: 1.2rem 1.3rem; margin-bottom: 0.9rem; }
@@ -1243,11 +1251,28 @@ a { color: inherit; text-decoration: none; }
 .waitlist-card .btn { margin-top: 0.6rem; }
 
 /* Messages */
-.msg-layout { display: grid; grid-template-columns: 260px 1fr; gap: 1.2rem; margin-top: 0.8rem; min-height: 440px; }
-.convo-col { display: flex; flex-direction: column; gap: 0.7rem; }
+/* Bounded height, so the thread scrolls inside itself rather than growing the
+   page. Without a ceiling here the .bubbles flex:1 resolves to content height
+   and its overflow-y never engages - you end up scrolling the whole document to
+   reach a composer that has been pushed off the bottom.
+   The min-height:0 on the children is the other half: a flex/grid item refuses
+   to shrink below its content unless told it may, and without it the overflow
+   simply moves outward instead of scrolling. */
+.msg-layout {
+  display: grid; grid-template-columns: 260px 1fr; gap: 1.2rem; margin-top: 0.8rem;
+  height: clamp(420px, calc(100vh - 15rem), 760px);
+}
+.msg-layout > * { min-height: 0; }
+.convo-col { display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; }
 .new-chat { display: flex; gap: 0.5rem; }
 .new-chat select { flex: 1; min-width: 0; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--sans); background: var(--paper); }
-.convo-list { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+/* The conversation list scrolls on its own too - with a dozen threads it would
+   otherwise push the whole column past the thread beside it. */
+.convo-list {
+  display: flex; flex-direction: column; gap: 0;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  overflow-y: auto; flex: 1; min-height: 0;
+}
 .avatar-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.3rem; }
 .avatar { width: 84px; height: 84px; border-radius: 50%; overflow: hidden; border: 1px solid var(--line); background: #f4f1ea; display: grid; place-items: center; color: var(--muted); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -1454,7 +1479,7 @@ a { color: inherit; text-decoration: none; }
 .convo .muted { font-size: 0.82rem; }
 .convo.active { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--copper); }
 .unread { position: absolute; top: 0.7rem; right: 0.7rem; background: var(--copper); color: var(--paper); font-size: 0.66rem; font-weight: 700; border-radius: 999px; padding: 0.05rem 0.42rem; }
-.thread { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.thread { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; min-height: 0; }
 .thread-head {
   padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--line); font-family: var(--serif);
   /* Name on the left, the profile button pushed to the right; they wrap onto
@@ -1480,7 +1505,7 @@ a { color: inherit; text-decoration: none; }
 .thread-save-text { font-size: 0.85rem; color: var(--muted); }
 .thread-save.on .thread-save-text { color: var(--copper-dark); font-weight: 600; }
 
-.bubbles { flex: 1; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; overflow-y: auto; background: var(--bg-mist); }
+.bubbles { flex: 1; min-height: 0; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.7rem; overflow-y: auto; background: var(--bg-mist); }
 .bubble { max-width: 78%; padding: 0.6rem 0.85rem; border-radius: var(--radius); border: 1px solid var(--line); }
 .bubble p { margin: 0; }
 .bubble span { font-size: 0.7rem; color: var(--muted); }
@@ -1535,7 +1560,12 @@ a { color: inherit; text-decoration: none; }
   .dash-grid { grid-template-columns: 1fr 1fr; }
   .plan-cards, .field-row, .quotes { grid-template-columns: 1fr; }
   .quote { border-right: none; }
-  .msg-layout { grid-template-columns: 1fr; }
+  /* Stacked on a phone, so a single fixed height would squash both panes into
+     nothing. The list gets a short scroll of its own and the thread takes a
+     sensible slice of the viewport. */
+  .msg-layout { grid-template-columns: 1fr; height: auto; }
+  .convo-list { max-height: 30vh; }
+  .thread { height: calc(100vh - 20rem); min-height: 320px; }
   .cta-card { flex-direction: column; align-items: flex-start; }
   .pricing-row { grid-template-columns: 1fr; gap: 0.5rem; }
 }
