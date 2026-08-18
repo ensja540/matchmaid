@@ -22,7 +22,7 @@ document.getElementById('logout').addEventListener('click', (e) => {
 
 const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
-// Deep link: /customer#find lands straight on a tab (browse sends waitlist
+// Deep link: /customer#find lands straight on a tab (browse sends signup
 // traffic to #find). Anything unrecognised falls back to the overview.
 const TABS = ['overview', 'mycleaners', 'enquiries', 'find', 'messages', 'profile'];
 let current = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
@@ -388,14 +388,11 @@ const PANELS = {
       </div>`;
   },
 
-  // Search is switched off while we build up the cleaner network. Customers can
-  // still complete their profile, which is what the search ranks them against.
+  // The real search lives on /browse - the ungated public one, with live
+  // availability, the price histogram and areas derived from each cleaner's
+  // service circle. This panel points at it rather than being a second search
+  // that would have to be kept in step.
   //
-  // Accounts search is open to (the admin, or everyone once MESSAGING_OPEN is
-  // set) get a way through instead of the waitlist card. The real search lives
-  // on /browse - it is the ungated public one, and it is better than the portal
-  // search that was removed: live availability, the price histogram, and areas
-  // derived from each cleaner's service circle.
   // One panel, no branching. Search used to be open to the admin account alone,
   // so this had a second version explaining that - which survived the opening
   // and told every customer their access was special while everyone else was
@@ -508,8 +505,9 @@ const WIRE = {
       b.addEventListener('click', () => openConvo(b.dataset.open, true))
     );
   },
-  // Search disabled during the waitlist phase - the CTA opens the guided
-  // profile setup (their waitlist entry).
+  // The search itself is on /browse; the only thing to wire here is the CTA
+  // that opens the guided profile setup, since a filled-in profile is what the
+  // search ranks against.
   find() {
     panel.querySelector('[data-open-cwiz]')?.addEventListener('click', openCwiz);
   },
