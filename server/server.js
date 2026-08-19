@@ -1808,6 +1808,143 @@ app.get('/api/admin/reviews', async (req, res) => {
   }
 });
 
+// --- Pairings: who actually got matched with whom ---------------------------
+// The marketplace's own scoreboard. Signups say people arrived; this says the
+// thing they arrived for happened - a customer and a cleaner found each other,
+// agreed a date and got a house cleaned.
+//
+// A "pairing" is the relationship, not the enquiry: the same two people booking
+// a second clean is the same pairing getting stronger, and that repeat rate is
+// the number worth watching. Every enquiry that ever passed between them is
+// folded into one row.
+//
+// Kept for marketing as well as measurement, so each row carries the story and
+// not just the count: who, where, how long it took them to agree a date, how
+// many cleans have followed, and what the customer said afterwards.
+const PAIRING_STAGES = `
+    exists (select 1 from messages m
+             where m.conversation_id = conv.id and m.sender_user_id = cpf.user_id
+               and coalesce(m.kind, 'text') = 'text') as replied,
+    -- Booked implies a date was agreed. Enquiries booked before the chat-first
+    -- flow existed have no proposal to point at, so the booking itself counts.
+    (e.scheduled_on is not null or e.proposed_date is not null
+     or exists (select 1 from messages m
+                 where m.conversation_id = conv.id and m.kind = 'date_proposal')) as dated,
+    (e.scheduled_on is not null) as booked`;
+
+app.get('/api/admin/pairings', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+
+    const base = `
+      from enquiries e
+      join cleaner_profiles cpf on cpf.id = e.cleaner_id
+      join users cu on cu.id = cpf.user_id
+      join client_profiles clp on clp.id = e.client_id
+      join users clu on clu.id = clp.user_id
+      left join conversations conv on conv.enquiry_id = e.id`;
+    // Both sides have to be someone other than the admin: a test enquiry the
+    // admin sent to themselves is not a pairing, and counting it would put a
+    // fake number on the one board meant to be trusted.
+    const realPeople = `lower(cu.email) <> ${ADMIN_EMAIL_SQL} and lower(clu.email) <> ${ADMIN_EMAIL_SQL}`;
+
+    const funnel = await query(
+      `with steps as (select e.id, e.status, ${PAIRING_STAGES} ${base} where ${realPeople})
+       select count(*)::int as matched,
+              count(*) filter (where replied)::int as talking,
+              count(*) filter (where dated)::int as dated,
+              count(*) filter (where booked)::int as booked,
+              count(*) filter (where status = 'completed')::int as cleaned,
+              count(*) filter (where status = 'declined')::int as declined
+         from steps`
+    );
+
+    // What the admin's own test traffic accounts for, said out loud rather than
+    // silently dropped - "0 pairings" reads very differently when you know
+    // three conversations were excluded.
+    const self = await query(
+      `select count(*)::int as n ${base}
+        where not (${realPeople})`
+    );
+
+    const pairs = await query(
+      `with steps as (
+         select e.*, conv.id as conv_id,
+                coalesce(cpf.business_name, cu.full_name) as cleaner,
+                clu.full_name as customer,
+                coalesce(es.name, cls.name) as suburb,
+                st.name as service,
+                ${PAIRING_STAGES}
+           ${base}
+           left join suburbs es on es.id = e.suburb_id
+           left join suburbs cls on cls.id = clp.default_suburb_id
+           left join service_types st on st.id = e.service_type_id
+          where ${realPeople}
+       )
+       select cleaner, customer,
+              max(suburb) as suburb, max(service) as service,
+              count(*)::int as enquiries,
+              count(*) filter (where booked)::int as bookings,
+              count(*) filter (where status = 'completed')::int as cleans,
+              bool_or(booked) as has_booked,
+              to_char(min(created_at), 'DD Mon YYYY') as first_matched,
+              to_char(max(scheduled_on), 'DD Mon YYYY') as latest_clean,
+              -- How long the two of them took to settle on a date. The headline
+              -- health measure of the flow itself: days, not weeks, means the
+              -- conversation is doing its job.
+              min(extract(epoch from (responded_at - created_at)) / 86400)
+                filter (where booked)::numeric(10,1) as days_to_book,
+              (array_agg(client_id))[1] as client_id,
+              (array_agg(cleaner_id))[1] as cleaner_id
+         from steps
+        group by cleaner, customer
+        order by bool_or(booked) desc, count(*) filter (where booked) desc, min(created_at)
+        limit 200`
+    );
+
+    // The quotable part. Attached per pairing rather than listed separately,
+    // because "Ana in Riccarton has had four cleans from Emily and rated the
+    // last one 5/5" is the sentence worth keeping, not the star on its own.
+    const reviews = await query(
+      `select r.cleaner_id, r.client_id, r.overall, r.comment,
+              to_char(r.created_at, 'DD Mon YYYY') as when
+         from reviews r where r.status = 'published' order by r.created_at desc`
+    );
+    const byPair = new Map();
+    for (const r of reviews.rows) {
+      const k = `${r.cleaner_id}|${r.client_id}`;
+      if (!byPair.has(k)) byPair.set(k, r); // most recent wins
+    }
+
+    const f = funnel.rows[0];
+    res.json({
+      funnel: f,
+      // Pairs who got as far as a booking, over pairs who ever spoke.
+      selfExcluded: self.rows[0].n,
+      pairings: pairs.rows.map((p) => {
+        const r = byPair.get(`${p.cleaner_id}|${p.client_id}`);
+        return {
+          cleaner: p.cleaner,
+          customer: p.customer,
+          suburb: p.suburb || '',
+          service: p.service || '',
+          enquiries: p.enquiries,
+          bookings: p.bookings,
+          cleans: p.cleans,
+          booked: p.has_booked,
+          firstMatched: p.first_matched,
+          latestClean: p.latest_clean || '',
+          daysToBook: p.days_to_book == null ? null : Number(p.days_to_book),
+          review: r ? { overall: Number(r.overall), comment: r.comment || '', when: r.when } : null,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load pairings.' });
+  }
+});
+
 // Hiding sets 'removed' so the review drops off the cleaner's profile and out
 // of their rating; restoring returns it to 'published'. Either way the
 // cleaner's headline average is recomputed from what remains published.

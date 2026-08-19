@@ -1771,6 +1771,44 @@ a { color: inherit; text-decoration: none; }
 .fn-meta { font-size: 0.72rem; }
 .fn-drop { color: #a3402f; font-weight: 600; }
 .fn-note { font-size: 0.72rem; margin: 0.8rem 0 0; }
+
+/* ======================================================================
+   Admin: pairings - the marketplace scoreboard
+   ====================================================================== */
+.pr-hero { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.4rem; }
+.pr-hero-num { display: flex; flex-direction: column; }
+.pr-hero-num strong { font-family: var(--serif); font-size: 3.2rem; line-height: 1; font-variant-numeric: tabular-nums; color: var(--copper-dark); }
+.pr-hero-num span { font-size: 0.82rem; color: var(--muted); margin-top: 0.3rem; }
+.pr-hero-side { display: grid; grid-template-columns: repeat(4, auto); gap: 0 1.6rem; margin: 0; }
+.pr-hero-side dt { font-size: 0.72rem; color: var(--muted); }
+.pr-hero-side dd { margin: 0.1rem 0 0; font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* One column, so the funnel reads as a single sequence rather than the two
+   side-by-side tracks the signup funnel uses. */
+.pr-funnel .fn-side { max-width: 34rem; }
+
+.pr-list { display: flex; flex-direction: column; gap: 0.8rem; margin-top: 1rem; }
+.pr-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem 1rem; background: var(--paper); }
+/* A booked pairing is the thing this page exists to show, so it is marked out
+   from the ones still in conversation rather than sorted above them and left
+   looking identical. */
+.pr-card.won { border-left: 3px solid var(--copper); }
+.pr-card.talking { background: var(--paper-2); }
+.pr-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.pr-head h4 { margin: 0; font-size: 1rem; flex: 1; min-width: 12ch; }
+.pr-amp { color: var(--muted); font-weight: 400; }
+.pr-repeat { font-size: 0.72rem; font-weight: 700; color: var(--copper-dark); background: rgba(20, 184, 166, 0.14); border-radius: 999px; padding: 0.15rem 0.5rem; }
+.pr-facts { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; margin: 0.5rem 0 0; }
+.pr-fact { font-size: 0.74rem; color: var(--muted); }
+.pr-fact + .pr-fact::before { content: '·'; margin-right: 0.5rem; }
+/* The quotable part, set apart because one day it goes on a page. */
+.pr-quote { margin: 0.7rem 0 0; padding: 0.6rem 0.8rem; border-left: 2px solid var(--copper); background: var(--paper-2); }
+.pr-quote p { margin: 0.3rem 0; font-family: var(--serif); font-size: 1rem; font-style: italic; }
+.pr-quote cite { font-size: 0.72rem; color: var(--muted); font-style: normal; }
+.pr-stars { color: var(--copper); letter-spacing: 0.08em; font-size: 0.85rem; }
+
+@media (max-width: 700px) {
+  .pr-hero-side { grid-template-columns: repeat(2, auto); gap: 0.7rem 1.2rem; }
+}
 @media (max-width: 620px) { .fn-grid { grid-template-columns: 1fr; gap: 1.9rem; } }
 
 /* ---------- Admin: where signups came from ---------- */

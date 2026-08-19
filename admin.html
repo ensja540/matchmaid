@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700;800&display=swap" />
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
-    <link rel="stylesheet" href="styles.css?v=113" />
+    <link rel="stylesheet" href="styles.css?v=114" />
   </head>
   <body class="app-body">
     <header class="app-bar">
@@ -35,6 +35,7 @@
       <nav class="portal-tabs" id="adminTabs">
         <button class="portal-tab active" data-tab="dashboard" type="button">Dashboard</button>
         <button class="portal-tab" data-tab="people" type="button">People</button>
+        <button class="portal-tab" data-tab="pairings" type="button">Pairings</button>
         <button class="portal-tab" data-tab="coverage" type="button">Coverage</button>
         <button class="portal-tab" data-tab="verifications" type="button">Verifications</button>
         <button class="portal-tab" data-tab="reviews" type="button">Reviews</button>
@@ -48,6 +49,11 @@
       <section class="admin-panel" data-panel="people" hidden>
         <p class="wizard-lede">Everyone who has registered, newest first. Includes your own accounts and any that have been removed, so the list is the whole register rather than a filtered view of it.</p>
         <div id="peopleBody"></div>
+      </section>
+
+      <section class="admin-panel" data-panel="pairings" hidden>
+        <p class="wizard-lede">Every customer and cleaner who found each other here. A pairing counts as successful once they agree a date and the clean is booked &mdash; and it gets stronger every time they book again. Kept in full, because these are the stories worth telling later.</p>
+        <div id="pairingsBody"></div>
       </section>
 
       <section class="admin-panel" data-panel="coverage" hidden>
@@ -83,6 +89,6 @@
     <script src="/map-gestures.js?v=2"></script>
     <script src="session.js?v=89"></script>
     <script src="/social.js?v=1"></script>
-    <script src="admin.js?v=93"></script>
+    <script src="admin.js?v=94"></script>
   </body>
 </html>

@@ -92,6 +92,7 @@ adminTabs?.addEventListener('click', (e) => {
   // first shown, and told to re-measure on every later visit.
   if (btn.dataset.tab === 'coverage') showCoverage();
   if (btn.dataset.tab === 'people') showPeople();
+  if (btn.dataset.tab === 'pairings') showPairings();
 });
 // A count on a tab, so a full review queue is visible without opening it.
 function setTabCount(tab, n) {
@@ -101,6 +102,120 @@ function setTabCount(tab, n) {
   if (!n) { b?.remove(); return; }
   if (!b) { b = document.createElement('span'); b.className = 'tab-count'; btn.appendChild(b); }
   b.textContent = n;
+}
+
+// ---------- Pairings: the marketplace's own scoreboard ----------
+// Signups measure arrival. This measures the thing people arrived for: a
+// customer and a cleaner finding each other, agreeing a date, and a house
+// getting cleaned. It is the one board where a number going up means the
+// business worked rather than that a page was visited.
+const pairingsBody = document.getElementById('pairingsBody');
+let pairingsData = null;
+
+async function showPairings() {
+  if (!pairingsBody) return;
+  if (pairingsData) { renderPairings(); return; }
+  pairingsBody.innerHTML = '<div class="panel-card"><p class="muted">Loading…</p></div>';
+  try {
+    const res = await fetch(`/api/admin/pairings?userId=${encodeURIComponent(sessionUser.id)}`);
+    if (res.status === 403) {
+      pairingsBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
+      return;
+    }
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    pairingsData = await res.json();
+    renderPairings();
+  } catch (err) {
+    console.error('pairings:', err);
+    pairingsBody.innerHTML =
+      `<div class="panel-card"><p class="muted">Could not load pairings (${esc(err.message || 'network error')}).
+       <button class="btn ghost sm" type="button" data-pair-retry>Retry</button></p></div>`;
+    pairingsBody.querySelector('[data-pair-retry]')?.addEventListener('click', showPairings);
+  }
+}
+
+const stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
+
+// One card per relationship. Booked pairs lead, because they are the point;
+// the ones still talking sit underneath as the pipeline behind them.
+function pairingCard(p) {
+  const repeat = p.bookings > 1 ? `<span class="pr-repeat">×${p.bookings} booked</span>` : '';
+  const speed = p.daysToBook == null ? ''
+    : `<span class="pr-fact">agreed a date in ${p.daysToBook < 1 ? 'under a day' : `${p.daysToBook} day${p.daysToBook === 1 ? '' : 's'}`}</span>`;
+  const quote = p.review
+    ? `<blockquote class="pr-quote">
+         <span class="pr-stars" aria-label="${p.review.overall} out of 5">${stars(p.review.overall)}</span>
+         ${p.review.comment ? `<p>“${esc(p.review.comment)}”</p>` : ''}
+         <cite>${esc(p.customer)}, ${p.review.when}</cite>
+       </blockquote>`
+    : '';
+  return `<article class="pr-card ${p.booked ? 'won' : 'talking'}">
+    <div class="pr-head">
+      <h4>${esc(p.cleaner)} <span class="pr-amp">&amp;</span> ${esc(p.customer)}</h4>
+      ${p.booked ? `<span class="status status-accepted">Booked</span>${repeat}` : '<span class="status status-new">Talking</span>'}
+    </div>
+    <p class="pr-facts">
+      ${p.suburb ? `<span class="pr-fact">${esc(p.suburb)}</span>` : ''}
+      ${p.service ? `<span class="pr-fact">${esc(p.service)}</span>` : ''}
+      <span class="pr-fact">matched ${esc(p.firstMatched)}</span>
+      ${speed}
+      ${p.cleans ? `<span class="pr-fact">${p.cleans} clean${p.cleans === 1 ? '' : 's'} done</span>` : ''}
+      ${p.latestClean ? `<span class="pr-fact">latest ${esc(p.latestClean)}</span>` : ''}
+    </p>
+    ${quote}
+  </article>`;
+}
+
+function renderPairings() {
+  const d = pairingsData;
+  if (!d || !pairingsBody) return;
+  const f = d.funnel || {};
+  const won = d.pairings.filter((p) => p.booked);
+  const repeats = won.filter((p) => p.bookings > 1).length;
+  // The headline is a count of relationships, not of enquiries: two people who
+  // have booked four times are one pairing, and the fourth booking shows up in
+  // the repeat rate rather than inflating the top line.
+  const rate = f.matched ? Math.round((f.booked / f.matched) * 100) : 0;
+
+  const hero = `<div class="panel-card pr-hero">
+    <div class="pr-hero-num">
+      <strong>${won.length.toLocaleString()}</strong>
+      <span>successful pairing${won.length === 1 ? '' : 's'}</span>
+    </div>
+    <dl class="pr-hero-side">
+      <div><dt>Cleans booked</dt><dd>${(f.booked || 0).toLocaleString()}</dd></div>
+      <div><dt>Cleans done</dt><dd>${(f.cleaned || 0).toLocaleString()}</dd></div>
+      <div><dt>Booked again</dt><dd>${repeats.toLocaleString()}</dd></div>
+      <div><dt>Enquiry → booking</dt><dd>${rate}%</dd></div>
+    </dl>
+  </div>`;
+
+  const stages = [
+    { label: 'Enquiry sent', value: f.matched || 0 },
+    { label: 'Cleaner replied', value: f.talking || 0 },
+    { label: 'Date on the table', value: f.dated || 0 },
+    { label: 'Date confirmed — booked', value: f.booked || 0 },
+    { label: 'Clean done', value: f.cleaned || 0 },
+  ];
+  const funnel = `<div class="panel-card adv-card">
+    <h3 class="adv-head">From enquiry to a clean</h3>
+    <div class="pr-funnel">${funnelSideHTML('', stages, 0, 'enquiries')}</div>
+    ${f.declined ? `<p class="fn-note muted">${f.declined} enquir${f.declined === 1 ? 'y was' : 'ies were'} turned down by the cleaner.</p>` : ''}
+  </div>`;
+
+  // Said plainly rather than quietly dropped: "0 pairings" reads very
+  // differently once you know your own test traffic was taken out of it.
+  const excluded = d.selfExcluded
+    ? `<p class="fn-note muted">Excludes ${d.selfExcluded} enquir${d.selfExcluded === 1 ? 'y' : 'ies'} involving your own account.</p>`
+    : '';
+
+  const list = d.pairings.length
+    ? `<div class="pr-list">${d.pairings.map(pairingCard).join('')}</div>`
+    : `<div class="panel-card"><p class="muted">No pairings yet. The first customer to agree a date with a cleaner lands here.</p>${excluded}</div>`;
+
+
+  pairingsBody.innerHTML =
+    hero + funnel + list + (d.pairings.length && excluded ? `<div class="panel-card">${excluded}</div>` : '');
 }
 
 // ---------- People: the register ----------
@@ -496,7 +611,7 @@ function kpiRowHTML(d, totalInRange) {
 // the thing you see. Two percentages per row because they answer different
 // questions: "of everyone who signed up" (overall) and "of the people who got
 // this far" (step) - the second is what tells you which step is leaking.
-function funnelSideHTML(title, stages, removed) {
+function funnelSideHTML(title, stages, removed, ofLabel = 'signups') {
   if (!stages || !stages.length) return '';
   const top = stages[0].value;
   const rows = stages.map((s, i) => {
@@ -511,7 +626,7 @@ function funnelSideHTML(title, stages, removed) {
       </div>
       <div class="fn-track"><span class="fn-bar" style="width:${top ? Math.max(pctTop, 1.5) : 0}%"></span></div>
       <div class="fn-line fn-meta">
-        <span class="muted">${pctTop}% of signups</span>
+        <span class="muted">${pctTop}% of ${esc(ofLabel)}</span>
         ${pctStep == null
           ? '<span class="muted">—</span>'
           : `<span class="${drop > 0 ? 'fn-drop' : 'muted'}">${pctStep}% of previous${drop > 0 ? ` · lost ${drop}` : ''}</span>`}
@@ -519,7 +634,7 @@ function funnelSideHTML(title, stages, removed) {
     </li>`;
   });
   return `<div class="fn-side">
-    <h4 class="adv-group-title">${esc(title)}</h4>
+    ${title ? `<h4 class="adv-group-title">${esc(title)}</h4>` : ''}
     <ol class="fn-list">${rows.join('')}</ol>
     ${removed ? `<p class="fn-note muted">Excludes ${removed} removed account${removed === 1 ? '' : 's'}.</p>` : ''}
   </div>`;
