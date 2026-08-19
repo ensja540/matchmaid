@@ -2116,7 +2116,13 @@ app.get('/api/conversations', async (req, res) => {
               cu.full_name as cleaner_person, nullif(cpf.business_name, '') as cleaner_business,
               clu.full_name as client_name,
               (select body from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_body,
-              (select to_char(sent_at, 'Dy HH24:MI') from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_at
+              (select to_char(sent_at, 'Dy HH24:MI') from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_at,
+              -- Unread means: sent by the other person and not yet read by the
+              -- viewer. Opening the thread or replying clears it, so the badge
+              -- empties itself the moment they act on it.
+              (select count(*)::int from messages m
+                where m.conversation_id = c.id and m.sender_user_id <> $1
+                  and m.read_at is null and coalesce(m.kind, 'text') = 'text') as unread
          from conversations c
          join cleaner_profiles cpf on cpf.id = c.cleaner_id
          join users cu on cu.id = cpf.user_id
@@ -2139,6 +2145,7 @@ app.get('/api/conversations', async (req, res) => {
         enquiryId: r.enquiry_id,
         lastBody: r.last_body || 'New conversation',
         lastAt: r.last_at || '',
+        unread: r.unread ?? 0,
       };
     }));
   } catch (err) {

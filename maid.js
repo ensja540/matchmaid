@@ -464,7 +464,7 @@ if (sessionUser?.id) {
   // Real enquiries addressed to this maid.
   fetch(`/api/enquiries?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((list) => { if (list) { enquiries = list.filter((e) => e.role === 'cleaner'); render(); } })
+    .then((list) => { if (list) { enquiries = list.filter((e) => e.role === 'cleaner'); render(); refreshBadges(); } })
     .catch(() => {});
 }
 
@@ -477,7 +477,7 @@ const mGet = (u) => (mHasFetch ? fetch(u).then((r) => (r.ok ? r.json() : Promise
 function refreshConvos() {
   if (!sessionUser?.id) return Promise.resolve();
   return mGet(`/api/conversations?userId=${encodeURIComponent(sessionUser.id)}`)
-    .then((list) => { convos = list; })
+    .then((list) => { convos = list; refreshBadges(); })
     .catch(() => {});
 }
 function loadMsgs(id) {
@@ -561,9 +561,34 @@ document.getElementById('refPill')?.addEventListener('click', () => {
   if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
+// Count bubbles on the tabs. Same approach as the customer portal: inside the
+// button so it cannot drift when the tabs wrap, and removed at zero rather than
+// left showing a nought.
+function setTabBadge(tab, n) {
+  const btn = tabs?.querySelector(`[data-tab="${tab}"]`);
+  if (!btn) return;
+  let b = btn.querySelector('.tab-badge');
+  if (!n) { b?.remove(); btn.classList.remove('has-badge'); return; }
+  if (!b) {
+    b = document.createElement('span');
+    b.className = 'tab-badge';
+    btn.appendChild(b);
+  }
+  b.textContent = n > 99 ? '99+' : String(n);
+  b.setAttribute('aria-label', `${n} needing attention`);
+  btn.classList.add('has-badge');
+}
+function refreshBadges() {
+  setTabBadge('messages', (convos || []).reduce((n, c) => n + (c.unread || 0), 0));
+  // An enquiry stays 'new' until the cleaner accepts or declines it, so that is
+  // the count worth surfacing - it is work waiting on them, not just unread.
+  setTabBadge('enquiries', (enquiries || []).filter((e) => e.status === 'new').length);
+}
+
 function render() {
   panel.innerHTML = PANELS[current]();
   WIRE[current]?.();
+  refreshBadges();
   if (current === 'messages') {
     startPolling();
     const b = panel.querySelector('#bubbles');
@@ -1359,6 +1384,7 @@ function convoListHTML() {
           (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
             <strong>${withLabel(c)}</strong>
             <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
+            ${c.unread ? `<span class="unread">${c.unread > 9 ? '9+' : c.unread}</span>` : ''}
           </button>`
         )
         .join('')

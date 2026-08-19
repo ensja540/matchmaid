@@ -181,7 +181,7 @@ function loadProfile() {
 }
 function loadEnquiries() {
   getJSON(`/api/enquiries?userId=${encodeURIComponent(uid)}`)
-    .then((list) => { myEnquiries = list.filter((e) => e.role === 'client'); reRenderIf('enquiries'); })
+    .then((list) => { myEnquiries = list.filter((e) => e.role === 'client'); reRenderIf('enquiries'); refreshBadges(); })
     .catch(() => {});
 }
 function loadFavourites() {
@@ -221,7 +221,7 @@ function loadPendingReviews() {
 }
 function refreshConvos() {
   return getJSON(`/api/conversations?userId=${encodeURIComponent(uid)}`)
-    .then((list) => { convos = list; })
+    .then((list) => { convos = list; refreshBadges(); })
     .catch(() => {});
 }
 function loadMsgs(id) {
@@ -317,9 +317,32 @@ function goTo(tab) {
   tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
   render();
 }
+// A count bubble on a tab. Rendered into the tab button itself rather than
+// floated over it, so it cannot drift out of place when the tabs wrap on a
+// narrow screen. Removed entirely at zero - an empty badge still draws the eye
+// to a tab with nothing behind it, which teaches people to ignore it.
+function setTabBadge(tab, n) {
+  const btn = tabs?.querySelector(`[data-tab="${tab}"]`);
+  if (!btn) return;
+  let b = btn.querySelector('.tab-badge');
+  if (!n) { b?.remove(); btn.classList.remove('has-badge'); return; }
+  if (!b) {
+    b = document.createElement('span');
+    b.className = 'tab-badge';
+    btn.appendChild(b);
+  }
+  b.textContent = n > 99 ? '99+' : String(n);
+  b.setAttribute('aria-label', `${n} unread`);
+  btn.classList.add('has-badge');
+}
+function refreshBadges() {
+  setTabBadge('messages', (convos || []).reduce((n, c) => n + (c.unread || 0), 0));
+}
+
 function render() {
   panel.innerHTML = PANELS[current]();
   WIRE[current]?.();
+  refreshBadges();
   if (current === 'messages') {
     startPolling();
     const b = panel.querySelector('#bubbles');
@@ -1025,6 +1048,7 @@ function convoListHTML() {
           (c) => `<button type="button" class="convo ${c.id === activeConvo ? 'active' : ''}" data-convo="${c.id}">
             <strong>${withLabel(c)}</strong>
             <span class="muted">${escapeHtml((c.lastBody || '').slice(0, 36))}</span>
+            ${c.unread ? `<span class="unread">${c.unread > 9 ? '9+' : c.unread}</span>` : ''}
           </button>`
         )
         .join('')

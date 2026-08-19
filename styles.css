@@ -1479,6 +1479,27 @@ a { color: inherit; text-decoration: none; }
 .convo .muted { font-size: 0.82rem; }
 .convo.active { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--copper); }
 .unread { position: absolute; top: 0.7rem; right: 0.7rem; background: var(--copper); color: var(--paper); font-size: 0.66rem; font-weight: 700; border-radius: 999px; padding: 0.05rem 0.42rem; }
+
+/* Count bubble on a portal tab. It is meant to pull the eye, so it is the one
+   place on the page using a warm red against the teal - a colour that appears
+   nowhere else reads as "this is for you" rather than as decoration. */
+.tab-badge {
+  display: inline-block; margin-left: 0.4rem; min-width: 1.3rem; padding: 0 0.4rem;
+  font-size: 0.7rem; font-weight: 800; line-height: 1.3rem; text-align: center;
+  border-radius: 999px; background: #d2492f; color: #fff; vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 3px rgb(210 73 47 / 0.16);
+}
+/* One gentle pulse on arrival, then still. A badge that never stops moving is
+   an irritation people learn to tune out, which defeats the point. */
+@keyframes tab-badge-in {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.tab-badge { animation: tab-badge-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.portal-tab.has-badge { font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .tab-badge { animation: none; } }
 .thread { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; min-height: 0; }
 .thread-head {
   padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--line); font-family: var(--serif);
