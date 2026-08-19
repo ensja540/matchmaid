@@ -1545,6 +1545,26 @@ a { color: inherit; text-decoration: none; }
 .bubble.me { align-self: flex-end; background: var(--bg-tint); border-color: rgba(20,184,166,0.35); }
 .bubble.them { align-self: flex-start; background: var(--paper); border-color: var(--line); }
 .composer { display: flex; gap: 0.5rem; padding: 0.7rem; border-top: 1px solid var(--line); }
+
+/* Agreeing the date, in the thread where it gets agreed. Sits directly above
+   the composer: the last thing you read before you reply, and the first thing
+   you see when a date is waiting on you. */
+.booking-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.7rem; border-top: 1px solid var(--line); background: var(--paper-2); font-size: 0.88rem; }
+.booking-state { flex: 1; min-width: 12ch; }
+.booking-state strong { font-weight: 600; }
+.booking-actions { display: flex; gap: 0.4rem; }
+/* Their move: the one state that should catch an eye across the room. */
+.booking-bar.offered { background: rgba(20, 184, 166, 0.12); border-top-color: var(--copper); }
+.booking-bar.booked .booking-state { color: var(--copper-dark); }
+.booking-bar.propose { flex-direction: column; align-items: stretch; }
+.booking-bar.propose label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: var(--muted); }
+.booking-bar.propose input { padding: 0.55rem 0.7rem; border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--sans); font-size: 0.95rem; background: var(--paper); }
+.booking-bar .save-msg { margin: 0; min-height: 0; font-size: 0.82rem; }
+/* A date agreed in the thread reads back with the thread, but as a decision
+   rather than a remark - so it is bordered rather than filled like speech. */
+.bubble.date-note { background: var(--paper); border: 1px dashed var(--copper); }
+.bubble.date-note.done { border-style: solid; background: rgba(20, 184, 166, 0.1); }
+.bubble.date-note p { font-weight: 500; }
 .composer input { flex: 1; padding: 0.65rem 0.85rem; border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--sans); font-size: 0.95rem; background: var(--paper); }
 
 /* ======================================================================
@@ -1617,11 +1637,6 @@ a { color: inherit; text-decoration: none; }
 
 /* Booking a date is part of accepting an enquiry, so the form replaces the
    Accept/Decline buttons in place rather than opening a modal. */
-.accept-date { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.8rem; }
-.accept-date label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; color: var(--muted); }
-.accept-date input { padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
-.accept-date-actions { display: flex; gap: 0.5rem; }
-.accept-date .save-msg { flex-basis: 100%; margin: 0; }
 .booked-on { margin-bottom: 0.6rem; }
 
 /* ---------- Install app (PWA) ---------- */

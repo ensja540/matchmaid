@@ -474,9 +474,17 @@ if (sessionUser?.id) {
     .catch(() => { availLoaded = true; tryAutoWizard(); });
 
   // Real enquiries addressed to this maid.
-  fetch(`/api/enquiries?userId=${encodeURIComponent(sessionUser.id)}`)
+  refreshEnquiries().then(render);
+}
+
+// Confirming a date in a thread changes an enquiry's status, so the list has to
+// be reloaded from the same place it first came from rather than patched by
+// hand in two tabs.
+function refreshEnquiries() {
+  if (!sessionUser?.id) return Promise.resolve();
+  return fetch(`/api/enquiries?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((list) => { if (list) { enquiries = list.filter((e) => e.role === 'cleaner'); render(); refreshBadges(); } })
+    .then((list) => { if (list) { enquiries = list.filter((e) => e.role === 'cleaner'); refreshBadges(); } })
     .catch(() => {});
 }
 
@@ -484,6 +492,11 @@ if (sessionUser?.id) {
 let convos = [];
 let msgCache = {};
 let activeConvo = null;
+// Where the date has got to on each conversation, and which thread (if any) has
+// its date picker open. Both hang off the conversation because that is where
+// the two of them are agreeing it.
+const bookingCache = {};
+let proposingFor = null;
 const mHasFetch = typeof fetch !== 'undefined';
 const mGet = (u) => (mHasFetch ? fetch(u).then((r) => (r.ok ? r.json() : Promise.reject(r))) : Promise.reject());
 function refreshConvos() {
@@ -494,7 +507,7 @@ function refreshConvos() {
 }
 function loadMsgs(id) {
   return mGet(`/api/messages?conversationId=${encodeURIComponent(id)}&userId=${encodeURIComponent(sessionUser.id)}`)
-    .then((data) => { msgCache[id] = data.messages || []; })
+    .then((data) => { msgCache[id] = data.messages || []; bookingCache[id] = data.booking || null; })
     .catch(() => { msgCache[id] = []; });
 }
 async function openConvo(id) {
@@ -592,7 +605,7 @@ function setTabBadge(tab, n) {
 }
 function refreshBadges() {
   setTabBadge('messages', (convos || []).reduce((n, c) => n + (c.unread || 0), 0));
-  // An enquiry stays 'new' until the cleaner accepts or declines it, so that is
+  // An enquiry stays pending until a date is agreed and confirmed, so that is
   // the count worth surfacing - it is work waiting on them, not just unread.
   setTabBadge('enquiries', (enquiries || []).filter((e) => e.status === 'new').length);
 }
@@ -819,9 +832,6 @@ const WIRE = {
       b.addEventListener('click', async () => {
         const enq = enquiries.find((e) => e.id === b.dataset.id);
         if (!enq) return;
-        // Accepting needs a date, so it opens the little form below the card
-        // rather than firing straight at the API.
-        if (b.dataset.act === 'accept') return openAcceptForm(b, enq);
         const ACT = { decline: 'declined', complete: 'completed' };
         const status = ACT[b.dataset.act];
         if (!status) return;
@@ -847,6 +857,7 @@ const WIRE = {
   },
   messages() {
     bindConvoButtons();
+    wireBooking();
     // Same modal the Enquiries tab uses - keyed on the enquiry the conversation
     // hangs off, so there is nothing new to load or keep in step.
     panel.querySelectorAll('[data-house]').forEach((b) =>
@@ -1296,71 +1307,36 @@ function referralsHTML() {
     </div>`;
 }
 
-// Accepting books a date. That date, not the cleaner remembering to press a
-// button afterwards, is what asks the customer for a review - so it is part of
-// the accept rather than an afterthought, and there is no way to skip it.
-function openAcceptForm(button, enq) {
-  const actions = button.parentElement;
-  if (actions.querySelector('.accept-date')) return;
-  // UTC, so in New Zealand this floor is never later than the local today.
-  const todayISO = new Date().toISOString().slice(0, 10);
-  actions.innerHTML = `
-    <form class="accept-date">
-      <label>Date of the clean
-        <input type="date" name="scheduledOn" min="${todayISO}" required />
-      </label>
-      <div class="accept-date-actions">
-        <button class="btn solid sm" type="submit">Confirm</button>
-        <button class="btn outline sm" type="button" data-cancel>Cancel</button>
-      </div>
-      <p class="save-msg" role="status"></p>
-    </form>`;
-  const form = actions.querySelector('.accept-date');
-  const msg = form.querySelector('.save-msg');
-  form.querySelector('[data-cancel]').addEventListener('click', render);
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const scheduledOn = form.scheduledOn.value;
-    if (!scheduledOn) return;
-    if (!sessionUser?.id) {
-      enq.status = 'accepted';
-      return render();
-    }
-    msg.textContent = 'Accepting…';
-    msg.className = 'save-msg pending';
-    try {
-      const res = await fetch('/api/enquiry-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enquiryId: enq.id, userId: sessionUser.id, status: 'accepted', scheduledOn }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not accept.');
-      enq.status = 'accepted';
-      render();
-    } catch (err) {
-      msg.textContent = err.message;
-      msg.className = 'save-msg err';
-    }
-  });
-}
+
+// An enquiry is pending until a date is agreed. Accepted means a date is
+// confirmed and in the diary - which is why nothing here offers to accept: you
+// get there by agreeing a date in the conversation, not before it.
+const ENQ_LABEL = { new: 'Pending', accepted: 'Booked' };
+const enqLabel = (st) => ENQ_LABEL[st] || st;
 
 function enquiryCard(e) {
-  // Accepting books a date; the evening of that date the customer is asked for
-  // a review. "Mark clean complete" only brings that forward by hand.
+  // The date, once agreed, is what asks the customer for a review on the
+  // evening of the clean. "Mark clean complete" only brings that forward.
   const booked = e.scheduledWhen ? `<p class="muted booked-on">Booked for ${e.scheduledWhen}</p>` : '';
+  // A standing proposal is the one thing on this card worth chasing, so it says
+  // whose move it is rather than leaving a pending enquiry looking untouched.
+  const pending = e.proposedWhen
+    ? `<p class="muted booked-on">${e.proposedByMe
+        ? `You proposed ${e.proposedWhen} · waiting on them`
+        : `They proposed ${e.proposedWhen}`}</p>`
+    : '<p class="muted booked-on">Message them to agree a date</p>';
   const actions =
     e.status === 'new'
-      ? `<button class="btn solid sm" data-act="accept" data-id="${e.id}" type="button">Accept</button>
+      ? `${pending}
          <button class="btn outline sm" data-act="decline" data-id="${e.id}" type="button">Decline</button>`
       : e.status === 'accepted'
         ? `${booked}
            <button class="btn solid sm" data-act="complete" data-id="${e.id}" type="button">Mark clean complete</button>`
-        : `<span class="status status-${e.status}">${e.status}</span>`;
+        : `<span class="status status-${e.status}">${enqLabel(e.status)}</span>`;
   return `<article class="enquiry">
     <div class="enquiry-head">
       <div><h3>${e.customer}</h3><p class="muted">${e.service} · ${e.suburb} · ${e.when}</p></div>
-      <span class="status status-${e.status}">${e.status}</span>
+      <span class="status status-${e.status}">${enqLabel(e.status)}</span>
     </div>
     <p class="enquiry-msg">“${e.message}”</p>
     <div class="enquiry-actions">
@@ -1375,12 +1351,107 @@ function escapeHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+// A date proposal or confirmation is posted into the thread as a message so the
+// agreement reads back in order with the conversation that produced it. It is
+// marked out from the talking, because it is a decision rather than a remark.
 function bubblesHTML(msgs) {
-  return msgs == null
-    ? '<p class="muted" style="margin:auto">Loading…</p>'
-    : msgs.length
-    ? msgs.map((m) => `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`).join('')
-    : '<p class="muted" style="margin:auto">Say hello 👋</p>';
+  if (msgs == null) return '<p class="muted" style="margin:auto">Loading…</p>';
+  if (!msgs.length) return '<p class="muted" style="margin:auto">Say hello 👋</p>';
+  return msgs
+    .map((m) =>
+      m.kind === 'date_proposal' || m.kind === 'date_confirmed'
+        ? `<div class="bubble ${m.from} date-note ${m.kind === 'date_confirmed' ? 'done' : ''}">
+             <p>${m.kind === 'date_confirmed' ? '✓' : '📅'} ${escapeHtml(m.body)}</p><span>${m.at}</span></div>`
+        : `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`
+    )
+    .join('');
+}
+
+// The date of a clean is settled in the conversation, so the controls for it sit
+// under the conversation - not on a card in another tab that was asking the
+// cleaner to invent a date before they had spoken to anyone. Either side
+// proposes, the other confirms, and that confirmation books the job.
+function bookingHTML(c) {
+  const b = bookingCache[c.id];
+  if (!b || ['declined', 'closed', 'completed'].includes(b.status)) return '';
+  if (proposingFor === c.id) {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    return `<form class="booking-bar propose" id="proposeDate">
+      <label>Date of the clean
+        <input type="date" name="date" min="${todayISO}" value="${escapeHtml(b.proposedDate || b.scheduledOn || '')}" required />
+      </label>
+      <div class="booking-actions">
+        <button class="btn solid sm" type="submit">Propose</button>
+        <button class="btn outline sm" type="button" data-cancel-date="1">Cancel</button>
+      </div>
+      <p class="save-msg" role="status"></p>
+    </form>`;
+  }
+  const again = (label) => `<button class="btn outline sm" type="button" data-propose="1">${label}</button>`;
+  if (b.status === 'accepted' && b.scheduledLabel)
+    return `<div class="booking-bar booked">
+      <span class="booking-state">Booked for <strong>${escapeHtml(b.scheduledLabel)}</strong></span>
+      ${again('Change date')}
+    </div>`;
+  if (b.proposedLabel && b.proposedByMe)
+    return `<div class="booking-bar waiting">
+      <span class="booking-state">You proposed <strong>${escapeHtml(b.proposedLabel)}</strong> · waiting on them</span>
+      ${again('Change')}
+    </div>`;
+  if (b.proposedLabel)
+    return `<div class="booking-bar offered">
+      <span class="booking-state">They proposed <strong>${escapeHtml(b.proposedLabel)}</strong></span>
+      <div class="booking-actions">
+        <button class="btn solid sm" type="button" data-confirm-date="1">Confirm</button>
+        ${again('Suggest another')}
+      </div>
+    </div>`;
+  return `<div class="booking-bar">
+    <span class="booking-state muted">No date agreed yet</span>
+    ${again('Propose a date')}
+  </div>`;
+}
+
+// Shared by both buttons: post, refresh the thread, redraw.
+async function bookingAction(url, body, msgEl) {
+  if (!sessionUser?.id) return;
+  if (msgEl) { msgEl.textContent = 'Saving…'; msgEl.className = 'save-msg pending'; }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, userId: sessionUser.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'That did not work.');
+    proposingFor = null;
+    await loadMsgs(activeConvo);
+    await refreshConvos();
+    await refreshEnquiries();
+    render();
+  } catch (err) {
+    if (msgEl) { msgEl.textContent = err.message; msgEl.className = 'save-msg err'; }
+  }
+}
+
+function wireBooking() {
+  const enquiryId = bookingCache[activeConvo]?.enquiryId;
+  panel.querySelectorAll('[data-propose]').forEach((b) =>
+    b.addEventListener('click', () => { proposingFor = activeConvo; render(); })
+  );
+  panel.querySelectorAll('[data-cancel-date]').forEach((b) =>
+    b.addEventListener('click', () => { proposingFor = null; render(); })
+  );
+  panel.querySelectorAll('[data-confirm-date]').forEach((b) =>
+    b.addEventListener('click', () => bookingAction('/api/enquiry/confirm-date', { enquiryId }))
+  );
+  const form = panel.querySelector('#proposeDate');
+  form?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const date = form.date.value;
+    if (!date) return;
+    bookingAction('/api/enquiry/propose-date', { enquiryId, date }, form.querySelector('.save-msg'));
+  });
 }
 // Person's name, with their business (if any) on a second line underneath.
 // Name, then their suburb alongside it. For a cleaner reading a thread the
@@ -1402,6 +1473,7 @@ function threadHTML(c, msgs) {
         : `<strong>${withLabel(c)}</strong>`}
     </div>
     <div class="bubbles" id="bubbles">${bubblesHTML(msgs)}</div>
+    ${bookingHTML(c)}
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
       <button class="btn solid" type="submit">Send</button>

@@ -2053,6 +2053,12 @@ async function conversationParties(conversationId) {
 //
 // Fire-and-forget everywhere it is called - a mail hiccup must never fail the
 // message itself, which is already safely in the database by then.
+// What counts as "someone said something to you": their own words, and the two
+// date actions, which need answering just as much as a sentence does. The
+// review prompt is excluded - it is a button the cleaner's own action posted,
+// not a thing the other person is waiting on.
+const NOTIFIABLE_KINDS = `coalesce(m.kind, 'text') in ('text', 'date_proposal', 'date_confirmed')`;
+
 async function notifyNewMessage({ conversationId, senderUserId, kind }) {
   if (kind && kind !== 'text') return; // system prompts speak for themselves
   const p = await conversationParties(conversationId);
@@ -2067,7 +2073,7 @@ async function notifyNewMessage({ conversationId, senderUserId, kind }) {
     `select
        (select count(*)::int from messages m
          where m.conversation_id = c.id and m.sender_user_id <> $2
-           and m.read_at is null and coalesce(m.kind, 'text') = 'text') as unread,
+           and m.read_at is null and ${NOTIFIABLE_KINDS}) as unread,
        c.last_notified_at
        from conversations c where c.id = $1`,
     [conversationId, recipientId]
@@ -2087,7 +2093,8 @@ async function notifyNewMessage({ conversationId, senderUserId, kind }) {
 
   const { rows: last } = await query(
     `select body from messages
-      where conversation_id = $1 and sender_user_id = $2 and coalesce(kind,'text') = 'text'
+      where conversation_id = $1 and sender_user_id = $2
+        and coalesce(kind, 'text') in ('text', 'date_proposal', 'date_confirmed')
       order by sent_at desc limit 1`,
     [conversationId, senderUserId]
   );
@@ -2179,7 +2186,7 @@ app.get('/api/conversations', async (req, res) => {
               -- empties itself the moment they act on it.
               (select count(*)::int from messages m
                 where m.conversation_id = c.id and m.sender_user_id <> $1
-                  and m.read_at is null and coalesce(m.kind, 'text') = 'text') as unread
+                  and m.read_at is null and ${NOTIFIABLE_KINDS}) as unread
          from conversations c
          join cleaner_profiles cpf on cpf.id = c.cleaner_id
          join users cu on cu.id = cpf.user_id
@@ -2257,6 +2264,13 @@ app.get('/api/messages', async (req, res) => {
       [conversationId, userId]
     ).catch((e) => console.error('[messages] mark read:', e));
 
+    // The date is agreed in here, so the thread needs to know where the booking
+    // has got to - nothing proposed, waiting on them, waiting on you, or booked.
+    const enq = await query('select enquiry_id from conversations where id = $1', [conversationId]);
+    const booking = enq.rows[0]?.enquiry_id
+      ? (await loadBooking(enq.rows[0].enquiry_id, userId))?.view || null
+      : null;
+
     res.json({
       messages: rows.map((m) => ({
         from: m.sender_user_id === userId ? 'me' : 'them',
@@ -2264,6 +2278,7 @@ app.get('/api/messages', async (req, res) => {
         kind: m.kind || 'text',
         at: m.at,
       })),
+      booking,
     });
   } catch (err) {
     console.error(err);
@@ -2295,6 +2310,140 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
+// --- Agreeing a date -------------------------------------------------------
+// The date is settled in the conversation, then recorded here. Either side can
+// propose; the OTHER side confirms, and that confirmation is what accepts the
+// enquiry. Proposing again replaces the standing proposal, so a back-and-forth
+// ("not that Tuesday - the next one") never leaves two live dates.
+//
+// Every one of these writes a message into the thread as well, because the
+// thread is where the two of them are actually talking: a date agreed in a
+// panel nobody scrolls to is a date nobody sees.
+async function loadBooking(enquiryId, userId) {
+  const { rows } = await query(
+    `select e.id, e.status, e.proposed_date, e.proposed_by, e.scheduled_on,
+            to_char(e.proposed_date, 'Dy DD Mon') as proposed_label,
+            to_char(e.scheduled_on, 'Dy DD Mon') as scheduled_label,
+            cpf.user_id as cleaner_user_id, clpf.user_id as client_user_id,
+            conv.id as conversation_id
+       from enquiries e
+       join cleaner_profiles cpf on cpf.id = e.cleaner_id
+       join client_profiles clpf on clpf.id = e.client_id
+       left join conversations conv on conv.enquiry_id = e.id
+      where e.id = $1`,
+    [enquiryId]
+  );
+  const r = rows[0];
+  if (!r) return null;
+  if (r.cleaner_user_id !== userId && r.client_user_id !== userId) return null;
+  const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+  return {
+    row: r,
+    view: {
+      enquiryId: r.id,
+      status: r.status,
+      role: r.cleaner_user_id === userId ? 'cleaner' : 'client',
+      proposedDate: iso(r.proposed_date),
+      proposedLabel: r.proposed_label || '',
+      // Who is waiting on whom. You never confirm your own proposal - that
+      // would just be picking a date unilaterally, which is the thing this
+      // whole flow exists to stop.
+      proposedByMe: !!r.proposed_by && r.proposed_by === userId,
+      scheduledOn: iso(r.scheduled_on),
+      scheduledLabel: r.scheduled_label || '',
+      conversationId: r.conversation_id || null,
+    },
+  };
+}
+
+async function postThreadNote(conversationId, senderUserId, body, kind) {
+  if (!conversationId) return;
+  await query(
+    'insert into messages (conversation_id, sender_user_id, body, kind) values ($1, $2, $3, $4)',
+    [conversationId, senderUserId, body, kind]
+  );
+  await query('update conversations set last_message_at = now() where id = $1', [conversationId]);
+}
+
+app.post('/api/enquiry/propose-date', async (req, res) => {
+  try {
+    const { enquiryId, userId, date } = req.body ?? {};
+    if (!enquiryId || !userId) return res.status(400).json({ error: 'enquiryId and userId are required.' });
+    const scheduled = parseCleanDate(date);
+    if (!scheduled) return res.status(400).json({ error: 'Pick a date within the next year.' });
+
+    const found = await loadBooking(enquiryId, userId);
+    if (!found) return res.status(403).json({ error: 'Not your enquiry.' });
+    const { row, view } = found;
+    if (['declined', 'closed', 'completed'].includes(row.status))
+      return res.status(400).json({ error: 'This enquiry is closed.' });
+
+    await query('update enquiries set proposed_date = $2::date, proposed_by = $3 where id = $1', [
+      enquiryId,
+      scheduled,
+      userId,
+    ]);
+    const label = (await query("select to_char($1::date, 'Dy DD Mon') as l", [scheduled])).rows[0].l;
+    await postThreadNote(
+      row.conversation_id,
+      userId,
+      `Proposed ${label} for the clean. Confirm if that works.`,
+      'date_proposal'
+    );
+    if (row.conversation_id) {
+      notifyNewMessage({ conversationId: row.conversation_id, senderUserId: userId })
+        .catch((e) => console.error('[email] date proposal:', e));
+    }
+    res.json({ ok: true, booking: { ...view, proposedDate: scheduled, proposedLabel: label, proposedByMe: true } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not propose that date.' });
+  }
+});
+
+app.post('/api/enquiry/confirm-date', async (req, res) => {
+  try {
+    const { enquiryId, userId } = req.body ?? {};
+    if (!enquiryId || !userId) return res.status(400).json({ error: 'enquiryId and userId are required.' });
+
+    const found = await loadBooking(enquiryId, userId);
+    if (!found) return res.status(403).json({ error: 'Not your enquiry.' });
+    const { row, view } = found;
+    if (!row.proposed_date) return res.status(400).json({ error: 'There is no date to confirm yet.' });
+    if (row.proposed_by === userId)
+      return res.status(400).json({ error: 'Wait for them to confirm the date you proposed.' });
+    if (['declined', 'closed', 'completed'].includes(row.status))
+      return res.status(400).json({ error: 'This enquiry is closed.' });
+
+    // Confirming is the accept. scheduled_on is set here and nowhere else, so
+    // the review prompt keeps firing off exactly the same column it always has.
+    const { rows } = await query(
+      `update enquiries
+          set status = 'accepted'::enquiry_status,
+              scheduled_on = proposed_date,
+              proposed_date = null,
+              proposed_by = null,
+              responded_at = now()
+        where id = $1
+      returning to_char(scheduled_on, 'Dy DD Mon') as l, to_char(scheduled_on, 'YYYY-MM-DD') as iso`,
+      [enquiryId]
+    );
+    const { l: label, iso } = rows[0];
+    await postThreadNote(row.conversation_id, userId, `Confirmed - the clean is booked for ${label}.`, 'date_confirmed');
+    if (row.conversation_id) {
+      notifyNewMessage({ conversationId: row.conversation_id, senderUserId: userId })
+        .catch((e) => console.error('[email] date confirmed:', e));
+    }
+    res.json({
+      ok: true,
+      booking: { ...view, status: 'accepted', proposedDate: '', proposedLabel: '', proposedByMe: false, scheduledOn: iso, scheduledLabel: label },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not confirm that date.' });
+  }
+});
+
 app.get('/api/enquiries', async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -2302,6 +2451,7 @@ app.get('/api/enquiries', async (req, res) => {
     const { rows } = await query(
       `select e.id, e.status, e.message, to_char(e.created_at, 'Dy DD Mon') as when,
               to_char(e.scheduled_on, 'Dy DD Mon') as scheduled_when,
+              to_char(e.proposed_date, 'Dy DD Mon') as proposed_when, e.proposed_by,
               st.name as service, s.name as suburb,
               clu.full_name as client_name,
               coalesce(cpf.business_name, cu.full_name) as cleaner_name,
@@ -2325,6 +2475,10 @@ app.get('/api/enquiries', async (req, res) => {
       message: r.message || '',
       when: r.when,
       scheduledWhen: r.scheduled_when || '',
+      // A standing date proposal, and whether the viewer is the one waiting on
+      // an answer or the one who owes it.
+      proposedWhen: r.proposed_when || '',
+      proposedByMe: !!r.proposed_by && r.proposed_by === userId,
       service: r.service || 'Cleaning',
       suburb: r.suburb || '',
       role: r.cleaner_user_id === userId ? 'cleaner' : 'client',
@@ -2393,7 +2547,8 @@ function parseCleanDate(value) {
   return value;
 }
 
-// Cleaner accepts / declines / responds to an enquiry.
+// Cleaner declines, closes or completes an enquiry. Accepting normally happens
+// through confirm-date instead - see the date-agreement block above.
 app.post('/api/enquiry-status', async (req, res) => {
   try {
     const { enquiryId, userId, status, scheduledOn } = req.body ?? {};
@@ -2404,9 +2559,20 @@ app.post('/api/enquiry-status', async (req, res) => {
     // Accepting fixes the date of the clean, and that date is what later fires
     // the review prompt. An accept without one would leave the enquiry with no
     // trigger at all, so it is refused rather than quietly stored as null.
+    //
+    // The ordinary route to accepted is now confirm-date; this path stays for
+    // the cleaner who agreed a date by phone and is recording it after the
+    // fact, and it will fall back to a standing proposal if one is waiting.
     let scheduled = null;
     if (status === 'accepted') {
       scheduled = parseCleanDate(scheduledOn);
+      if (!scheduled) {
+        const standing = await query(
+          `select to_char(proposed_date, 'YYYY-MM-DD') as d from enquiries where id = $1`,
+          [enquiryId]
+        );
+        scheduled = parseCleanDate(standing.rows[0]?.d || '');
+      }
       if (!scheduled) return res.status(400).json({ error: 'Pick the date of the clean to accept.' });
     }
 
@@ -2419,6 +2585,12 @@ app.post('/api/enquiry-status', async (req, res) => {
     await query(
       `update enquiries set status = $2::enquiry_status,
               scheduled_on = coalesce($3::date, scheduled_on),
+              -- Any standing proposal is spent once a date is fixed, and is
+              -- moot once the enquiry is declined or closed.
+              proposed_date = case when $3::date is not null or $2::enquiry_status in ('declined','closed')
+                                   then null else proposed_date end,
+              proposed_by = case when $3::date is not null or $2::enquiry_status in ('declined','closed')
+                                 then null else proposed_by end,
               responded_at = case when $2::enquiry_status <> 'new' then now() else responded_at end
         where id = $1`,
       [enquiryId, status, scheduled]

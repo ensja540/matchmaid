@@ -225,9 +225,13 @@ function refreshConvos() {
 }
 function loadMsgs(id) {
   return getJSON(`/api/messages?conversationId=${encodeURIComponent(id)}&userId=${encodeURIComponent(uid)}`)
-    .then((data) => { msgCache[id] = data.messages || []; })
+    .then((data) => { msgCache[id] = data.messages || []; bookingCache[id] = data.booking || null; })
     .catch(() => { msgCache[id] = []; });
 }
+// Where the date has got to on each conversation, and which thread (if any) has
+// its date picker open. The date is agreed in the chat, so it is tracked here.
+const bookingCache = {};
+let proposingFor = null;
 const apiContact = (cleanerId, message, serviceSlug, suburb) =>
   postJSON('/api/contact', {
     clientUserId: uid,
@@ -509,6 +513,7 @@ const WIRE = {
     // toggleStar re-renders, so the box relabels itself between "Add to" and
     // "Saved to" without anything else being wired up here.
     wireStars(panel);
+    wireBooking();
     const composer = panel.querySelector('#composer');
     composer?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -973,9 +978,101 @@ function bubblesHTML(msgs, review) {
           : `<button type="button" class="bubble them review-prompt" data-review="1">
                <p>${escapeHtml(m.body)}</p><span class="rp-cta">Leave a review →</span><span>${m.at}</span></button>`;
       }
+      // A proposal or confirmation is a decision, not a remark - it reads back
+      // in order with the conversation that produced it, but marked out from it.
+      if (m.kind === 'date_proposal' || m.kind === 'date_confirmed') {
+        return `<div class="bubble ${m.from} date-note ${m.kind === 'date_confirmed' ? 'done' : ''}">
+            <p>${m.kind === 'date_confirmed' ? '✓' : '📅'} ${escapeHtml(m.body)}</p><span>${m.at}</span></div>`;
+      }
       return `<div class="bubble ${m.from}"><p>${escapeHtml(m.body)}</p><span>${m.at}</span></div>`;
     })
     .join('');
+}
+
+// You agree the date here, in the conversation, and record it here too. You
+// propose; they confirm - and their confirmation is what books the clean.
+function bookingHTML(c) {
+  const b = bookingCache[c.id];
+  if (!b || ['declined', 'closed', 'completed'].includes(b.status)) return '';
+  if (proposingFor === c.id) {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    return `<form class="booking-bar propose" id="proposeDate">
+      <label>Date of the clean
+        <input type="date" name="date" min="${todayISO}" value="${attr(b.proposedDate || b.scheduledOn || '')}" required />
+      </label>
+      <div class="booking-actions">
+        <button class="btn solid sm" type="submit">Propose</button>
+        <button class="btn outline sm" type="button" data-cancel-date="1">Cancel</button>
+      </div>
+      <p class="save-msg" role="status"></p>
+    </form>`;
+  }
+  const again = (label) => `<button class="btn outline sm" type="button" data-propose="1">${label}</button>`;
+  if (b.status === 'accepted' && b.scheduledLabel)
+    return `<div class="booking-bar booked">
+      <span class="booking-state">Booked for <strong>${text(b.scheduledLabel)}</strong></span>
+      ${again('Change date')}
+    </div>`;
+  if (b.proposedLabel && b.proposedByMe)
+    return `<div class="booking-bar waiting">
+      <span class="booking-state">You proposed <strong>${text(b.proposedLabel)}</strong> · waiting on them</span>
+      ${again('Change')}
+    </div>`;
+  if (b.proposedLabel)
+    return `<div class="booking-bar offered">
+      <span class="booking-state">They proposed <strong>${text(b.proposedLabel)}</strong></span>
+      <div class="booking-actions">
+        <button class="btn solid sm" type="button" data-confirm-date="1">Confirm</button>
+        ${again('Suggest another')}
+      </div>
+    </div>`;
+  return `<div class="booking-bar">
+    <span class="booking-state muted">No date agreed yet</span>
+    ${again('Propose a date')}
+  </div>`;
+}
+
+// Not postJSON: that rejects with the bare Response, and the server's reply
+// here is the whole point ("wait for them to confirm the date you proposed" is
+// worth reading, "that did not work" is not).
+async function bookingAction(url, body, msgEl) {
+  if (!uid || !HAS_FETCH) return;
+  if (msgEl) { msgEl.textContent = 'Saving…'; msgEl.className = 'save-msg pending'; }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, userId: uid }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'That did not work.');
+    proposingFor = null;
+    await loadMsgs(activeConvo);
+    await refreshConvos();
+    render();
+  } catch (err) {
+    if (msgEl) { msgEl.textContent = err.message || 'That did not work.'; msgEl.className = 'save-msg err'; }
+  }
+}
+
+function wireBooking() {
+  const enquiryId = bookingCache[activeConvo]?.enquiryId;
+  panel.querySelectorAll('[data-propose]').forEach((b) =>
+    b.addEventListener('click', () => { proposingFor = activeConvo; render(); })
+  );
+  panel.querySelectorAll('[data-cancel-date]').forEach((b) =>
+    b.addEventListener('click', () => { proposingFor = null; render(); })
+  );
+  panel.querySelectorAll('[data-confirm-date]').forEach((b) =>
+    b.addEventListener('click', () => bookingAction('/api/enquiry/confirm-date', { enquiryId }))
+  );
+  const form = panel.querySelector('#proposeDate');
+  form?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const date = form.date.value;
+    if (!date) return;
+    bookingAction('/api/enquiry/propose-date', { enquiryId, date }, form.querySelector('.save-msg'));
+  });
 }
 function threadHTML(c, msgs) {
   // The mirror of the maid side: their name opens the cleaner's profile, with a
@@ -998,6 +1095,7 @@ function threadHTML(c, msgs) {
          </div>`
       : ''}
     <div class="bubbles" id="bubbles">${bubblesHTML(msgs, reviewCache[c.id])}</div>
+    ${bookingHTML(c)}
     <form class="composer" id="composer">
       <input name="body" placeholder="Write a message…" autocomplete="off" />
       <button class="btn solid" type="submit">Send</button>
