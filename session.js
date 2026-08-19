@@ -88,6 +88,23 @@ function reflectAuthNav() {
   const bar = document.querySelector('.pitch-top-right');
   if (!bar) return;
   bar.querySelectorAll('a[href*="/login"], #signupHook').forEach((el) => el.remove());
+
+  // On a page for the OTHER side, say which account is signed in.
+  //
+  // Without it the maid pitch page reads as broken to a signed-in customer: the
+  // header offers "Log out" and "Customer portal" while the body invites them to
+  // create a maid account, so it looks like the site thinks they are logged in
+  // as a maid when they are not. Both halves are correct - there is one session
+  // and it is a customer's - but nothing on screen said so.
+  const pageRole = document.body.classList.contains('role-maid') ? 'cleaner'
+    : document.body.classList.contains('role-customer') ? 'client' : null;
+  if (pageRole && pageRole !== user.role) {
+    const note = document.createElement('span');
+    note.className = 'auth-who';
+    note.textContent = user.role === 'cleaner' ? 'Signed in as a maid' : 'Signed in as a customer';
+    bar.appendChild(note);
+  }
+
   const out = document.createElement('a');
   out.className = 'ulink';
   out.href = '#';

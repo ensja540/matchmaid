@@ -1419,6 +1419,12 @@ a { color: inherit; text-decoration: none; }
 
 /* Conversation label: person's name, business on a second line */
 .with-biz { display: block; font-weight: 400; font-size: 0.8rem; color: var(--muted); margin-top: 0.05rem; }
+/* Suburb sits inline beside the name, not under it - the pair reads as one
+   label ("Jack Zarifeh · Beckenham") rather than a name with a subtitle. */
+.with-suburb {
+  font-weight: 400; font-size: 0.82rem; color: var(--muted); white-space: nowrap;
+}
+.with-suburb::before { content: ' · '; }
 
 /* Site-wide feedback widget (floating button + popover) */
 .mm-fb-btn {
@@ -1786,6 +1792,14 @@ a { color: inherit; text-decoration: none; }
    Icon-only, so they sit beside text links without competing with the CTAs.
    The 40px min hit area is the reason for the padding: an 18px icon is not a
    fingertip target, and these sit next to "Log out". */
+/* "Signed in as a customer" on a page for the other side. Muted and small: it
+   is context for the buttons beside it, not a call to action. */
+.auth-who {
+  font-size: 0.78rem; color: var(--muted); white-space: nowrap;
+  padding-right: 0.15rem;
+}
+@media (max-width: 560px) { .auth-who { display: none; } }
+
 .social-links { display: inline-flex; align-items: center; gap: 0.15rem; }
 .social-link {
   display: inline-flex; align-items: center; justify-content: center;

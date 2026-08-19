@@ -1358,8 +1358,13 @@ function bubblesHTML(msgs) {
     : '<p class="muted" style="margin:auto">Say hello 👋</p>';
 }
 // Person's name, with their business (if any) on a second line underneath.
+// Name, then their suburb alongside it. For a cleaner reading a thread the
+// suburb is the second thing they need after the name - whether the job is even
+// in their patch - so it sits next to it rather than behind a profile click.
 function withLabel(c) {
-  return `${escapeHtml(c.with)}${c.withBusiness ? `<span class="with-biz">${escapeHtml(c.withBusiness)}</span>` : ''}`;
+  return `${escapeHtml(c.with)}`
+    + (c.withSuburb ? `<span class="with-suburb">${escapeHtml(c.withSuburb)}</span>` : '')
+    + (c.withBusiness ? `<span class="with-biz">${escapeHtml(c.withBusiness)}</span>` : '');
 }
 function threadHTML(c, msgs) {
   // The name opens the house profile, and there is a labelled button beside it

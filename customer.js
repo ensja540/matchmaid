@@ -24,8 +24,13 @@ const panel = document.getElementById('panel');
 const tabs = document.getElementById('tabs');
 // Deep link: /customer#find lands straight on a tab (browse sends signup
 // traffic to #find). Anything unrecognised falls back to the overview.
-const TABS = ['overview', 'mycleaners', 'enquiries', 'find', 'messages', 'profile'];
-let current = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+const TABS = ['overview', 'mycleaners', 'find', 'messages', 'profile'];
+// #enquiries was its own tab until the enquiry list folded into Messages. Old
+// links and bookmarks land there rather than dropping to the overview, which
+// would look like the link was simply wrong.
+const TAB_ALIASES = { enquiries: 'messages' };
+const wantedTab = TAB_ALIASES[location.hash.slice(1)] || location.hash.slice(1);
+let current = TABS.includes(wantedTab) ? wantedTab : 'overview';
 // Guided profile-setup wizard state.
 let cwizStep = 0, cwizEl = null, cwizAutoTried = false;
 
@@ -58,7 +63,6 @@ let pendingReviews = []; // cleans the customer has been asked to rate, and hasn
 let msgCache = {}; // conversationId -> messages[]
 let reviewCache = {}; // conversationId -> review | null (undefined = not loaded)
 let activeConvo = null;
-let myEnquiries = []; // enquiries this customer has sent (My enquiries tab)
 let starredIds = new Set(); // cleaner ids this customer has starred
 let starredList = []; // starred cleaners with details (for the My cleaners tab)
 
@@ -179,11 +183,6 @@ function loadProfile() {
     .then((data) => { cprof = { ...PROFILE_DEFAULTS, ...data }; reRenderIf('profile', 'find'); maybeAutoOpenCwiz(); })
     .catch(() => { maybeAutoOpenCwiz(); });
 }
-function loadEnquiries() {
-  getJSON(`/api/enquiries?userId=${encodeURIComponent(uid)}`)
-    .then((list) => { myEnquiries = list.filter((e) => e.role === 'client'); reRenderIf('enquiries'); refreshBadges(); })
-    .catch(() => {});
-}
 function loadFavourites() {
   getJSON(`/api/favourites?userId=${encodeURIComponent(uid)}`)
     .then((list) => {
@@ -298,7 +297,6 @@ if (uid) {
   loadSuburbs();
   loadDirectory();
   loadProfile();
-  loadEnquiries();
   loadFavourites();
   loadPendingReviews();
   initMessages();
@@ -386,31 +384,6 @@ const PANELS = {
   },
 
   // Enquiries this customer has sent, newest first, with the cleaner's response.
-  enquiries() {
-    return `
-      <h1>My enquiries</h1>
-      <p class="wizard-lede">Every enquiry you've sent, and where it got to.</p>
-      <div class="panel-card enq-scroll">
-        ${myEnquiries.length
-          ? myEnquiries
-              .map(
-                (e) => `<div class="enquiry-row">
-                  <div>
-                    <strong>${escapeHtml(e.cleaner)}</strong> · ${escapeHtml(e.service)}
-                    <br /><span class="muted">${escapeHtml(e.suburb ? `${e.suburb} · ` : '')}${escapeHtml(e.when)}</span>
-                  </div>
-                  <div class="enq-right">
-                    <span class="status status-${escapeHtml(e.status)}">${escapeHtml(e.status)}</span>
-                    ${e.conversationId ? `<button class="btn outline sm" type="button" data-open="${attr(e.conversationId)}">Message</button>` : ''}
-                  </div>
-                </div>`
-              )
-              .join('')
-          : `<p class="muted">You haven't sent any enquiries yet. Find a cleaner and say hello.</p>
-             <button class="btn solid" data-goto="find" type="button" style="margin-top:1rem">Find a cleaner</button>`}
-      </div>`;
-  },
-
   // The real search lives on /browse - the ungated public one, with live
   // availability, the price histogram and areas derived from each cleaner's
   // service circle. This panel points at it rather than being a second search
@@ -521,12 +494,6 @@ const WIRE = {
     wireStars(panel);
     wireContact(panel);
     bindCleanerLinks(panel);
-  },
-  enquiries() {
-    panel.querySelector('[data-goto]')?.addEventListener('click', () => goTo('find'));
-    panel.querySelectorAll('[data-open]').forEach((b) =>
-      b.addEventListener('click', () => openConvo(b.dataset.open, true))
-    );
   },
   // The search itself is on /browse; the only thing to wire here is the CTA
   // that opens the guided profile setup, since a filled-in profile is what the
@@ -862,8 +829,7 @@ function openEnquiryFormDisabled(cleanerId, cleanerName) {
       enquiryModal.hidden = true;
       await refreshConvos();
       await loadMsgs(activeConvo);
-      loadEnquiries();
-      goTo('messages');
+          goTo('messages');
     } catch {
       if (btn) { btn.disabled = false; btn.textContent = 'Send enquiry'; }
     }
@@ -1038,8 +1004,13 @@ function threadHTML(c, msgs) {
     </form>`;
 }
 // Person's name, with their business (if any) on a second line underneath.
+// Name, then their suburb alongside it. For a cleaner reading a thread the
+// suburb is the second thing they need after the name - whether the job is even
+// in their patch - so it sits next to it rather than behind a profile click.
 function withLabel(c) {
-  return `${escapeHtml(c.with)}${c.withBusiness ? `<span class="with-biz">${escapeHtml(c.withBusiness)}</span>` : ''}`;
+  return `${escapeHtml(c.with)}`
+    + (c.withSuburb ? `<span class="with-suburb">${escapeHtml(c.withSuburb)}</span>` : '')
+    + (c.withBusiness ? `<span class="with-biz">${escapeHtml(c.withBusiness)}</span>` : '');
 }
 function convoListHTML() {
   return convos.length

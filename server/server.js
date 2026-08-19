@@ -2115,6 +2115,12 @@ app.get('/api/conversations', async (req, res) => {
               cpf.user_id as cleaner_user_id, clpf.user_id as client_user_id,
               cu.full_name as cleaner_person, nullif(cpf.business_name, '') as cleaner_business,
               clu.full_name as client_name,
+              -- Where the other person is. For a cleaner this is the single most
+              -- useful thing to see beside a customer's name: whether the job is
+              -- even in their patch. Falls back to the suburb on the enquiry when
+              -- the customer has not set one on their profile.
+              coalesce(cls.name, es.name) as client_suburb,
+              cleaners.name as cleaner_suburb,
               (select body from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_body,
               (select to_char(sent_at, 'Dy HH24:MI') from messages m where m.conversation_id = c.id order by sent_at desc limit 1) as last_at,
               -- Unread means: sent by the other person and not yet read by the
@@ -2126,6 +2132,18 @@ app.get('/api/conversations', async (req, res) => {
          from conversations c
          join cleaner_profiles cpf on cpf.id = c.cleaner_id
          join users cu on cu.id = cpf.user_id
+         left join client_profiles clp2 on clp2.id = c.client_id
+         left join suburbs cls on cls.id = clp2.default_suburb_id
+         left join enquiries e on e.id = c.enquiry_id
+         left join suburbs es on es.id = e.suburb_id
+         -- The cleaner's own base, parsed out of the "Suburb, Town" string their
+         -- profile stores; null when they have not set one. A LATERAL may only
+         -- reference tables joined before it, so it sits after cpf.
+         left join lateral (
+           select sub.name from suburbs sub
+            where lower(sub.name) = lower(trim(split_part(cpf.residential_address, ',', 1)))
+            limit 1
+         ) cleaners on true
          join client_profiles clpf on clpf.id = c.client_id
          join users clu on clu.id = clpf.user_id
         where cpf.user_id = $1 or clpf.user_id = $1
@@ -2139,6 +2157,8 @@ app.get('/api/conversations', async (req, res) => {
         // Person's name on top; their business (if any) shown underneath.
         with: viewerIsCleaner ? r.client_name : r.cleaner_person,
         withBusiness: viewerIsCleaner ? '' : r.cleaner_business || '',
+        // Where they are, shown beside the name in the thread.
+        withSuburb: (viewerIsCleaner ? r.client_suburb : r.cleaner_suburb) || '',
         cleanerId: r.cleaner_id,
         // The house profile is keyed on the enquiry, so Messages needs it to
         // open the same modal the Enquiries tab already has.
