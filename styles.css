@@ -1788,6 +1788,49 @@ a { color: inherit; text-decoration: none; }
   opacity: 1; cursor: default;
 }
 
+/* ---------- The month ahead ----------
+   A view of the weekly pattern on real dates. Days keep a dot per slot rather
+   than a single "available" state, so a cleaner can see at a glance that a
+   Tuesday is mornings-only without opening anything. */
+.avail-head { margin: 0 0 0.3rem; font-size: 1.15rem; }
+.month-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin: 1rem 0 0.7rem; }
+.month-title { font-family: var(--serif); font-size: 1.2rem; }
+.month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.35rem; }
+.m-head { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-align: center; padding-bottom: 0.2rem; font-weight: 700; }
+.m-pad { min-height: 3.4rem; }
+.m-day {
+  min-height: 3.4rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
+  font: inherit; cursor: pointer; padding: 0.3rem 0.2rem;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.m-day:hover:not([disabled]) { border-color: var(--accent); background: var(--paper-2); }
+.m-num { font-size: 0.9rem; font-weight: 600; line-height: 1; }
+.m-slots { display: flex; gap: 0.15rem; min-height: 0.5rem; align-items: center; font-size: 0.62rem; color: #a3402f; font-weight: 700; letter-spacing: 0.04em; }
+.m-dot { width: 0.42rem; height: 0.42rem; border-radius: 50%; display: inline-block; }
+/* One hue per slot, light to dark through the day - the same ordinal idea as
+   the coverage map, so morning/afternoon/evening read in order. */
+.m-morning { background: #7fd8cc; }
+.m-afternoon { background: #17a998; }
+.m-evening { background: #0a534b; }
+.m-offkey { background: #d2492f; }
+/* Not usually working: present but recessive, so the shape of the week shows. */
+.m-day.blank { background: var(--bg-mist); border-style: dashed; }
+.m-day.blank .m-num { color: var(--muted); font-weight: 500; }
+/* Marked off: unmistakable, since it overrides everything else on that date. */
+.m-day.off { background: #fdf1ef; border-color: #e8b3a8; }
+.m-day.off .m-num { color: #a3402f; text-decoration: line-through; }
+.m-day.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.m-day.past { opacity: 0.4; cursor: default; }
+.month-legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin: 0.9rem 0 0; font-size: 0.76rem; color: var(--muted); }
+.m-key { display: inline-flex; align-items: center; gap: 0.3rem; }
+.month-note { font-size: 0.8rem; margin: 0.5rem 0 0; }
+@media (max-width: 560px) {
+  .month-grid { gap: 0.2rem; }
+  .m-day, .m-pad { min-height: 2.9rem; }
+  .m-num { font-size: 0.8rem; }
+}
+
 /* ---------- Header social links ----------
    Icon-only, so they sit beside text links without competing with the CTAs.
    The 40px min hit area is the reason for the padding: an 18px icon is not a

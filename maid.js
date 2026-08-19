@@ -92,6 +92,11 @@ let wizStep = 0, wizEl = null;
 // Availability is real: load the logged-in maid's saved slots from the API,
 // and save changes back to the database. Falls back to demo when not logged in.
 let avail = loggedIn ? [] : profile.availability.map((s) => ({ ...s }));
+// Dates the cleaner has marked off, as 'YYYY-MM-DD' -> reason. Only the "off"
+// ones are held here: clearing an exception means going back to whatever the
+// weekly pattern says, so its absence IS the normal state.
+let availExceptions = new Map();
+let availMonthOffset = 0; // 0 = this month, 1 = next, and so on
 // Service areas are stored by suburb ID, not name: the same suburb name exists
 // in several regions (Richmond, Bishopdale), so a name would attach the cleaner
 // to the wrong region's suburb. maidSubs is the id-bearing /api/suburbs list;
@@ -458,7 +463,14 @@ if (sessionUser?.id) {
 
   fetch(`/api/availability?userId=${encodeURIComponent(sessionUser.id)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((data) => { if (data?.slots) { avail = data.slots; render(); } availLoaded = true; tryAutoWizard(); })
+    .then((data) => {
+      if (data?.slots) { avail = data.slots; render(); }
+      if (Array.isArray(data?.exceptions)) {
+        availExceptions = new Map(data.exceptions.filter((e) => !e.available).map((e) => [e.date, e.reason || '']));
+        render();
+      }
+      availLoaded = true; tryAutoWizard();
+    })
     .catch(() => { availLoaded = true; tryAutoWizard(); });
 
   // Real enquiries addressed to this maid.
@@ -639,13 +651,25 @@ const PANELS = {
 
   availability() {
     return `
-      <h1>Your weekly availability</h1>
-      <p class="wizard-lede">Tap the times you're usually free. Customers match to you when they
-        want a clean at a time you're available.</p>
-      <div class="cal" id="cal">${calendarHTML(avail)}</div>
-      <div class="save-row">
-        <button class="btn solid" id="saveAvail" type="button">Save availability</button>
-        <span class="save-msg" id="availMsg"></span>
+      <h1>Your availability</h1>
+      <p class="wizard-lede">Set the times you're usually free, then mark off any individual days
+        you can't work. Customers match to you when they want a clean at a time you're available.</p>
+
+      <div class="panel-card">
+        <h2 class="avail-head">Your usual week</h2>
+        <p class="muted">This is what customers are matched against. Tap the times you're normally free.</p>
+        <div class="cal" id="cal">${calendarHTML(avail)}</div>
+        <div class="save-row">
+          <button class="btn solid" id="saveAvail" type="button">Save availability</button>
+          <span class="save-msg" id="availMsg"></span>
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <h2 class="avail-head">The month ahead</h2>
+        <p class="muted">Your usual week, laid out on real dates. Tap a day to mark it off - a
+          holiday, a booked-out Saturday - and tap it again to put it back.</p>
+        ${monthHTML()}
       </div>`;
   },
 
@@ -766,6 +790,7 @@ const WIRE = {
     initHowflow(panel);
   },
   availability() {
+    wireMonth(panel);
     wireCalendar(panel.querySelector('#cal'), avail, () => {
       setMsg('availMsg', 'Unsaved changes', 'pending');
     });
@@ -1753,6 +1778,105 @@ function calendarHTML(selected) {
   });
   return html + '</div>';
 }
+// ---------- The month ahead ----------
+// A calendar of real dates, coloured by the weekly pattern above it. It is a
+// VIEW of that pattern plus per-date exceptions, not a second source of truth -
+// so a cleaner who thinks in "most Tuesdays" sets it once, and only reaches for
+// a date when a particular one differs.
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// The grid runs Mon..Sun to match the weekly calendar above it, but JS weeks
+// start on Sunday - so getDay() is rotated rather than used raw.
+const mondayIndex = (jsDay) => (jsDay + 6) % 7;
+
+function slotsForWeekday(dayIdx) {
+  return SLOTS.filter((s) => avail.some((a) => a.day === dayIdx && a.slot === s.key));
+}
+
+function monthHTML() {
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth() + availMonthOffset, 1);
+  const year = base.getFullYear(), month = base.getMonth();
+  const first = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const lead = mondayIndex(first.getDay());
+  const todayStr = ymd(now);
+
+  let cells = '';
+  for (let i = 0; i < lead; i++) cells += '<div class="m-pad"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const key = ymd(date);
+    const slots = slotsForWeekday(mondayIndex(date.getDay()));
+    const off = availExceptions.has(key);
+    const past = key < todayStr;
+    const cls = [
+      'm-day',
+      off ? 'off' : '',
+      !slots.length ? 'blank' : '',
+      key === todayStr ? 'today' : '',
+      past ? 'past' : '',
+    ].filter(Boolean).join(' ');
+    // Past days are shown for context but not editable - marking off a day that
+    // has already happened does nothing except confuse the count.
+    const label = off ? 'Marked off' : slots.length ? slots.map((s) => s.label).join(', ') : 'Not usually working';
+    cells += `<button type="button" class="${cls}" data-date="${key}" ${past ? 'disabled' : ''}
+        title="${escapeHtml(label)}" aria-label="${d} ${MONTH_NAMES[month]} - ${escapeHtml(label)}">
+        <span class="m-num">${d}</span>
+        <span class="m-slots">${off ? 'Off' : slots.map((s) => `<i class="m-dot m-${s.key}"></i>`).join('')}</span>
+      </button>`;
+  }
+
+  const offThisMonth = [...availExceptions.keys()].filter((k) => k.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)).length;
+  return `
+    <div class="month-nav">
+      <button class="btn outline sm" type="button" data-month="-1" ${availMonthOffset <= 0 ? 'disabled' : ''}>‹ Previous</button>
+      <strong class="month-title">${MONTH_NAMES[month]} ${year}</strong>
+      <button class="btn outline sm" type="button" data-month="1" ${availMonthOffset >= 11 ? 'disabled' : ''}>Next ›</button>
+    </div>
+    <div class="month-grid">
+      ${DAYS.map((d) => `<div class="m-head">${d}</div>`).join('')}
+      ${cells}
+    </div>
+    <p class="month-legend">
+      ${SLOTS.map((s) => `<span class="m-key"><i class="m-dot m-${s.key}"></i>${s.label}</span>`).join('')}
+      <span class="m-key"><i class="m-dot m-offkey"></i>Marked off</span>
+    </p>
+    ${offThisMonth ? `<p class="muted month-note">${offThisMonth} day${offThisMonth === 1 ? '' : 's'} marked off this month.</p>` : ''}`;
+}
+
+function wireMonth(root) {
+  root.querySelectorAll('[data-month]').forEach((b) =>
+    b.addEventListener('click', () => {
+      availMonthOffset = Math.max(0, Math.min(11, availMonthOffset + Number(b.dataset.month)));
+      render();
+    })
+  );
+  root.querySelectorAll('[data-date]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const date = b.dataset.date;
+      const nowOff = !availExceptions.has(date);
+      // Optimistic: the grid answers immediately and is put back if the save
+      // fails. A calendar that waits on a round trip per tap feels broken.
+      if (nowOff) availExceptions.set(date, ''); else availExceptions.delete(date);
+      render();
+      if (!sessionUser?.id) return;
+      try {
+        const res = await fetch('/api/availability/exception', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: sessionUser.id, date, off: nowOff }),
+        });
+        if (!res.ok) throw new Error('save failed');
+      } catch {
+        if (nowOff) availExceptions.delete(date); else availExceptions.set(date, '');
+        render();
+        setMsg('availMsg', "Couldn't save that day. Try again.", 'err');
+      }
+    })
+  );
+}
+
 function wireCalendar(container, selected, onChange) {
   container.querySelectorAll('.cal-cell').forEach((cell) =>
     cell.addEventListener('click', () => {

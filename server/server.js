@@ -93,10 +93,15 @@ const MIN_HOURLY_RATE = 20;
 const CAPACITY_LIMIT = Number(process.env.CAPACITY_LIMIT) || 10;
 
 // --- Referrals --------------------------------------------------------------
-// A cleaner earns $10 of credit toward future payments for every cleaner they
-// refer who goes on to become FULLY verified (ID + police + insurance). The
-// referral row is created at signup; the credit is stamped on at verification.
-const REFERRAL_CREDIT_CENTS = 1000;
+// A cleaner earns $20 of credit toward future payments for every cleaner they
+// refer who goes on to hold a paid plan for a month (see
+// awardReferralIfQualified - it is no longer paid out on verification). The
+// referral row is created at signup; the credit is stamped on when it qualifies.
+//
+// Every figure shown to a cleaner derives from this, so changing it here changes
+// the banner, the referral card and the pre-launch email together. Credits
+// already awarded keep the amount they were awarded at.
+const REFERRAL_CREDIT_CENTS = 2000;
 // Ambiguous characters (0/O, 1/I/L) removed so a code survives being read aloud.
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const makeReferralCode = () =>
@@ -711,10 +716,56 @@ app.get('/api/availability', async (req, res) => {
     const slots = rows
       .map((r) => ({ day: r.day_of_week, slot: START_TO_SLOT[r.start] }))
       .filter((s) => s.slot);
-    res.json({ slots });
+
+    // Dates the weekly pattern says they work but they have marked off. Only
+    // from today forward - a month view has no use for last winter's day off,
+    // and left unbounded the list would grow for ever.
+    const ex = await query(
+      `select to_char(exception_date, 'YYYY-MM-DD') as date, is_available, reason
+         from availability_exceptions
+        where cleaner_id = $1 and exception_date >= current_date - 1
+        order by exception_date`,
+      [cleanerId]
+    );
+    res.json({
+      slots,
+      exceptions: ex.rows.map((r) => ({ date: r.date, available: r.is_available, reason: r.reason || '' })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load availability.' });
+  }
+});
+
+// A single date marked off (or put back on). Kept separate from the weekly
+// grid: one is "most Tuesdays", the other is "not this Tuesday", and saving the
+// whole pattern to record a day off would be a strange way to say it.
+app.post('/api/availability/exception', async (req, res) => {
+  try {
+    const { userId, date, off, reason } = req.body ?? {};
+    if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')))
+      return res.status(400).json({ error: 'userId and a YYYY-MM-DD date are required.' });
+    const cleanerId = await cleanerIdForUser(userId);
+    if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    if (off) {
+      await query(
+        `insert into availability_exceptions (cleaner_id, exception_date, is_available, reason)
+         values ($1, $2, false, $3)
+         on conflict (cleaner_id, exception_date)
+           do update set is_available = false, reason = excluded.reason`,
+        [cleanerId, date, String(reason || '').slice(0, 120) || null]
+      );
+    } else {
+      // Clearing an exception means "back to whatever the weekly pattern says",
+      // which is a deletion rather than an is_available = true row.
+      await query('delete from availability_exceptions where cleaner_id = $1 and exception_date = $2',
+        [cleanerId, date]);
+    }
+    res.json({ ok: true, date, off: !!off });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not save that day.' });
   }
 });
 
