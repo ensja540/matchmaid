@@ -201,6 +201,17 @@ const NUDGE = {
     cta: 'Get verified',
     href: '/maid',
   },
+  // No service areas at all. The most complete kind of invisible: a cleaner is
+  // matched to a customer by suburb first, so with none set there is no search
+  // anywhere in the country that can return them. Written for someone who set
+  // up an account and stopped, which in practice is who this reaches.
+  cleaner_no_areas: {
+    subject: 'Where do you clean? Your listing needs an area',
+    lead: 'You started a Match Maid listing but haven\'t said which suburbs you cover, so there\'s no search that can find you yet.',
+    body: 'Customers search by their own suburb, and we only show cleaners who cover it. Until you pick your areas your profile can\'t come up for anyone - not even someone on your street. You can draw a circle around where you\'re based and it fills in every suburb inside it, so it takes about a minute. Match Maid is free for cleaners and customers alike while we build the network, and there\'s no commission on anything you earn.',
+    cta: 'Set my areas',
+    href: '/maid',
+  },
   // Signed up, never told us where they live - so we can't match them at all.
   customer_no_suburb: {
     subject: 'Which suburb are you in?',

@@ -2910,6 +2910,15 @@ const NUDGE_SEGMENTS = {
     select u.id, u.email, u.full_name, u.role from users u
       join cleaner_profiles cp on cp.user_id = u.id
      where u.role = 'cleaner' and u.email_verified and cp.hourly_rate_min is null`,
+  // No service areas at all. Unlike the two below it, this does NOT require an
+  // active listing: a cleaner with no areas cannot be returned by any search
+  // anywhere, so the gap is worth naming whether or not they ever went live -
+  // and in practice everyone here is a draft account that stopped partway.
+  cleaner_no_areas: `
+    select u.id, u.email, u.full_name, u.role from users u
+      join cleaner_profiles cp on cp.user_id = u.id
+     where u.role = 'cleaner' and u.email_verified
+       and not exists (select 1 from cleaner_service_areas csa where csa.cleaner_id = cp.id)`,
   // Ordered before the ID nudge on purpose: an unmatched listing is a worse
   // problem than an unbadged one, and the 14-day cooldown means whichever fires
   // first is the only one they hear for a fortnight.
