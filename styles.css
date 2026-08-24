@@ -1775,6 +1775,15 @@ a { color: inherit; text-decoration: none; }
 /* ======================================================================
    Admin: pairings - the marketplace scoreboard
    ====================================================================== */
+/* Which country the admin board is reporting on. Two marketplaces that share
+   tables and nothing else, so they are never summed - only switched between. */
+.cc-switch { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-left: auto; }
+.cc-btn { padding: 0.35rem 0.9rem; border: none; background: var(--paper); font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.cc-btn.active { background: var(--copper); color: var(--paper); }
+.cc-btn:not(.active):hover { color: var(--ink); }
+.admin-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+.admin-head .admin-sub { flex-basis: 100%; margin: 0; }
+
 .pr-hero { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.4rem; }
 .pr-hero-num { display: flex; flex-direction: column; }
 .pr-hero-num strong { font-family: var(--serif); font-size: 3.2rem; line-height: 1; font-variant-numeric: tabular-nums; color: var(--copper-dark); }

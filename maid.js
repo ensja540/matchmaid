@@ -2,6 +2,18 @@
 // exists we greet that user, otherwise we fall back to the demo maid.
 const { DAYS, SLOTS } = DEMO;
 const profile = DEMO.maidProfile;
+// Which marketplace this page belongs to. A signed-in user's own country wins:
+// their data lives in one country and must not be looked up in the other.
+const MM_COUNTRY = (() => {
+  try {
+    const u = JSON.parse(localStorage.getItem('matchmaid_user') || 'null');
+    if (u && (u.country === 'AU' || u.country === 'NZ')) return u.country;
+  } catch {}
+  return (typeof window !== 'undefined' && window.MM_COUNTRY === 'AU') ? 'AU' : 'NZ';
+})();
+const withCountry = (url) =>
+  url + (url.includes('?') ? '&' : '?') + 'country=' + MM_COUNTRY;
+
 let enquiries = []; // real enquiries load from the API when logged in
 
 // A logged-in maid always starts CLEAN and loads their own data from the API -
@@ -232,7 +244,10 @@ let mpOffers = new Set(Object.keys(mpCleanRates));
 // Mirrors MIN_HOURLY_RATE on the server. The server is the one that decides -
 // this just stops someone typing $5, filling in the rest of the form and only
 // then being told.
-const MIN_HOURLY_RATE = 20;
+// Per country: A$20/hr is below the Australian casual minimum wage, so it
+// cannot be the Australian floor. The server decides - this only keeps the form
+// from letting someone type a number it is about to reject.
+const MIN_HOURLY_RATE = MM_COUNTRY === 'AU' ? 30 : 20;
 const CLEAN_TYPES = [
   { slug: 'regular', name: 'Regular clean' },
   { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash', endOfLeaseOption: true },
@@ -404,7 +419,7 @@ function refreshWizardForSuburbs() {
 // The id-bearing suburb list powers both location pickers. Fetched whether or
 // not anyone is logged in - it is public, and the demo profile shows the same
 // fields, which sit at "Loading locations…" without it.
-fetch('/api/suburbs')
+fetch(withCountry('/api/suburbs'))
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error('suburbs'))))
   .then((rows) => { buildMaidCities(rows || []); resolveMaidLocation(); })
   .catch(() => { maidSubsFailed = true; render(); refreshWizardForSuburbs(); });

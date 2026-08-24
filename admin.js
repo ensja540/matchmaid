@@ -81,6 +81,45 @@ if (!sessionUser) {
 
 // One section visible at a time. Everything still loads up front (the queries
 // are cheap and it keeps the tab counts live), the tabs just decide what shows.
+// Which country's marketplace the board is reporting on. The two share tables
+// and nothing else, so summing them would produce a number that describes no
+// real market - "23 cleaners" across two countries tells you nothing about
+// whether either one works. One at a time, switched here.
+let adminCountry = 'NZ';
+const COUNTRY_LABEL = { NZ: 'New Zealand', AU: 'Australia' };
+const withAdminCountry = (url) => url + (url.includes('?') ? '&' : '?') + 'country=' + adminCountry;
+
+function mountCountrySwitch() {
+  const head = document.querySelector('.admin-head');
+  if (!head || head.querySelector('.cc-switch')) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'cc-switch';
+  wrap.innerHTML = Object.keys(COUNTRY_LABEL)
+    .map((c) => `<button type="button" class="cc-btn ${c === adminCountry ? 'active' : ''}" data-cc="${c}">${COUNTRY_LABEL[c]}</button>`)
+    .join('');
+  head.appendChild(wrap);
+  wrap.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cc]');
+    if (!b || b.dataset.cc === adminCountry) return;
+    adminCountry = b.dataset.cc;
+    wrap.querySelectorAll('.cc-btn').forEach((x) => x.classList.toggle('active', x === b));
+    // Every cached payload belongs to the country it was fetched for, so all of
+    // it is thrown away rather than shown under the wrong flag.
+    peopleData = null; coverageData = null; pairingsData = null;
+    // Tear the Leaflet map down rather than dropping the reference: an
+    // orphaned map keeps its handlers and its tiles for the old country.
+    if (coverageMap) { coverageMap.remove(); coverageMap = null; }
+    coverageCity = null;
+    const panel = document.querySelector('.admin-panel:not([hidden])')?.dataset.panel;
+    loadStats();
+    if (panel === 'people') showPeople();
+    if (panel === 'coverage') showCoverage();
+    if (panel === 'pairings') showPairings();
+  });
+}
+document.addEventListener('DOMContentLoaded', mountCountrySwitch);
+if (document.readyState !== 'loading') mountCountrySwitch();
+
 const adminTabs = document.getElementById('adminTabs');
 adminTabs?.addEventListener('click', (e) => {
   const btn = e.target.closest('.portal-tab');
@@ -117,7 +156,7 @@ async function showPairings() {
   if (pairingsData) { renderPairings(); return; }
   pairingsBody.innerHTML = '<div class="panel-card"><p class="muted">Loading…</p></div>';
   try {
-    const res = await fetch(`/api/admin/pairings?userId=${encodeURIComponent(sessionUser.id)}`);
+    const res = await fetch(withAdminCountry(`/api/admin/pairings?userId=${encodeURIComponent(sessionUser.id)}`));
     if (res.status === 403) {
       pairingsBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
       return;
@@ -227,7 +266,7 @@ async function showPeople() {
   if (peopleData) { renderPeople(); return; }
   peopleBody.innerHTML = '<div class="panel-card"><p class="muted">Loading…</p></div>';
   try {
-    const res = await fetch(`/api/admin/users?userId=${encodeURIComponent(sessionUser.id)}`);
+    const res = await fetch(withAdminCountry(`/api/admin/users?userId=${encodeURIComponent(sessionUser.id)}`));
     if (res.status === 403) {
       peopleBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
       return;
@@ -363,7 +402,7 @@ async function showCoverage() {
   if (coverageData) { renderCoverage(); return; }
   coverageBody.innerHTML = '<div class="panel-card"><p class="muted">Loading coverage…</p></div>';
   try {
-    const res = await fetch(`/api/admin/coverage?userId=${encodeURIComponent(sessionUser.id)}`);
+    const res = await fetch(withAdminCountry(`/api/admin/coverage?userId=${encodeURIComponent(sessionUser.id)}`));
     if (res.status === 403) {
       coverageBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
       return;
@@ -534,7 +573,7 @@ async function loadStats() {
   if (plot) plot.style.opacity = '0.45';
   try {
     const res = await fetch(
-      `/api/admin/stats?userId=${encodeURIComponent(sessionUser.id)}&days=${statsRange}`
+      withAdminCountry(`/api/admin/stats?userId=${encodeURIComponent(sessionUser.id)}&days=${statsRange}`)
     );
     if (res.status === 403) {
       statsBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';

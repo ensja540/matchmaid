@@ -1,5 +1,11 @@
 // Login / signup for a single, fixed role (no toggle). The role comes from the
 // page's ?role= query and does not change here; each side has its own page.
+// Which country's marketplace a new account joins, taken from the link that
+// brought them here (/login?country=AU on the Australian pages). Anything
+// unrecognised falls back to New Zealand rather than guessing.
+const SIGNUP_COUNTRY =
+  new URLSearchParams(location.search).get('country') === 'AU' ? 'AU' : 'NZ';
+
 const params = new URLSearchParams(location.search);
 const role = params.get('role') === 'maid' ? 'maid' : 'customer';
 let mode = params.get('mode') === 'signup' ? 'signup' : 'login';
@@ -81,6 +87,10 @@ form.addEventListener('submit', async (e) => {
   };
   if (mode === 'signup') {
     body.fullName = form.fullName.value;
+    // Which marketplace this account joins. The Australian pages link here with
+    // ?country=AU; anything else is New Zealand. The server checks it against
+    // where the signer-up actually is before it creates anything.
+    body.country = SIGNUP_COUNTRY;
     if (role === 'maid') body.referralCode = form.referralCode?.value.trim() || refFromLink || undefined;
     // Where they first came from. Null when we never saw an entry (a returning
     // visitor whose storage was cleared) - the server then stores NULL rather
@@ -265,6 +275,7 @@ function onGoogleCredential(resp) {
     // Google sign-in doubles as signup for a new account, so it carries the
     // same first-touch record; the server ignores it for an existing user.
     body: JSON.stringify({
+      country: SIGNUP_COUNTRY,
       credential: resp.credential, role, reactivate: pendingGoogleReactivate,
       attribution: (window.mmAttribution && window.mmAttribution()) || undefined,
     }),

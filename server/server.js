@@ -21,7 +21,67 @@ const publicDir = join(here, '..'); // project root holds index.html etc.
 const app = express();
 app.use(express.json({ limit: '8mb' })); // room for base64 photos + ID documents
 
-// The suburb-page hub. Registered ahead of express.static on purpose: static
+// --- Steering people to their own country's site ----------------------------
+// Australia lives under /au, and must not be visible from New Zealand. Both
+// rules are enforced here, ahead of anything that serves a file.
+//
+// Three things this deliberately does NOT do:
+//
+//  * It never redirects when Cloudflare cannot tell us where the visitor is.
+//    Googlebot crawls mostly from the United States, so it sees both sites and
+//    can index both - which is the whole point of doing the SEO. A visitor on
+//    a VPN or reaching the origin directly gets the site they asked for.
+//  * It never touches /api, /assets or any other non-page path. Redirecting an
+//    XHR would break the page that issued it rather than move the reader.
+//  * It always leaves an escape. ?stay=1 pins you to the side you are on and
+//    sets a cookie, so a New Zealander who genuinely wants to look at the
+//    Australian site (or an Australian at ours) is inconvenienced once, not
+//    trapped in a loop. Without that, anyone travelling could not reach their
+//    own account.
+const AU_BASE = '/au';
+const STAY_COOKIE = 'mm_stay';
+// Only the pages that exist on BOTH sides get steered. Login, terms and privacy
+// are shared - one copy each, no /au twin - so steering them would bounce an
+// Australian visitor into a 404. The portals (/maid, /customer) are shared too:
+// they are behind a login, and the session carries the country that scopes
+// their data, so there is nothing country-specific to serve.
+const STEERABLE = /^\/(?:$|au(?:$|\/)|browse|for-customers|for-maids|cleaners)/;
+
+function wantsToStay(req) {
+  if (req.query?.stay === '1') return true;
+  return /(?:^|;\s*)mm_stay=1/.test(String(req.headers.cookie || ''));
+}
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const path = req.path;
+  if (!STEERABLE.test(path)) return next();
+  if (String(process.env.GEO_STEER || '').toLowerCase() === 'off') return next();
+
+  const inAu = path === AU_BASE || path.startsWith(AU_BASE + '/');
+  if (req.query?.stay === '1') {
+    // Remember the choice for the session so the next click does not bounce
+    // them straight back.
+    res.setHeader('Set-Cookie', `${STAY_COOKIE}=1; Path=/; Max-Age=2592000; SameSite=Lax`);
+    return next();
+  }
+  if (wantsToStay(req)) return next();
+
+  const cc = ipCountry(req);
+  if (!cc) return next(); // cannot tell -> serve what was asked for
+
+  // Australia is not visible from New Zealand.
+  if (inAu && cc === 'NZ') {
+    return res.redirect(302, path.slice(AU_BASE.length) || '/');
+  }
+  // An Australian visitor on the New Zealand site gets their own.
+  if (!inAu && cc === 'AU') {
+    return res.redirect(302, AU_BASE + (path === '/' ? '' : path) || AU_BASE);
+  }
+  return next();
+});
+
+// The suburb-page hubs. Registered ahead of express.static on purpose: static
 // sees a directory and 301s /cleaners -> /cleaners/, which is a second URL for
 // one page (and, before the hub existed, a redirect straight into a 404 - which
 // is what Search Console started reporting). Serving it here keeps /cleaners a
@@ -29,6 +89,14 @@ app.use(express.json({ limit: '8mb' })); // room for base64 photos + ID document
 app.get('/cleaners', (_req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(join(publicDir, 'cleaners', 'index.html'));
+});
+app.get('/au', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(join(publicDir, 'au', 'index.html'));
+});
+app.get('/au/cleaners', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(join(publicDir, 'au', 'cleaners', 'index.html'));
 });
 // `extensions: ['html']` lets /customer serve customer.html — clean URLs.
 // `no-cache` = always revalidate, so browsers/Cloudflare never serve a stale
@@ -47,8 +115,86 @@ app.use(
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 
 // --- Geo gate on signup ----------------------------------------------------
-// Match Maid only operates in New Zealand, so accounts are only created from NZ
-// IPs. Cloudflare sits in front of Render and stamps every request with the
+// --- Countries --------------------------------------------------------------
+// Match Maid runs two marketplaces off one codebase: New Zealand at the root,
+// Australia under /au. They share tables and share nothing else - a Sydney
+// customer must never see an Auckland cleaner, and the two must never be
+// summed into one number on the admin board.
+//
+// That separation is not just tidiness. 122 New Zealand suburb names are also
+// Australian suburb names - Sandringham, Northcote, Epsom, Newmarket and
+// Balmoral are all Auckland AND Melbourne or Sydney - and several queries match
+// suburbs by NAME rather than id. Every one of those is country-scoped below;
+// miss one and an Auckland listing surfaces in a Melbourne search.
+const COUNTRIES = {
+  NZ: {
+    code: 'NZ',
+    name: 'New Zealand',
+    adjective: 'New Zealand',
+    currency: 'NZD',
+    locale: 'en-NZ',
+    timezone: 'Pacific/Auckland',
+    base: '',                       // URL prefix: NZ lives at the root
+    hreflang: 'en-NZ',
+    // A floor stops absurd listings dragging the whole directory down.
+    minHourlyRate: 20,
+    cities: ['Christchurch City', 'Auckland'],
+  },
+  AU: {
+    code: 'AU',
+    name: 'Australia',
+    adjective: 'Australian',
+    currency: 'AUD',
+    locale: 'en-AU',
+    // One zone for reporting. Australia spans three, but an admin chart needs a
+    // single "what day is it" and Sydney is where most of the supply will be.
+    timezone: 'Australia/Sydney',
+    base: '/au',
+    hreflang: 'en-AU',
+    // Higher than NZ's on purpose: A$20/hr is below the Australian casual
+    // minimum wage, so it cannot be the floor for an Australian listing.
+    minHourlyRate: 30,
+    // The six metros Australia is open in. Enforced by the data as well - these
+    // are the only cities with suburbs loaded - but named here so the check is
+    // explicit rather than an accident of what got imported.
+    cities: ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Hobart', 'Darwin'],
+  },
+};
+const DEFAULT_COUNTRY = 'NZ';
+const isCountry = (c) => Object.prototype.hasOwnProperty.call(COUNTRIES, String(c || '').toUpperCase());
+
+// Which marketplace a request is for. The client says so explicitly - the /au
+// pages send country=AU on every call - because the alternative, inferring it
+// from the caller's IP, would put a New Zealander who opened /au deliberately
+// into the wrong pool.
+function reqCountry(req) {
+  const raw = req.query?.country ?? req.body?.country ?? '';
+  const cc = String(raw).toUpperCase();
+  return isCountry(cc) ? cc : DEFAULT_COUNTRY;
+}
+
+// Where the visitor actually is, per Cloudflare. Distinct from reqCountry:
+// this is used to steer people to the right site and to gate signups, never to
+// decide what data a request gets.
+function ipCountry(req) {
+  const cc = String(req.headers['cf-ipcountry'] || '').toUpperCase();
+  if (!cc || cc === 'XX' || cc === 'T1') return null; // unknown / Tor
+  return cc;
+}
+
+// Which marketplace a signed-in person belongs to. This, not the request, is
+// what scopes anything saved against a user: a cleaner editing their areas
+// belongs to one country already, and a stray country= on the query string must
+// not be able to move them into the other one.
+async function userCountry(userId) {
+  if (!userId) return DEFAULT_COUNTRY;
+  const { rows } = await query('select country from users where id = $1', [userId]);
+  const cc = String(rows[0]?.country || '').toUpperCase();
+  return isCountry(cc) ? cc : DEFAULT_COUNTRY;
+}
+
+// Accounts are only created from an IP in the country you are signing up in.
+// Cloudflare sits in front of Render and stamps every request with the
 // two-letter country in CF-IPCountry (needs "IP Geolocation" enabled in the
 // Cloudflare dashboard under Network).
 //
@@ -57,14 +203,20 @@ app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 // - we let the signup through rather than locking every real user out. This is
 // a spam speed bump, not a security control: any VPN defeats it in one click.
 // Set GEO_BLOCK=off to disable (useful for testing from overseas).
-const GEO_ALLOWED = new Set(['NZ']);
-function geoBlockReason(req) {
+function geoBlockReason(req, country = DEFAULT_COUNTRY) {
   if (String(process.env.GEO_BLOCK || '').toLowerCase() === 'off') return null;
-  const cc = String(req.headers['cf-ipcountry'] || '').toUpperCase();
-  if (!cc) return null; // no Cloudflare header -> cannot tell -> allow
-  if (cc === 'XX' || cc === 'T1') return null; // unknown / Tor -> allow
-  if (GEO_ALLOWED.has(cc)) return null;
-  return 'Match Maid is only available in New Zealand. If you are in NZ and seeing this, turn off your VPN and try again.';
+  const want = COUNTRIES[country] || COUNTRIES[DEFAULT_COUNTRY];
+  const cc = ipCountry(req);
+  if (!cc) return null; // cannot tell -> allow
+  if (cc === want.code) return null;
+  const other = Object.values(COUNTRIES).find((c) => c.code === cc);
+  // Someone in the OTHER country we operate in gets pointed at their own site
+  // rather than a flat refusal - they are a real customer, just on the wrong
+  // page. Everyone else gets the plain "not here yet".
+  if (other) {
+    return `This is the ${want.name} site. Match Maid ${other.name} is at matchmaid.co.nz${other.base} - create your account there.`;
+  }
+  return `Match Maid is only available in ${want.name}. If you are in ${want.code} and seeing this, turn off your VPN and try again.`;
 }
 
 // "maid" is the customer-facing word for a cleaner; the DB uses 'cleaner'.
@@ -84,6 +236,8 @@ const BASE_SERVICE_SLUGS = ['regular', 'deep', 'end-of-tenancy'];
 // Enforced on save. Listings already below it keep their price until the next
 // time they save - rewriting someone's advertised rate underneath them would
 // have them quoting a number they never chose.
+// Kept for anything still reading a single global floor; the real, per-country
+// value is COUNTRIES[cc].minHourlyRate and that is what the save path enforces.
 const MIN_HOURLY_RATE = 20;
 
 // Capacity throttle: once a cleaner has this many active (accepted, not yet
@@ -267,10 +421,13 @@ const START_TO_SLOT = { '08:00': 'morning', '12:00': 'afternoon', '17:00': 'even
 // --- Auth: register ---------------------------------------------------------
 app.post('/api/register', async (req, res) => {
   try {
-    const geo = geoBlockReason(req);
+    const { role, fullName, email, password, referralCode, attribution } = req.body ?? {};
+    // Which marketplace they are joining. Sent by the page they signed up on,
+    // and checked against where they actually are.
+    const country = reqCountry(req);
+    const geo = geoBlockReason(req, country);
     if (geo) return res.status(403).json({ error: geo });
 
-    const { role, fullName, email, password, referralCode, attribution } = req.body ?? {};
     const dbRole = ROLE_MAP[role];
     if (!dbRole) return res.status(400).json({ error: 'Choose maid or customer.' });
     if (!fullName || !email || !password)
@@ -286,11 +443,11 @@ app.post('/api/register', async (req, res) => {
     const acq = cleanAttribution(attribution);
     const { rows } = await query(
       `insert into users (email, role, full_name, password_hash, email_verified, verify_code, verify_expires,
-                          acq_source, acq_medium, acq_campaign, acq_referrer, acq_landing)
-       values ($1, $2, $3, $4, $5, $6, ${gateOn ? "now() + interval '15 minutes'" : 'null'}, $7, $8, $9, $10, $11)
-       returning id, role, full_name, email`,
+                          acq_source, acq_medium, acq_campaign, acq_referrer, acq_landing, country)
+       values ($1, $2, $3, $4, $5, $6, ${gateOn ? "now() + interval '15 minutes'" : 'null'}, $7, $8, $9, $10, $11, $12)
+       returning id, role, full_name, email, country`,
       [email.toLowerCase().trim(), dbRole, fullName.trim(), password_hash, !gateOn, code,
-       acq.source, acq.medium, acq.campaign, acq.referrer, acq.landing]
+       acq.source, acq.medium, acq.campaign, acq.referrer, acq.landing, country]
     );
     const user = rows[0];
 
@@ -349,7 +506,7 @@ app.post('/api/verify-email', async (req, res) => {
     const { userId, code } = req.body ?? {};
     if (!userId || !code) return res.status(400).json({ error: 'Enter the code we emailed you.' });
     const { rows } = await query(
-      'select id, role, full_name, email, email_verified, verify_code, verify_expires from users where id = $1',
+      'select id, role, full_name, email, country, email_verified, verify_code, verify_expires from users where id = $1',
       [userId]
     );
     const user = rows[0];
@@ -411,7 +568,7 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required.' });
 
     const { rows } = await query(
-      'select id, role, full_name, email, password_hash, status, email_verified from users where email = $1 and role = $2',
+      'select id, role, full_name, email, country, password_hash, status, email_verified from users where email = $1 and role = $2',
       [email.toLowerCase().trim(), dbRole]
     );
     const user = rows[0];
@@ -470,7 +627,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     const email = String(info.email).toLowerCase().trim();
     let { rows } = await query(
-      'select id, role, full_name, email, status from users where email = $1 and role = $2',
+      'select id, role, full_name, email, country, status from users where email = $1 and role = $2',
       [email, dbRole]
     );
     let user = rows[0];
@@ -478,7 +635,7 @@ app.post('/api/auth/google', async (req, res) => {
       // Creating an account, so the NZ-only gate applies. Existing users fall
       // through to the else branch and can still sign in from anywhere - we
       // only block new signups, not travelling customers.
-      const geo = geoBlockReason(req);
+      const geo = geoBlockReason(req, reqCountry(req));
       if (geo) return res.status(403).json({ error: geo });
       // No account on THIS side yet. One on the other side is irrelevant: the
       // unique index is on (email, role), so this insert stands on its own.
@@ -491,10 +648,10 @@ app.post('/api/auth/google', async (req, res) => {
       const gacq = cleanAttribution(attribution);
       ({ rows } = await query(
         `insert into users (email, role, full_name, password_hash, email_verified,
-                            acq_source, acq_medium, acq_campaign, acq_referrer, acq_landing)
-         values ($1, $2, $3, $4, true, $5, $6, $7, $8, $9) returning id, role, full_name, email`,
+                            acq_source, acq_medium, acq_campaign, acq_referrer, acq_landing, country)
+         values ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10) returning id, role, full_name, email, country`,
         [email, dbRole, info.name || email.split('@')[0], hash,
-         gacq.source, gacq.medium, gacq.campaign, gacq.referrer, gacq.landing]
+         gacq.source, gacq.medium, gacq.campaign, gacq.referrer, gacq.landing, reqCountry(req)]
       ));
       user = rows[0];
     } else {
@@ -605,12 +762,17 @@ app.post('/api/profile/remove', async (req, res) => {
 // Region comes back too: nationwide, suburb names repeat (Richmond, Bishopdale
 // and Hillsborough all exist in more than one region), so the picker groups by
 // region and callers should send the id rather than the bare name.
-app.get('/api/suburbs', async (_req, res) => {
+app.get('/api/suburbs', async (req, res) => {
   // lat/lng ride along so the radius picker can show "covers 34 suburbs" as the
   // circle is dragged, without a round trip per pixel. The server recomputes the
   // same set on save - this copy is only for display.
+  //
+  // Country-scoped: an Australian picker offering Auckland suburbs would let
+  // someone attach themselves to the wrong marketplace in one click.
   const { rows } = await query(
-    'select id, name, region, territorial_authority, lat, lng from suburbs order by region, name'
+    `select id, name, region, territorial_authority, lat, lng from suburbs
+      where country = $1 order by region, name`,
+    [reqCountry(req)]
   );
   res.json(rows.map((r) => ({ ...r, lat: r.lat == null ? null : Number(r.lat), lng: r.lng == null ? null : Number(r.lng) })));
 });
@@ -620,10 +782,11 @@ app.get('/api/suburbs', async (_req, res) => {
 const RADIUS_SQL = `6371 * acos(least(1,
   cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2))
   + sin(radians($1)) * sin(radians(lat))))`;
-async function suburbsWithin(lat, lng, km, excluded = []) {
+async function suburbsWithin(lat, lng, km, excluded = [], country = DEFAULT_COUNTRY) {
   const { rows } = await query(
-    `select id from suburbs where lat is not null and ${RADIUS_SQL} <= $3`,
-    [lat, lng, km]
+    `select id from suburbs
+      where country = $4 and lat is not null and ${RADIUS_SQL} <= $3`,
+    [lat, lng, km, country]
   );
   const off = new Set(excluded.map(Number));
   return rows.map((r) => r.id).filter((id) => !off.has(id));
@@ -633,14 +796,19 @@ async function suburbsWithin(lat, lng, km, excluded = []) {
 // nationwide list a bare name is ambiguous (four Richmonds), and the old
 // `where name = $1 limit 1` would silently attach someone to another region's
 // suburb of the same name. Name lookup stays as a fallback for older callers.
-async function resolveSuburbId(suburbId, name) {
+async function resolveSuburbId(suburbId, name, country = DEFAULT_COUNTRY) {
   const id = Number(suburbId);
   if (Number.isInteger(id) && id > 0) {
-    const byId = await query('select id from suburbs where id = $1', [id]);
+    // An explicit id already carries its country; take it as given, but do not
+    // let it silently cross marketplaces.
+    const byId = await query('select id from suburbs where id = $1 and country = $2', [id, country]);
     if (byId.rows[0]) return byId.rows[0].id;
   }
   if (!name) return null;
-  const byName = await query('select id from suburbs where name = $1 order by id limit 1', [name]);
+  const byName = await query(
+    'select id from suburbs where name = $1 and country = $2 order by id limit 1',
+    [name, country]
+  );
   return byName.rows[0]?.id ?? null;
 }
 
@@ -657,8 +825,11 @@ app.get('/api/cleaners', async (req, res) => {
       return res.status(400).json({ error: 'Pick a suburb and a service.' });
 
     let sql = await readFile(join(here, 'queries', 'search_cleaners.sql'), 'utf8');
-    sql = sql.replace(/:suburb/g, '$1').replace(/:service/g, '$2').replace(/:capacity/g, '$3');
-    const { rows } = await query(sql, [suburb, service, CAPACITY_LIMIT]);
+    // :country before :capacity - ":capacity" and ":country" share no prefix, but
+    // replacing the longest names first keeps this safe if either ever changes.
+    sql = sql.replace(/:suburb/g, '$1').replace(/:service/g, '$2')
+             .replace(/:capacity/g, '$3').replace(/:country/g, '$4');
+    const { rows } = await query(sql, [suburb, service, CAPACITY_LIMIT, reqCountry(req)]);
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -686,9 +857,9 @@ app.get('/api/cleaner-rates', async (req, res) => {
          join suburbs s on s.id = csa.suburb_id
          join cleaner_services cs on cs.cleaner_id = cp.id
          join service_types st on st.id = cs.service_type_id
-        where cp.listing_status = 'active'
+        where cp.listing_status = 'active' and s.country = $3
           and s.name = any($1) and st.slug = $2 and cp.hourly_rate is not null`,
-      [subList, service]
+      [subList, service, reqCountry(req)]
     );
     res.json({ rates: rows.map((r) => Number(r.rate)).filter((n) => Number.isFinite(n)) });
   } catch (err) {
@@ -897,12 +1068,16 @@ app.put('/api/profile', async (req, res) => {
       // Rejected, not clamped. Quietly rounding someone's $5 up to $20 would
       // have them advertising a price they never agreed to, and they would find
       // out from a customer rather than from us.
+      // The floor is per-country: A$20 an hour would be below the Australian
+      // casual minimum wage, so it cannot be the floor for an Australian
+      // listing the way it is for a New Zealand one.
+      const floor = COUNTRIES[await userCountry(userId)].minHourlyRate;
       const under = BASE_SERVICE_SLUGS
         .map((slug) => ({ slug, v: Math.max(0, Math.round(Number(cleanRates[slug]) || 0)) }))
-        .filter((f) => f.v > 0 && f.v < MIN_HOURLY_RATE);
+        .filter((f) => f.v > 0 && f.v < floor);
       if (under.length) {
         return res.status(400).json({
-          error: `The lowest hourly rate on Match Maid is $${MIN_HOURLY_RATE}. Please set at least $${MIN_HOURLY_RATE} for every clean you offer.`,
+          error: `The lowest hourly rate on Match Maid is $${floor}. Please set at least $${floor} for every clean you offer.`,
         });
       }
       for (const slug of BASE_SERVICE_SLUGS) {
@@ -1005,7 +1180,7 @@ app.put('/api/profile', async (req, res) => {
     // A circle defines the areas: resolve it here rather than trusting the list
     // the browser worked out, so the saved suburbs always match the saved circle.
     if (circle) {
-      const ids = await suburbsWithin(circle.lat, circle.lng, circle.km, excluded ?? []);
+      const ids = await suburbsWithin(circle.lat, circle.lng, circle.km, excluded ?? [], await userCountry(userId));
       await query('delete from cleaner_service_areas where cleaner_id = $1', [cleanerId]);
       if (ids.length) {
         await query(
@@ -1020,7 +1195,8 @@ app.put('/api/profile', async (req, res) => {
       for (const area of areas) {
         const areaId = await resolveSuburbId(
           typeof area === 'object' ? area?.id : area,
-          typeof area === 'object' ? area?.name : area
+          typeof area === 'object' ? area?.name : area,
+          await userCountry(userId)
         );
         if (!areaId) continue;
         await query(
@@ -1102,7 +1278,7 @@ app.put('/api/client-profile', async (req, res) => {
               email = coalesce($3, email), updated_at = now() where id = $1`,
       [userId, fullName ?? null, email ? email.toLowerCase().trim() : null]
     );
-    const subId = await resolveSuburbId(suburbId, suburb);
+    const subId = await resolveSuburbId(suburbId, suburb, await userCountry(userId));
     const sub = { rows: subId ? [{ id: subId }] : [] };
     await query(
       `update client_profiles set
@@ -1301,6 +1477,7 @@ app.get('/api/admin/stats', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
     const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+    const country = reqCountry(req);
 
     const series = await query(
       `with span as (
@@ -1365,7 +1542,8 @@ app.get('/api/admin/stats', async (req, res) => {
              -- is no suburb's name) still resolves to its TA ("Christchurch City").
              select sub.territorial_authority as ta
                from suburbs sub
-              where lower(sub.name) = lower(trim(split_part(cp.residential_address, ',', 1)))
+              where sub.country = $2
+                and lower(sub.name) = lower(trim(split_part(cp.residential_address, ',', 1)))
                  or lower(regexp_replace(sub.territorial_authority, '\\s+(City|District)$', '')) =
                     lower(trim(regexp_replace(cp.residential_address, '^.*,\\s*', '')))
               order by (lower(sub.name) = lower(trim(split_part(cp.residential_address, ',', 1)))) desc
@@ -1382,7 +1560,7 @@ app.get('/api/admin/stats', async (req, res) => {
         group by 1
         order by total desc, town
         limit 12`,
-      [days]
+      [days, country]
     );
 
     // Advanced marketplace health, all in one round trip. A two-sided market
@@ -1546,19 +1724,33 @@ app.get('/api/admin/stats', async (req, res) => {
 // "where are we not?", which is a different question from "how deep are we in
 // the two cities we launched in" - and the answer is mostly "everywhere", so it
 // is worth being able to see at a glance.
-const COVERAGE_CITIES = [
-  { key: 'chch', name: 'Christchurch', lat: -43.5321, lng: 172.6362, radiusKm: 35 },
-  { key: 'akl', name: 'Auckland', lat: -36.8485, lng: 174.7633, radiusKm: 45 },
-  { key: 'nz', name: 'All of NZ', lat: -41.0, lng: 173.5, radiusKm: null, zoom: 5 },
-];
+const COVERAGE_CITIES = {
+  NZ: [
+    { key: 'chch', name: 'Christchurch', lat: -43.5321, lng: 172.6362, radiusKm: 35 },
+    { key: 'akl', name: 'Auckland', lat: -36.8485, lng: 174.7633, radiusKm: 45 },
+    { key: 'nz', name: 'All of NZ', lat: -41.0, lng: 173.5, radiusKm: null, zoom: 5 },
+  ],
+  // The six metros Australia is open in, plus a national view. Radii match the
+  // built-up area, which is what the suburb import used.
+  AU: [
+    { key: 'syd', name: 'Sydney', lat: -33.8688, lng: 151.2093, radiusKm: 55 },
+    { key: 'mel', name: 'Melbourne', lat: -37.8136, lng: 144.9631, radiusKm: 50 },
+    { key: 'bne', name: 'Brisbane', lat: -27.4698, lng: 153.0251, radiusKm: 40 },
+    { key: 'per', name: 'Perth', lat: -31.9505, lng: 115.8605, radiusKm: 40 },
+    { key: 'hba', name: 'Hobart', lat: -42.8821, lng: 147.3272, radiusKm: 25 },
+    { key: 'drw', name: 'Darwin', lat: -12.4634, lng: 130.8456, radiusKm: 25 },
+    { key: 'au', name: 'All of Australia', lat: -25.5, lng: 134.0, radiusKm: null, zoom: 4 },
+  ],
+};
 app.get('/api/admin/coverage', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const country = reqCountry(req);
     const withinKm = `6371 * acos(least(1,
       cos(radians($1)) * cos(radians(s.lat)) * cos(radians(s.lng) - radians($2))
       + sin(radians($1)) * sin(radians(s.lat))))`;
     const cities = [];
-    for (const c of COVERAGE_CITIES) {
+    for (const c of COVERAGE_CITIES[country]) {
       const national = c.radiusKm == null;
       const { rows } = await query(
         `select s.id, s.name, s.territorial_authority as town, s.region, s.lat, s.lng,
@@ -1571,9 +1763,9 @@ app.get('/api/admin/coverage', async (req, res) => {
               where csa.suburb_id = s.id and cp.listing_status = 'active'
                 and ${cpNotAdmin()}
            ) a on true
-          where s.lat is not null${national ? '' : ` and ${withinKm} <= $3`}
+          where s.country = $${national ? '1' : '4'} and s.lat is not null${national ? '' : ` and ${withinKm} <= $3`}
           order by coalesce(a.n, 0) desc, s.name`,
-        national ? [] : [c.lat, c.lng, c.radiusKm]
+        national ? [country] : [c.lat, c.lng, c.radiusKm, country]
       );
       const suburbs = rows.map((r) => ({
         id: r.id, name: r.name, town: r.town, region: r.region,
@@ -1634,8 +1826,9 @@ app.get('/api/admin/users', async (req, res) => {
          left join cleaner_profiles cp on cp.user_id = u.id
          left join client_profiles  lp on lp.user_id = u.id
          left join suburbs s on s.id = lp.default_suburb_id
-        where u.role in ('client','cleaner')
-        order by u.created_at desc`
+        where u.country = $1 and u.role in ('client','cleaner')
+        order by u.created_at desc`,
+      [reqCountry(req)]
     );
     res.json({
       adminEmail: ADMIN_EMAIL,
@@ -2266,7 +2459,7 @@ app.post('/api/contact', async (req, res) => {
     const isNewConversation = !conversationId;
     if (!conversationId) {
       const svc = serviceSlug ? await query('select id from service_types where slug = $1', [serviceSlug]) : { rows: [] };
-      const subId = await resolveSuburbId(req.body?.suburbId, suburb);
+      const subId = await resolveSuburbId(req.body?.suburbId, suburb, await userCountry(clientUserId));
       const sub = { rows: subId ? [{ id: subId }] : [] };
       const enq = await query(
         `insert into enquiries (client_id, cleaner_id, service_type_id, suburb_id, message)
@@ -2336,7 +2529,8 @@ app.get('/api/conversations', async (req, res) => {
          -- reference tables joined before it, so it sits after cpf.
          left join lateral (
            select sub.name from suburbs sub
-            where lower(sub.name) = lower(trim(split_part(cpf.residential_address, ',', 1)))
+            where sub.country = cu.country
+              and lower(sub.name) = lower(trim(split_part(cpf.residential_address, ',', 1)))
             limit 1
          ) cleaners on true
          join client_profiles clpf on clpf.id = c.client_id
@@ -3282,6 +3476,7 @@ app.post('/api/match', async (req, res) => {
       join users u                   on u.id = cp.user_id
       join cleaner_service_areas csa on csa.cleaner_id = cp.id
       join suburbs s                 on s.id = csa.suburb_id and s.name = any($1)
+                                    and s.country = $4
       left join cleaner_services cs  on cs.cleaner_id = cp.id
       left join service_types st     on st.id = cs.service_type_id
       left join availability_rules ar
@@ -3292,7 +3487,7 @@ app.post('/api/match', async (req, res) => {
       where cp.listing_status = 'active' and u.status = 'active'
       group by cp.id, u.id`;
 
-    const { rows } = await query(sql, [subList, days, starts]);
+    const { rows } = await query(sql, [subList, days, starts, reqCountry(req)]);
 
     const results = rows
       .map((r) => {
@@ -3408,8 +3603,11 @@ app.post('/api/match', async (req, res) => {
   }
 });
 
-function publicUser({ id, role, full_name, email }) {
-  return { id, role, fullName: full_name, email };
+// The session object the browser holds. Country rides along so the front end
+// can send it on every call and keep a signed-in Australian on the /au side
+// even if they land on a New Zealand URL.
+function publicUser({ id, role, full_name, email, country }) {
+  return { id, role, fullName: full_name, email, country: isCountry(country) ? String(country).toUpperCase() : DEFAULT_COUNTRY };
 }
 
 const PORT = process.env.PORT || 3000;

@@ -16,4 +16,10 @@ Disallow: /header-preview
 Disallow: /howflow-preview
 Disallow: /marketing
 
+# The Australian site under /au is a full copy of the public pages, and is meant
+# to be crawled and indexed like the New Zealand ones. It is hidden from New
+# Zealand VISITORS at the edge, not from crawlers - Googlebot crawls from the
+# United States, so it sees both. Nothing to disallow here; this note exists so
+# nobody later mistakes the geo rule for a crawl rule and "fixes" it.
+
 Sitemap: https://matchmaid.co.nz/sitemap.xml

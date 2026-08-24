@@ -1,7 +1,7 @@
 -- CORE SEARCH: active cleaners who cover a suburb and offer a service.
 -- Best first: featured, then responsive-before-unresponsive, then cleaners with
 -- spare capacity before those at capacity, then rating, then reviews.
--- Replace :suburb, :service and :capacity with the customer's choices / limit.
+-- Replace :suburb, :service, :capacity and :country with the customer's choices / limit.
 --
 -- Responsiveness: a cleaner who has left an enquiry unanswered for more than
 -- three days is sunk to the bottom of results. "Unanswered" means the enquiry
@@ -52,5 +52,7 @@ join service_types st          on st.id = cs.service_type_id
 where cp.listing_status = 'active'
   and u.status = 'active'   -- removed accounts keep their data but leave the directory
   and s.name  = :suburb
+  -- 122 suburb names exist in both countries, so the name alone is ambiguous.
+  and s.country = :country
   and st.slug = :service
 order by is_featured desc, is_unresponsive asc, is_at_capacity asc, cp.avg_rating desc, cp.review_count desc;

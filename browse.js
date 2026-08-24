@@ -1,5 +1,19 @@
 // Public, ungated cleaner browse - now backed by the real /api/match endpoint.
 // Signup only appears at the "Contact" peak (or the always-present hook).
+// Which marketplace this page belongs to. The /au pages set window.MM_COUNTRY
+// before any script runs; everywhere else it is New Zealand. A signed-in user's
+// own country wins over the page, so an Australian who lands on a New Zealand
+// URL still gets Australian data rather than an empty search.
+const MM_COUNTRY = (() => {
+  try {
+    const u = JSON.parse(localStorage.getItem('matchmaid_user') || 'null');
+    if (u && (u.country === 'AU' || u.country === 'NZ')) return u.country;
+  } catch {}
+  return window.MM_COUNTRY === 'AU' ? 'AU' : 'NZ';
+})();
+const withCountry = (url) =>
+  url + (url.includes('?') ? '&' : '?') + 'country=' + MM_COUNTRY;
+
 const { DAYS, SLOTS } = DEMO;
 
 // Service label lookup (+ a couple of extras not in the seed catalogue).
@@ -95,7 +109,7 @@ function loadSupply() {
   rateHist.hidden = true;
   histCaption.textContent = '';
   if (!parsed.suburbs.length || !service) return;
-  fetch(`/api/cleaner-rates?suburbs=${encodeURIComponent(parsed.suburbs.join(','))}&service=${encodeURIComponent(service)}`)
+  fetch(withCountry(`/api/cleaner-rates?suburbs=${encodeURIComponent(parsed.suburbs.join(','))}&service=${encodeURIComponent(service)}`))
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => { supplyLoaded = true; supplyRates = d && Array.isArray(d.rates) ? d.rates : []; renderHist(); })
     .catch(() => {});
@@ -149,6 +163,7 @@ async function runSearch() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        country: MM_COUNTRY,
         suburbs: p.suburbs,
         services: p.services,
         budgetMin: p.budgetMin,
@@ -473,6 +488,7 @@ document.getElementById('composeForm')?.addEventListener('submit', async (e) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        country: MM_COUNTRY,
         clientUserId: user.id,
         cleanerId: pendingCleanerId,
         message: body,
@@ -550,6 +566,9 @@ capForm.addEventListener('submit', async (e) => {
   capMsg.textContent = 'Creating your account…';
   const body = {
     role: 'customer',
+    // Which marketplace this account joins. Sent explicitly, and checked
+    // against the signer-up's IP on the server.
+    country: MM_COUNTRY,
     fullName: capForm.fullName.value,
     email: capForm.email.value,
     password: capForm.password.value,

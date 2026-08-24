@@ -263,4 +263,10 @@ DEMO.scoreCleaner = function (cleaner, { suburb, service, desiredRate, slots }) 
   };
 };
 
+// Australia swaps the whole town -> suburbs map. Loaded only on the /au pages
+// (towns-au.js sets window.AU_TOWNS ahead of this), so the New Zealand side is
+// untouched and pays nothing for it.
+if (typeof window !== 'undefined' && window.MM_COUNTRY === 'AU' && window.AU_TOWNS) {
+  DEMO.towns = window.AU_TOWNS;
+}
 window.DEMO = DEMO;

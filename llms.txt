@@ -1,6 +1,6 @@
 # Match Maid
 
-> Match Maid is a New Zealand marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge - Match Maid never takes a commission on a job. Open across New Zealand, with the most cleaners in Auckland and Christchurch.
+> Match Maid is a marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge - Match Maid never takes a commission on a job. It runs two separate marketplaces: New Zealand at matchmaid.co.nz, and Australia at matchmaid.co.nz/au. They do not share listings - an Australian household sees Australian cleaners only, and vice versa.
 
 ## What it is
 - A directory / marketplace, not a cleaning company. Match Maid introduces households to independent cleaners and does not employ cleaners, take bookings, or handle payments.
@@ -13,29 +13,47 @@
 
 ## Pricing
 - Households: free, always.
-- Cleaners: free. Match Maid is free for everyone while we build New Zealand's biggest network of cleaners, and never takes a per-job commission.
+- Cleaners: free. Match Maid is free for everyone while we build the network in both countries, and never takes a per-job commission.
 
-## What a clean actually costs here
+## What a clean actually costs - New Zealand
 - Cleaners set their own hourly rate and it is shown before you contact anyone.
 - Rates currently advertised on Match Maid run from $24 to $60 an hour, most around $35-$45.
 - The lowest rate a cleaner may advertise is $20 an hour.
 - There is no booking fee, no commission and no charge to households at any point.
 
-## Coverage
+## Coverage - New Zealand (matchmaid.co.nz)
 - Open to households and cleaners anywhere in New Zealand. Every suburb in the country is searchable.
 - Cleaner numbers are deepest in Auckland and Christchurch, with cleaners also covering parts of Dunedin. Other towns are open and filling in.
 - Cleaners set a service area as a radius, so coverage is by suburb rather than by whole city.
+
+## Coverage - Australia (matchmaid.co.nz/au)
+- Open in six cities: Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin. Accounts can only be created in those cities for now.
+- 2,422 suburbs across those six metros are searchable.
+- Prices are in Australian dollars. Advertised rates run from about A$35 to A$80 an hour depending on the city, with most around A$45-$55. The lowest rate an Australian cleaner may advertise is A$30 an hour - above the casual minimum wage.
+- Same model as New Zealand: free for households, no commission from cleaners, rates shown before you make contact.
+
+## Australian cities
+- [All cities](https://matchmaid.co.nz/au/cleaners): the six metros in one place.
+- [Sydney](https://matchmaid.co.nz/au/cleaners/sydney), [Melbourne](https://matchmaid.co.nz/au/cleaners/melbourne), [Brisbane](https://matchmaid.co.nz/au/cleaners/brisbane), [Perth](https://matchmaid.co.nz/au/cleaners/perth), [Hobart](https://matchmaid.co.nz/au/cleaners/hobart), [Darwin](https://matchmaid.co.nz/au/cleaners/darwin)
 
 ## Cleaners by suburb
 - [All areas](https://matchmaid.co.nz/cleaners): every suburb with a page of its own, in one place.
 - Auckland: [Ponsonby](https://matchmaid.co.nz/cleaners/ponsonby), [Mount Eden](https://matchmaid.co.nz/cleaners/mount-eden), [Remuera](https://matchmaid.co.nz/cleaners/remuera), [Takapuna](https://matchmaid.co.nz/cleaners/takapuna), [Devonport](https://matchmaid.co.nz/cleaners/devonport), [Henderson](https://matchmaid.co.nz/cleaners/henderson), [Howick](https://matchmaid.co.nz/cleaners/howick), [Manukau](https://matchmaid.co.nz/cleaners/manukau)
 - Christchurch: [Riccarton](https://matchmaid.co.nz/cleaners/riccarton), [Papanui](https://matchmaid.co.nz/cleaners/papanui), [Fendalton](https://matchmaid.co.nz/cleaners/fendalton), [Merivale](https://matchmaid.co.nz/cleaners/merivale), [Halswell](https://matchmaid.co.nz/cleaners/halswell), [Cashmere](https://matchmaid.co.nz/cleaners/cashmere)
 
-## Key pages
+## Key pages - New Zealand
 - [Home](https://matchmaid.co.nz/): overview and role gateway.
 - [For households](https://matchmaid.co.nz/for-customers): how it works for people who need a clean.
 - [For cleaners](https://matchmaid.co.nz/for-maids): how it works for cleaners, and how to list.
 - [Browse cleaners](https://matchmaid.co.nz/browse): search local cleaners by suburb, clean type, verification and price (no account needed).
+
+## Key pages - Australia
+- [Home](https://matchmaid.co.nz/au): overview and role gateway.
+- [For households](https://matchmaid.co.nz/au/for-customers)
+- [For cleaners](https://matchmaid.co.nz/au/for-maids)
+- [Browse cleaners](https://matchmaid.co.nz/au/browse)
+
+## Shared
 - [Terms of Service](https://matchmaid.co.nz/terms)
 - [Privacy Policy](https://matchmaid.co.nz/privacy)
 

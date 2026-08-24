@@ -1,5 +1,17 @@
 // Customer portal - fully backed by the real API (no demo data).
 // Reference constants (calendar labels, service catalogue) still come from DEMO.
+// Which marketplace this page belongs to. A signed-in user's own country wins:
+// their data lives in one country and must not be looked up in the other.
+const MM_COUNTRY = (() => {
+  try {
+    const u = JSON.parse(localStorage.getItem('matchmaid_user') || 'null');
+    if (u && (u.country === 'AU' || u.country === 'NZ')) return u.country;
+  } catch {}
+  return (typeof window !== 'undefined' && window.MM_COUNTRY === 'AU') ? 'AU' : 'NZ';
+})();
+const withCountry = (url) =>
+  url + (url.includes('?') ? '&' : '?') + 'country=' + MM_COUNTRY;
+
 const { DAYS, SLOTS } = DEMO;
 
 const sessionUser = Session.get();
@@ -171,7 +183,7 @@ const postJSON = (url, body) =>
     : Promise.reject();
 
 function loadSuburbs() {
-  getJSON('/api/suburbs')
+  getJSON(withCountry('/api/suburbs'))
     .then((list) => { suburbList = Array.isArray(list) ? list : []; reRenderIf('find', 'profile'); refreshCwizForSuburbs(); })
     .catch(() => { suburbsFailed = true; reRenderIf('find', 'profile'); refreshCwizForSuburbs(); });
 }
