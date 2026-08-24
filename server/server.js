@@ -1435,11 +1435,30 @@ const ADMIN_NOTIFY_EMAIL = (process.env.ADMIN_NOTIFY_EMAIL || 'hello@matchmaid.c
 // into queries whose placeholder numbering varies; the quote-doubling keeps it
 // safe even though the value comes from our own env.
 const ADMIN_EMAIL_SQL = `'${ADMIN_EMAIL.replace(/'/g, "''")}'`;
+// Two things every admin figure has to be filtered by: it must exclude the
+// admin's own test traffic, and it must belong to exactly one country.
+//
+// They live in the same helper on purpose. The country filter is easy to forget
+// on any single query and impossible to spot afterwards - a total that quietly
+// sums New Zealand and Australia looks like a perfectly ordinary number. Baking
+// it into the predicate that every admin query already calls means a new query
+// gets it by default, and a query that skips it is visibly skipping it.
+//
+// The country is interpolated rather than bound because these are composed into
+// larger template strings whose parameter numbering varies. It is safe: the only
+// values that reach here are keys of COUNTRIES, validated by reqCountry.
+const countryLit = (cc) => `'${(COUNTRIES[cc] || COUNTRIES[DEFAULT_COUNTRY]).code}'`;
+
 // For a query that already has the users table in scope.
-const notAdmin = (alias = 'u') => `lower(${alias}.email) <> ${ADMIN_EMAIL_SQL}`;
-// For one that only has cleaner_profiles - the row carries no email of its own.
-const cpNotAdmin = (alias = 'cp') =>
-  `not exists (select 1 from users au where au.id = ${alias}.user_id and lower(au.email) = ${ADMIN_EMAIL_SQL})`;
+const notAdmin = (alias = 'u', country = DEFAULT_COUNTRY) =>
+  `lower(${alias}.email) <> ${ADMIN_EMAIL_SQL} and ${alias}.country = ${countryLit(country)}`;
+
+// For one that only has cleaner_profiles - the row carries no email or country
+// of its own, so both come from the user it belongs to.
+const cpNotAdmin = (alias = 'cp', country = DEFAULT_COUNTRY) =>
+  `exists (select 1 from users au where au.id = ${alias}.user_id
+             and lower(au.email) <> ${ADMIN_EMAIL_SQL}
+             and au.country = ${countryLit(country)})`;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function isAdmin(userId) {
   // Check the shape first. Postgres rejects anything that is not a uuid, so a
@@ -1496,7 +1515,7 @@ app.get('/api/admin/stats', async (req, res) => {
          left join users u
            on (u.created_at at time zone 'Pacific/Auckland')::date = span.d
           and u.role in ('client','cleaner')
-          and ${notAdmin()}
+          and ${notAdmin("u", country)}
         group by span.d
         order by span.d`,
       [days]
@@ -1507,7 +1526,7 @@ app.get('/api/admin/stats', async (req, res) => {
       `select u.role,
               count(*)::int as total,
               count(*) filter (where u.status = 'active')::int as active
-         from users u where u.role in ('client','cleaner') and ${notAdmin()} group by u.role`
+         from users u where u.role in ('client','cleaner') and ${notAdmin("u", country)} group by u.role`
     );
     const byRole = Object.fromEntries(totals.rows.map((r) => [r.role, r]));
 
@@ -1524,7 +1543,7 @@ app.get('/api/admin/stats', async (req, res) => {
     // The trailing " City"/" District" is dropped for a friendlier label.
     const recent = `(u.created_at at time zone 'Pacific/Auckland')::date
                     > (now() at time zone 'Pacific/Auckland')::date - $1::int
-                    and ${notAdmin()}`;
+                    and ${notAdmin("u", country)}`;
     const topTowns = await query(
       `with signups as (
          select 'client' as role, s.territorial_authority as ta
@@ -1569,14 +1588,14 @@ app.get('/api/admin/stats', async (req, res) => {
     // enquiries they send), so the numbers are grouped that way.
     const adv = (await query(
       `select
-         (select count(*) filter (where cp.listing_status = 'active') from cleaner_profiles cp where ${cpNotAdmin()})::int as active_listings,
-         (select count(*) filter (where cp.id_verified) from cleaner_profiles cp where ${cpNotAdmin()})::int         as verified_id,
-         (select count(*) filter (where cp.police_verified) from cleaner_profiles cp where ${cpNotAdmin()})::int      as verified_police,
-         (select count(*) filter (where cp.insurance_verified) from cleaner_profiles cp where ${cpNotAdmin()})::int   as verified_insurance,
+         (select count(*) filter (where cp.listing_status = 'active') from cleaner_profiles cp where ${cpNotAdmin("cp", country)})::int as active_listings,
+         (select count(*) filter (where cp.id_verified) from cleaner_profiles cp where ${cpNotAdmin("cp", country)})::int         as verified_id,
+         (select count(*) filter (where cp.police_verified) from cleaner_profiles cp where ${cpNotAdmin("cp", country)})::int      as verified_police,
+         (select count(*) filter (where cp.insurance_verified) from cleaner_profiles cp where ${cpNotAdmin("cp", country)})::int   as verified_insurance,
          (select count(distinct csa.suburb_id)
             from cleaner_service_areas csa
             join cleaner_profiles cp on cp.id = csa.cleaner_id
-           where cp.listing_status = 'active' and ${cpNotAdmin()})::int as suburbs_covered,
+           where cp.listing_status = 'active' and ${cpNotAdmin("cp", country)})::int as suburbs_covered,
          (select count(*) from enquiries)::int                                            as enquiries_total,
          (select count(*) filter (where responded_at is not null) from enquiries)::int    as enquiries_responded,
          (select count(*) from enquiries where created_at > now() - ($1 || ' days')::interval)::int as enquiries_window,
@@ -1584,10 +1603,10 @@ app.get('/api/admin/stats', async (req, res) => {
          (select count(*) filter (where status = 'published') from reviews)::int          as reviews_total,
          (select round(avg(overall), 2) from reviews where status = 'published')          as avg_rating,
          (select count(*) filter (where u.created_at > now() - interval '7 days')
-            from users u where u.role in ('client','cleaner') and ${notAdmin()})::int as signups_this_week,
+            from users u where u.role in ('client','cleaner') and ${notAdmin("u", country)})::int as signups_this_week,
          (select count(*) filter (where u.created_at <= now() - interval '7 days'
                                and u.created_at >  now() - interval '14 days')
-            from users u where u.role in ('client','cleaner') and ${notAdmin()})::int as signups_prev_week`,
+            from users u where u.role in ('client','cleaner') and ${notAdmin("u", country)})::int as signups_prev_week`,
       [String(days)]
     )).rows[0];
 
@@ -1622,7 +1641,7 @@ app.get('/api/admin/stats', async (req, res) => {
          from users u
          left join cleaner_profiles cp on cp.user_id = u.id
          left join client_profiles  lp on lp.user_id = u.id
-        where u.role in ('client','cleaner') and u.removed_at is null and ${notAdmin()}`
+        where u.role in ('client','cleaner') and u.removed_at is null and ${notAdmin("u", country)}`
     )).rows[0];
 
     // Where signups came from, over the same window as everything else.
@@ -1648,7 +1667,7 @@ app.get('/api/admin/stats', async (req, res) => {
     const removedRow = (await query(
       `select count(*) filter (where u.role = 'cleaner')::int as cleaners,
               count(*) filter (where u.role = 'client')::int  as customers
-         from users u where u.role in ('client','cleaner') and u.removed_at is not null and ${notAdmin()}`
+         from users u where u.role in ('client','cleaner') and u.removed_at is not null and ${notAdmin("u", country)}`
     )).rows[0];
 
     const totalCleaners = byRole.cleaner?.total ?? 0;
@@ -1761,7 +1780,7 @@ app.get('/api/admin/coverage', async (req, res) => {
                from cleaner_service_areas csa
                join cleaner_profiles cp on cp.id = csa.cleaner_id
               where csa.suburb_id = s.id and cp.listing_status = 'active'
-                and ${cpNotAdmin()}
+                and ${cpNotAdmin("cp", country)}
            ) a on true
           where s.country = $${national ? '1' : '4'} and s.lat is not null${national ? '' : ` and ${withinKm} <= $3`}
           order by coalesce(a.n, 0) desc, s.name`,
@@ -1880,6 +1899,7 @@ app.get('/api/admin/feedback', async (req, res) => {
 app.get('/api/admin/verifications', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const country = reqCountry(req);
     const { rows } = await query(
       `select v.id, v.type, v.status, v.document_url, v.selfie_url, v.extracted_text,
               to_char(v.created_at, 'DD Mon YYYY, HH24:MI') as when,
@@ -1896,7 +1916,7 @@ app.get('/api/admin/verifications', async (req, res) => {
          join users u on u.id = cpf.user_id
         -- An ID needs both a document and a selfie to prove identity; one without
         -- a selfie is not review-ready, so keep it out of the queue entirely.
-        where v.status = 'pending'
+        where v.status = 'pending' and u.country = ${countryLit(country)}
           and (v.type <> 'id' or v.selfie_url is not null)
         order by v.created_at`
     );
@@ -1975,6 +1995,7 @@ app.post('/api/admin/verification-decision', async (req, res) => {
 app.get('/api/admin/reviews', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const country = reqCountry(req);
     const { rows } = await query(
       `select r.id, r.overall, r.quality, r.value_for_money, r.timeliness,
               r.punctuality, r.communication, r.would_use_again, r.comment, r.status,
@@ -1986,6 +2007,7 @@ app.get('/api/admin/reviews', async (req, res) => {
          join users cu on cu.id = cpf.user_id
          join client_profiles clp on clp.id = r.client_id
          join users clu on clu.id = clp.user_id
+        where ${notAdmin('cu', country)}
         order by r.created_at desc limit 300`
     );
     res.json(rows.map((r) => ({
@@ -2028,6 +2050,7 @@ const PAIRING_STAGES = `
 app.get('/api/admin/pairings', async (req, res) => {
   try {
     if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const country = reqCountry(req);
 
     const base = `
       from enquiries e
@@ -2039,7 +2062,11 @@ app.get('/api/admin/pairings', async (req, res) => {
     // Both sides have to be someone other than the admin: a test enquiry the
     // admin sent to themselves is not a pairing, and counting it would put a
     // fake number on the one board meant to be trusted.
-    const realPeople = `lower(cu.email) <> ${ADMIN_EMAIL_SQL} and lower(clu.email) <> ${ADMIN_EMAIL_SQL}`;
+    // Both sides real, and both sides in the country being reported on. A
+    // pairing spanning two marketplaces cannot happen, but summing the two
+    // countries' boards into one number would describe no real market.
+    const realPeople =
+      `${notAdmin('cu', country)} and ${notAdmin('clu', country)}`;
 
     const funnel = await query(
       `with steps as (select e.id, e.status, ${PAIRING_STAGES} ${base} where ${realPeople})

@@ -112,9 +112,13 @@ function mountCountrySwitch() {
     coverageCity = null;
     const panel = document.querySelector('.admin-panel:not([hidden])')?.dataset.panel;
     loadStats();
+    // Reload whatever is on screen. Verifications and reviews hold no cache of
+    // their own, so they only need re-fetching; the rest were cleared above.
     if (panel === 'people') showPeople();
     if (panel === 'coverage') showCoverage();
     if (panel === 'pairings') showPairings();
+    if (panel === 'verifications') load();
+    if (panel === 'reviews') loadReviews();
   });
 }
 document.addEventListener('DOMContentLoaded', mountCountrySwitch);
@@ -963,7 +967,7 @@ function feedbackHTML(f) {
 async function load() {
   body.innerHTML = '<p class="muted">Loading…</p>';
   try {
-    const res = await fetch(`/api/admin/verifications?userId=${encodeURIComponent(sessionUser.id)}`);
+    const res = await fetch(withAdminCountry(`/api/admin/verifications?userId=${encodeURIComponent(sessionUser.id)}`));
     if (res.status === 403) {
       body.innerHTML = '<div class="panel-card"><p class="muted">This account isn’t set up as an admin, so it can’t review documents.</p></div>';
       return;
@@ -1071,7 +1075,7 @@ async function loadReviews() {
   if (!reviewsBody) return;
   reviewsBody.innerHTML = '<p class="muted">Loading…</p>';
   try {
-    const res = await fetch(`/api/admin/reviews?userId=${encodeURIComponent(sessionUser.id)}`);
+    const res = await fetch(withAdminCountry(`/api/admin/reviews?userId=${encodeURIComponent(sessionUser.id)}`));
     if (res.status === 403) { reviewsBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>'; return; }
     const list = await res.json();
     if (!Array.isArray(list) || !list.length) {
