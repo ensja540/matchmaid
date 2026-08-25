@@ -1666,30 +1666,38 @@ a { color: inherit; text-decoration: none; }
 .sg-key i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
 .sg-wrap { position: relative; display: flex; gap: 0.6rem; }
-.sg-yaxis { display: flex; flex-direction: column; justify-content: space-between; height: 180px; font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; min-width: 1.6rem; }
-.sg-plot { position: relative; flex: 1; height: 180px; overflow-x: auto; }
+.sg-yaxis { display: flex; flex-direction: column; justify-content: space-between; height: 150px; font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; min-width: 1.6rem; }
+.sg-plot { position: relative; flex: 1; height: 150px; }
 .sg-grid { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
 .sg-grid i { display: block; height: 1px; background: var(--line); }
-.sg-cols { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 100%; min-width: 100%; }
 
 /* The whole column is the hit target, not just the inked part. */
-.sg-col { position: relative; flex: 1 1 0; min-width: 10px; max-width: 24px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; cursor: default; }
-.sg-col:focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; }
-.sg-stack { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: 2px; }
-.sg-seg { display: block; width: 100%; }
 /* 4px rounded data-end, square at the baseline. */
-.sg-seg-top { border-radius: 4px 4px 0 0; }
-.sg-peak { position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; pointer-events: none; }
+
+/* Two aligned panels rather than one dual-axis chart - see chartHTML for why.
+   Each panel keeps its own y scale; the x axis is shared and drawn once. */
+.sg-panel + .sg-panel { margin-top: 1.1rem; }
+.sg-title { font-size: 0.76rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.35rem 2.2rem; }
+.sg-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* The hit targets are wider than the line is thick: a 2px stroke is not
+   something anyone can be asked to point at. */
+.sg-hit { position: absolute; inset: 0; display: flex; }
+.sg-slot { flex: 1 1 0; height: 100%; cursor: default; }
+.sg-slot:focus-visible { outline: 2px solid var(--copper); outline-offset: -2px; }
+.sg-cross { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--copper); opacity: 0.45; pointer-events: none; }
+/* The latest value, on the line itself. */
+.sg-end { position: absolute; right: 0.15rem; font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--paper); padding: 0 0.15rem; border-radius: 3px; pointer-events: none; }
 
 .sg-xaxis { display: flex; gap: 0.6rem; margin-top: 0.4rem; }
 .sg-xpad { min-width: 1.6rem; }
-.sg-xlabels { flex: 1; display: flex; gap: 2px; }
-.sg-x { flex: 1 1 0; min-width: 10px; max-width: 24px; font-size: 0.66rem; color: var(--muted); white-space: nowrap; }
+.sg-xlabels { flex: 1; display: flex; gap: 0; }
+.sg-x { flex: 1 1 0; min-width: 0; font-size: 0.66rem; color: var(--muted); white-space: nowrap; }
 
-.sg-tip { position: absolute; bottom: calc(100% + 0.4rem); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 0.5rem 0.7rem; border-radius: 6px; font-size: 0.76rem; white-space: nowrap; pointer-events: none; z-index: 5; display: grid; gap: 0.2rem; }
+.sg-tip { position: absolute; transform: translate(-50%, -100%); background: var(--ink); color: var(--paper); padding: 0.5rem 0.7rem; border-radius: 6px; font-size: 0.76rem; white-space: nowrap; pointer-events: none; z-index: 5; display: grid; gap: 0.2rem; }
 .sg-tip-row { display: flex; align-items: center; gap: 0.4rem; }
 .sg-tip-row i { width: 8px; height: 8px; border-radius: 2px; }
 .sg-tip-row b { margin-left: auto; padding-left: 0.7rem; font-variant-numeric: tabular-nums; }
+.sg-tip-row em { font-style: normal; opacity: 0.65; padding-left: 0.5rem; font-variant-numeric: tabular-nums; }
 
 .sg-tablewrap { overflow-x: auto; }
 .sg-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }

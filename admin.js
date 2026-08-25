@@ -836,59 +836,104 @@ function topTownsHTML(d) {
   </div>`;
 }
 
+// Two aligned panels, one x-axis, a scale each.
+//
+// Deliberately NOT one chart with two y-axes. A running total and a daily count
+// sit on completely different scales - by day thirty the cumulative line is an
+// order of magnitude above the daily one - so overlaying them means choosing
+// two scales by hand until the lines look related. Whatever shape that makes is
+// an artefact of the scales picked, and readers take the crossings and the gaps
+// between them for findings. Stacked panels keep every real comparison (the two
+// series against each other, any day against any other day) and drop only the
+// false one.
+//
+// Cumulative on top because it answers the first question - how big is this
+// network - with new-per-day underneath as the texture behind that line.
 function chartHTML(series) {
-  const max = Math.max(1, ...series.map((r) => r.customers + r.cleaners));
-  // Always leave headroom above the tallest column: the peak label sits inside
-  // the plot box (the scroll container clips anything above it), so a bar that
-  // reached 100% would push its own label out of view.
-  let top = max <= 8 ? max + 1 : Math.ceil(max / 4) * 4;
-  if (top <= max) top = max + 1;
-  const ticks = [top, Math.round(top / 2), 0];
-  // Label only the busiest day - a number on every column is noise.
-  const peak = series.reduce((best, r, i) =>
-    (r.customers + r.cleaners) > (series[best] ? series[best].customers + series[best].cleaners : -1) ? i : best, 0);
-  const peakTotal = series[peak] ? series[peak].customers + series[peak].cleaners : 0;
+  if (!series.length) return '<p class="muted">No signups in this range.</p>';
 
-  const cols = series.map((r, i) => {
-    const total = r.customers + r.cleaners;
-    // Only non-zero segments render, so the 2px gap never appears on its own.
-    const segs = SERIES
-      .filter((s) => r[s.key] > 0)
-      .map((s, idx, arr) => {
-        const isTop = idx === arr.length - 1;
-        return `<span class="sg-seg${isTop ? ' sg-seg-top' : ''}"
-          style="height:${(r[s.key] / top) * 100}%; background:${s.color}"></span>`;
-      })
-      .reverse() // cleaners sit above customers in the stack
-      .join('');
-    // Anchored off the baseline so it rides just above its own bar, staying
-    // inside the plot box rather than being clipped by the scroll container.
-    const label = i === peak && peakTotal > 0
-      ? `<span class="sg-peak" style="bottom:calc(${(peakTotal / top) * 100}% + 3px)">${peakTotal}</span>` : '';
-    return `<div class="sg-col" data-i="${i}" tabindex="0"
-      aria-label="${esc(fmtDay(r.date))}: ${r.customers} customers, ${r.cleaners} cleaners">
-      ${label}<span class="sg-stack">${segs}</span></div>`;
-  }).join('');
-
-  // Roughly six x labels, whatever the range.
-  const step = Math.max(1, Math.round(series.length / 6));
-  const xlabels = series.map((r, i) =>
-    `<span class="sg-x">${i % step === 0 ? esc(fmtDay(r.date)) : ''}</span>`).join('');
+  // Running totals start from everyone who already existed rather than from
+  // zero, or changing the range would redraw history.
+  const prior = statsData.prior || { customers: 0, cleaners: 0 };
+  let cc = Number(prior.customers) || 0;
+  let kk = Number(prior.cleaners) || 0;
+  const cum = series.map((r) => {
+    cc += r.customers;
+    kk += r.cleaners;
+    return { date: r.date, customers: cc, cleaners: kk };
+  });
 
   return `
     <div class="sg-legend">
-      ${SERIES.map((s) =>
-        `<span class="sg-key"><i style="background:${s.color}"></i>${s.label}</span>`).join('')}
+      ${SERIES.map((s) => `<span class="sg-key"><i style="background:${s.color}"></i>${s.label}</span>`).join('')}
     </div>
-    <div class="sg-wrap">
-      <div class="sg-yaxis">${ticks.map((t) => `<span>${t}</span>`).join('')}</div>
-      <div class="sg-plot">
-        <div class="sg-grid">${ticks.map(() => '<i></i>').join('')}</div>
-        <div class="sg-cols">${cols}</div>
+    ${panelHTML(cum, 'Total on the platform', 'cum')}
+    ${panelHTML(series, 'New signups per day', 'new')}
+    <div class="sg-xaxis"><span class="sg-xpad"></span><div class="sg-xlabels">${xLabelsHTML(series)}</div></div>
+    <div class="sg-tip" id="sgTip" hidden></div>`;
+}
+
+// A "nice" top for an axis: the smallest round number above the data, so ticks
+// land on values a reader can hold (5, 10, 20, 50) rather than 37.
+function niceTop(max) {
+  if (max <= 4) return 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(max)));
+  for (const m of [1, 2, 2.5, 5, 10]) {
+    if (m * pow >= max) return m * pow;
+  }
+  return 10 * pow;
+}
+
+function panelHTML(rows, title, kind) {
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.customers, r.cleaners)));
+  const top = niceTop(max);
+  const ticks = [top, top / 2, 0];
+  const n = rows.length;
+  // One point would divide by zero; put it in the middle instead.
+  const xAt = (i) => (n === 1 ? 50 : (i / (n - 1)) * 100);
+  const yAt = (v) => 100 - (v / top) * 100;
+
+  const lines = SERIES.map((sr) => {
+    const pts = rows.map((r, i) => `${xAt(i)},${yAt(r[sr.key])}`).join(' ');
+    // Markers only when there is room. On a 90-day range a dot per day is a
+    // solid bar rather than a series of points.
+    const dots = n <= 31
+      ? rows.map((r, i) =>
+        `<circle cx="${xAt(i)}" cy="${yAt(r[sr.key])}" r="1.1" fill="${sr.color}" stroke="var(--paper)" stroke-width="0.7" vector-effect="non-scaling-stroke" />`).join('')
+      : '';
+    return `<polyline points="${pts}" fill="none" stroke="${sr.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />${dots}`;
+  }).join('');
+
+  // Each series' latest value, labelled on the line itself: the number a reader
+  // wants first, without hovering or tracking the legend across.
+  const last = rows[n - 1] || { customers: 0, cleaners: 0 };
+  const endLabels = SERIES.map((sr) =>
+    `<span class="sg-end" style="top:calc(${yAt(last[sr.key])}% - 0.55em); color:${sr.color}">${last[sr.key]}</span>`).join('');
+
+  const slots = rows.map((r, i) =>
+    `<span class="sg-slot" data-i="${i}" tabindex="0" aria-label="${esc(fmtDay(r.date))}: ${r.customers} customers, ${r.cleaners} cleaners"></span>`).join('');
+
+  return `
+    <div class="sg-panel">
+      <p class="sg-title">${esc(title)}</p>
+      <div class="sg-wrap" data-kind="${kind}">
+        <div class="sg-yaxis">${ticks.map((t) => `<span>${Math.round(t)}</span>`).join('')}</div>
+        <div class="sg-plot">
+          <div class="sg-grid">${ticks.map(() => '<i></i>').join('')}</div>
+          <svg class="sg-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>
+          <span class="sg-cross" hidden></span>
+          <div class="sg-hit">${slots}</div>
+          ${endLabels}
+        </div>
       </div>
-      <div class="sg-tip" id="sgTip" hidden></div>
-    </div>
-    <div class="sg-xaxis"><span class="sg-xpad"></span><div class="sg-xlabels">${xlabels}</div></div>`;
+    </div>`;
+}
+
+function xLabelsHTML(series) {
+  const step = Math.max(1, Math.round(series.length / 6));
+  return series
+    .map((r, i) => `<span class="sg-x">${i % step === 0 ? esc(fmtDay(r.date)) : ''}</span>`)
+    .join('');
 }
 
 // The table view: every value reachable without hover or colour.
@@ -915,27 +960,69 @@ function fmtDay(iso) {
   return `${dd} ${MON[(m || 1) - 1]}`;
 }
 
+// One crosshair, both panels. Hovering a day should answer "what happened on
+// this day" in full - how many joined, and what the totals reached - rather
+// than making you hover twice in two places and assemble it yourself.
 function wireChartHover() {
   const tip = statsBody.querySelector('#sgTip');
-  const wrap = statsBody.querySelector('.sg-wrap');
-  if (!tip || !wrap) return;
-  const show = (col) => {
-    const r = (statsData.series || [])[Number(col.dataset.i)];
-    if (!r) return;
-    tip.innerHTML = `<strong>${esc(fmtDay(r.date))}</strong>
-      ${SERIES.map((s) => `<span class="sg-tip-row"><i style="background:${s.color}"></i>${s.label}<b>${r[s.key]}</b></span>`).join('')}`;
-    tip.hidden = false;
-    const cr = col.getBoundingClientRect();
-    const wr = wrap.getBoundingClientRect();
-    // Keep the tip inside the card rather than letting it run off the edge.
-    const x = Math.min(Math.max(cr.left - wr.left + cr.width / 2, 60), wr.width - 60);
-    tip.style.left = `${x}px`;
-  };
-  statsBody.querySelectorAll('.sg-col').forEach((col) => {
-    col.addEventListener('mouseenter', () => show(col));
-    col.addEventListener('focus', () => show(col)); // keyboard gets the same
+  const card = statsBody.querySelector('.panel-card');
+  if (!tip || !card) return;
+  const panels = [...statsBody.querySelectorAll('.sg-wrap')];
+  if (!panels.length) return;
+
+  const series = statsData.series || [];
+  const prior = statsData.prior || { customers: 0, cleaners: 0 };
+  let cc = Number(prior.customers) || 0;
+  let kk = Number(prior.cleaners) || 0;
+  const cum = series.map((r) => {
+    cc += r.customers;
+    kk += r.cleaners;
+    return { customers: cc, cleaners: kk };
   });
-  wrap.addEventListener('mouseleave', () => { tip.hidden = true; });
+
+  const show = (i, slot) => {
+    const r = series[i];
+    const t = cum[i];
+    if (!r || !t) return;
+    tip.innerHTML = `<strong>${esc(fmtDay(r.date))}</strong>` +
+      SERIES.map((s) =>
+        `<span class="sg-tip-row"><i style="background:${s.color}"></i>${s.label}<b>+${r[s.key]}</b><em>${t[s.key]} total</em></span>`).join('');
+    tip.hidden = false;
+    const sr = slot.getBoundingClientRect();
+    const br = card.getBoundingClientRect();
+    // Kept inside the card rather than allowed to run off its edge.
+    tip.style.left = `${Math.min(Math.max(sr.left - br.left + sr.width / 2, 80), br.width - 80)}px`;
+    tip.style.top = `${sr.top - br.top - 8}px`;
+    // The same day is marked in BOTH panels, so the eye can read one against
+    // the other - which is the whole reason they are stacked and aligned.
+    panels.forEach((p) => {
+      const cross = p.querySelector('.sg-cross');
+      const target = p.querySelectorAll('.sg-slot')[i];
+      const plot = p.querySelector('.sg-plot');
+      if (!cross || !target || !plot) return;
+      const pr = plot.getBoundingClientRect();
+      const tr = target.getBoundingClientRect();
+      cross.style.left = `${tr.left - pr.left + tr.width / 2}px`;
+      cross.hidden = false;
+    });
+  };
+
+  const hide = () => {
+    tip.hidden = true;
+    panels.forEach((p) => {
+      const c = p.querySelector('.sg-cross');
+      if (c) c.hidden = true;
+    });
+  };
+
+  panels.forEach((p) => {
+    p.querySelectorAll('.sg-slot').forEach((slot) => {
+      const i = Number(slot.dataset.i);
+      slot.addEventListener('mouseenter', () => show(i, slot));
+      slot.addEventListener('focus', () => show(i, slot)); // keyboard gets the same
+    });
+    p.addEventListener('mouseleave', hide);
+  });
 }
 
 async function loadFeedback() {

@@ -1540,8 +1540,8 @@ app.get('/api/admin/stats', async (req, res) => {
     const series = await query(
       `with span as (
          select generate_series(
-           (now() at time zone 'Pacific/Auckland')::date - ($1::int - 1),
-           (now() at time zone 'Pacific/Auckland')::date,
+           (now() at time zone '${COUNTRIES[country].timezone}')::date - ($1::int - 1),
+           (now() at time zone '${COUNTRIES[country].timezone}')::date,
            interval '1 day'
          )::date as d
        )
@@ -1552,11 +1552,26 @@ app.get('/api/admin/stats', async (req, res) => {
               count(u.id) filter (where u.role = 'cleaner')::int as cleaners
          from span
          left join users u
-           on (u.created_at at time zone 'Pacific/Auckland')::date = span.d
+           on (u.created_at at time zone '${COUNTRIES[country].timezone}')::date = span.d
           and u.role in ('client','cleaner')
           and ${notAdmin("u", country)}
         group by span.d
         order by span.d`,
+      [days]
+    );
+
+    // Everyone who already existed before the window opened. Without this the
+    // cumulative line would start at zero every time the range changes, which
+    // reads as "the network was empty a month ago" rather than "here is the
+    // month". It is the running total that has to be true, not just its shape.
+    const prior = await query(
+      `select count(*) filter (where u.role = 'client')::int  as customers,
+              count(*) filter (where u.role = 'cleaner')::int as cleaners
+         from users u
+        where u.role in ('client','cleaner')
+          and ${notAdmin("u", country)}
+          and (u.created_at at time zone '${COUNTRIES[country].timezone}')::date
+              < (now() at time zone '${COUNTRIES[country].timezone}')::date - ($1::int - 1)`,
       [days]
     );
 
@@ -1580,8 +1595,8 @@ app.get('/api/admin/stats', async (req, res) => {
     // "Suburb, Town" string homeAddress() built (or a lone "Town"), so match the
     // suburb-name part back to a row, preferring the one whose own town matches.
     // The trailing " City"/" District" is dropped for a friendlier label.
-    const recent = `(u.created_at at time zone 'Pacific/Auckland')::date
-                    > (now() at time zone 'Pacific/Auckland')::date - $1::int
+    const recent = `(u.created_at at time zone '${COUNTRIES[country].timezone}')::date
+                    > (now() at time zone '${COUNTRIES[country].timezone}')::date - $1::int
                     and ${notAdmin("u", country)}`;
     const topTowns = await query(
       `with signups as (
@@ -1719,6 +1734,8 @@ app.get('/api/admin/stats', async (req, res) => {
     res.json({
       days,
       series: series.rows,
+      // The cumulative line starts here, not at zero.
+      prior: prior.rows[0],
       totals: {
         customers: totalCustomers,
         cleaners: totalCleaners,

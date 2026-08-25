@@ -31,7 +31,7 @@ from site_config import (NZ_ORIGIN, AU_ORIGIN, AU_BASE, AU_ON_OWN_DOMAIN,
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Origins live in site_config so a domain move is one edit, not three.
 ORIGIN = NZ_ORIGIN
-CSS = '/styles.css?v=115'
+CSS = '/styles.css?v=116'
 NL = '\n'
 
 NOTICE = ('\U0001F9FD Now open in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin - '
