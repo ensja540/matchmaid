@@ -26,78 +26,80 @@ app.use(express.json({ limit: '8mb' })); // room for base64 photos + ID document
 // Dormant until AU_DOMAIN is set (e.g. AU_DOMAIN=matchmaid.com.au). Until then
 // Australia lives at /au on the New Zealand domain and none of this runs.
 //
-// Why the move is coming: Google treats .co.nz as hard-geotargeted to New
-// Zealand, and Search Console's country setting is unavailable for a ccTLD. No
-// amount of hreflang makes /au rank in Australia, so the Australian pages need
-// an Australian domain to do anything. Point matchmaid.com.au at this same
-// service, set AU_DOMAIN, and that host serves the Australian pages at its root.
-//
-// The /au prefix keeps working on that host, but 301s to the bare path: two
-// URLs for one page is exactly the duplication the move is meant to fix.
+// Why the move: Google treats .co.nz as hard-geotargeted to New Zealand, and
+// Search Console's country setting is unavailable for a ccTLD. No amount of
+// hreflang makes /au rank in Australia, so the Australian pages need an
+// Australian domain to do anything at all.
 const AU_DOMAIN = String(process.env.AU_DOMAIN || '').toLowerCase().replace(/^www\./, '');
+const AU_ORIGIN = AU_DOMAIN ? `https://${AU_DOMAIN}` : '';
+const NZ_ORIGIN = (process.env.APP_URL || 'https://matchmaid.co.nz').replace(/\/$/, '');
 const bareHost = (req) => String(req.hostname || '').toLowerCase().replace(/^www\./, '');
 const onAuDomain = (req) => !!AU_DOMAIN && bareHost(req) === AU_DOMAIN;
-// The pages that exist on the Australian side. Assets, /api and the shared
-// pages are NOT in here: they live at the root on both hosts and must be served
-// as asked rather than looked for under au/.
-const AU_PAGE = /^\/(?:$|for-customers$|for-maids$|browse$|cleaners(?:$|\/))/;
 
-app.use((req, res, next) => {
-  if (!onAuDomain(req)) return next();
-  const path = req.path;
-  // One canonical URL per page on this host.
-  if (path === '/au' || path.startsWith('/au/')) {
-    return res.redirect(301, path.slice(3) || '/');
-  }
-  // Serve the Australian tree at the root of the Australian domain.
-  if (AU_PAGE.test(path)) {
-    req.url = '/au' + (path === '/' ? '/index.html' : path) +
-              (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
-  }
-  next();
-});
-
-// --- Steering people to their own country's site ----------------------------
-// Australia lives under /au, and must not be visible from New Zealand. Both
-// rules are enforced here, ahead of anything that serves a file.
-//
-// Three things this deliberately does NOT do:
-//
-//  * It never redirects when Cloudflare cannot tell us where the visitor is.
-//    Googlebot crawls mostly from the United States, so it sees both sites and
-//    can index both - which is the whole point of doing the SEO. A visitor on
-//    a VPN or reaching the origin directly gets the site they asked for.
-//  * It never touches /api, /assets or any other non-page path. Redirecting an
-//    XHR would break the page that issued it rather than move the reader.
-//  * It always leaves an escape. ?stay=1 pins you to the side you are on and
-//    sets a cookie, so a New Zealander who genuinely wants to look at the
-//    Australian site (or an Australian at ours) is inconvenienced once, not
-//    trapped in a loop. Without that, anyone travelling could not reach their
-//    own account.
 const AU_BASE = '/au';
 const STAY_COOKIE = 'mm_stay';
 // Only the pages that exist on BOTH sides get steered. Login, terms and privacy
 // are shared - one copy each, no /au twin - so steering them would bounce an
 // Australian visitor into a 404. The portals (/maid, /customer) are shared too:
-// they are behind a login, and the session carries the country that scopes
+// they sit behind a login, and the session carries the country that scopes
 // their data, so there is nothing country-specific to serve.
 const STEERABLE = /^\/(?:$|au(?:$|\/)|browse|for-customers|for-maids|cleaners)/;
+// The pages the Australian tree actually contains. Assets, /api and the shared
+// pages are NOT here: they live at the root on both hosts and must be served as
+// asked rather than looked for under au/.
+const AU_PAGE = /^\/(?:$|for-customers$|for-maids$|browse$|cleaners(?:$|\/))/;
+
+const isAuPath = (p) => p === AU_BASE || p.startsWith(AU_BASE + '/');
+// The path with any /au prefix taken off: the same page's address on whichever
+// side it is being asked for.
+const barePath = (p) => (p === AU_BASE ? '/' : isAuPath(p) ? p.slice(AU_BASE.length) : p);
+// Where that page lives on each side, absolute only when it means crossing to
+// the other host.
+const nzHref = (bare, crossing) => (crossing ? NZ_ORIGIN + bare : bare);
+const auHref = (bare, crossing) =>
+  AU_ORIGIN
+    ? (crossing ? AU_ORIGIN + bare : bare)
+    : AU_BASE + (bare === '/' ? '' : bare) || AU_BASE;
 
 function wantsToStay(req) {
   if (req.query?.stay === '1') return true;
   return /(?:^|;\s*)mm_stay=1/.test(String(req.headers.cookie || ''));
 }
 
+// --- Steering people to their own country's site ----------------------------
+// Runs BEFORE the /au rewrite below, so it decides on the URL the visitor
+// actually asked for rather than on one this server invented.
+//
+// Three things it deliberately does NOT do:
+//
+//  * It never redirects when Cloudflare cannot tell us where the visitor is.
+//    Googlebot crawls mostly from the United States, so it sees both sites and
+//    can index both - which is the whole point of doing the SEO. A visitor on a
+//    VPN, or reaching the origin directly, gets the site they asked for.
+//  * It never touches /api, /assets or any other non-page path. Redirecting an
+//    XHR breaks the page that issued it rather than moving the reader.
+//  * It always leaves an escape. ?stay=1 pins you to the side you are on and
+//    sets a cookie, so someone who deliberately opened the other country's site
+//    is inconvenienced once rather than trapped in a loop. Without that, anyone
+//    travelling could not reach their own account.
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   const path = req.path;
   if (!STEERABLE.test(path)) return next();
   if (String(process.env.GEO_STEER || '').toLowerCase() === 'off') return next();
 
-  const inAu = path === AU_BASE || path.startsWith(AU_BASE + '/');
+  const auHost = onAuDomain(req);
+  const bare = barePath(path);
+
+  // Once Australia has its own domain, /au is the OLD address of every one of
+  // those pages. A permanent redirect on both hosts, so there is one URL per
+  // page and whatever authority /au picked up moves with it.
+  if (isAuPath(path)) {
+    if (auHost) return res.redirect(301, bare + reqQuery(req));
+    if (AU_ORIGIN) return res.redirect(301, AU_ORIGIN + bare + reqQuery(req));
+  }
+
   if (req.query?.stay === '1') {
-    // Remember the choice for the session so the next click does not bounce
-    // them straight back.
     res.setHeader('Set-Cookie', `${STAY_COOKIE}=1; Path=/; Max-Age=2592000; SameSite=Lax`);
     return next();
   }
@@ -106,15 +108,31 @@ app.use((req, res, next) => {
   const cc = ipCountry(req);
   if (!cc) return next(); // cannot tell -> serve what was asked for
 
+  // Which country's site this request is for. On the Australian domain that is
+  // the host; on the New Zealand one it is whether the path sits under /au.
+  const forAu = auHost || (!AU_ORIGIN && isAuPath(path));
+
   // Australia is not visible from New Zealand.
-  if (inAu && cc === 'NZ') {
-    return res.redirect(302, path.slice(AU_BASE.length) || '/');
-  }
+  if (forAu && cc === 'NZ') return res.redirect(302, nzHref(bare, auHost) + reqQuery(req));
   // An Australian visitor on the New Zealand site gets their own.
-  if (!inAu && cc === 'AU') {
-    return res.redirect(302, AU_BASE + (path === '/' ? '' : path) || AU_BASE);
-  }
+  if (!forAu && cc === 'AU') return res.redirect(302, auHref(bare, !!AU_ORIGIN) + reqQuery(req));
   return next();
+});
+
+const reqQuery = (req) => {
+  const i = req.originalUrl.indexOf('?');
+  return i === -1 ? '' : req.originalUrl.slice(i);
+};
+
+// Serve the Australian tree at the ROOT of the Australian domain. Runs after
+// the steering above, so by the time a request gets here it belongs on this
+// host.
+app.use((req, res, next) => {
+  if (!onAuDomain(req)) return next();
+  if (AU_PAGE.test(req.path)) {
+    req.url = '/au' + (req.path === '/' ? '/index.html' : req.path) + reqQuery(req);
+  }
+  next();
 });
 
 // The suburb-page hubs. Registered ahead of express.static on purpose: static
