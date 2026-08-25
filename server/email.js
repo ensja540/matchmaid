@@ -222,6 +222,107 @@ const NUDGE = {
   },
 };
 
+// --- Email: how did your clean go? (customer, evening of the clean) --------
+// Sent alongside the in-app prompt, not instead of it. The in-app prompt only
+// works if they open the portal; most people will not, and a review that never
+// gets written is a cleaner with no proof they are any good.
+//
+// One ask, one link, straight into the form. No "we value your feedback".
+export async function sendReviewRequestEmail({ to, name, cleanerName, when }) {
+  const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
+  const who = escapeHtml(cleanerName || 'your cleaner');
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">
+      ${who} cleaned for you${when ? ` on ${escapeHtml(when)}` : ''}. How did it go?</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">
+      It takes about a minute, and it is the main thing other households have to go on when they
+      are deciding who to let into their home. It also shows ${who} what they did well.</p>
+    <p style="margin:0 0 8px"><a href="${APP_URL}/customer?tab=messages" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Rate this clean</a></p>
+    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">
+      If something went wrong, say so - we would rather know. Reply to this email and it comes
+      straight to us.</p>`);
+  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${cleanerName || 'Your cleaner'} cleaned for you${when ? ` on ${when}` : ''}. How did it go?\n\nIt takes about a minute, and it is the main thing other households have to go on.\n\nRate this clean: ${APP_URL}/customer?tab=messages\n\nIf something went wrong, reply to this email and it comes straight to us.`;
+  return sendEmail({ to, subject: `How did your clean with ${cleanerName || 'your cleaner'} go?`, html, text });
+}
+
+// --- Email: you've got a new review (cleaner) ------------------------------
+// The full card, every category, not just the headline. A cleaner who scores
+// 4.8 overall but 3.1 on timeliness has been told something useful; "4.8
+// stars" tells them nothing they can act on.
+//
+// The two asks - Google, and referrals - ride on this email and ONLY when the
+// review is good. Asking someone to go and praise you publicly moments after
+// they were marked down is tone deaf, and it is the surest way to get the
+// honest answer you did not want on a public page. `googleUrl` is omitted
+// entirely until there is a Google Business Profile to point at.
+export async function sendCleanerReviewEmail({
+  to, cleanerName, clientName, overall, dims, wouldUseAgain, comment,
+  referralLink, creditDollars, googleUrl,
+}) {
+  const hi = cleanerName ? `Hi ${escapeHtml(String(cleanerName).split(' ')[0])},` : 'Hi,';
+  const who = escapeHtml(clientName ? String(clientName).split(' ')[0] : 'A customer');
+  const one = (n) => (Math.round(Number(n) * 10) / 10).toFixed(1);
+  const stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
+
+  // A bar per category. Table-based, because a flex row is a stack of full
+  // width blocks in Outlook and the whole card falls apart.
+  const rows = dims.map((d) => `
+    <tr>
+      <td style="padding:4px 0;font-size:14px;color:#1a1a1a;white-space:nowrap">${escapeHtml(d.label)}</td>
+      <td style="padding:4px 0 4px 12px;width:100%">
+        <div style="background:#e6e6e6;border-radius:999px;height:8px">
+          <div style="background:#14b8a6;border-radius:999px;height:8px;width:${Math.max(2, (Number(d.value) / 5) * 100)}%"></div>
+        </div>
+      </td>
+      <td style="padding:4px 0 4px 12px;font-size:14px;font-weight:700;text-align:right;white-space:nowrap">${one(d.value)}</td>
+    </tr>`).join('');
+
+  const good = Number(overall) >= 4;
+  const asks = !good ? '' : `
+    ${googleUrl ? `
+    <hr style="border:none;border-top:1px solid #e6e6e6;margin:28px 0 20px" />
+    <p style="font-size:15px;line-height:1.6;margin:0 0 12px"><strong>Would you do the same for us?</strong></p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">
+      Reviews are how households decide who to trust, and they are how cleaners find Match Maid too.
+      If the platform has been worth using, a line on Google helps the next cleaner find us.</p>
+    <p style="margin:0 0 20px"><a href="${escapeHtml(googleUrl)}" style="display:inline-block;background:#123b4a;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Review Match Maid on Google</a></p>` : ''}
+    ${referralLink ? `
+    <hr style="border:none;border-top:1px solid #e6e6e6;margin:${googleUrl ? '20px' : '28px'} 0 20px" />
+    <p style="font-size:15px;line-height:1.6;margin:0 0 12px"><strong>Know another cleaner?</strong></p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">
+      Send them your link and you earn <strong>$${creditDollars} credit</strong> once they have been on a
+      paid plan for a month. Everyone is free while we build the network, so referrals you make now
+      bank until then.</p>
+    <p style="margin:0 0 8px"><a href="${escapeHtml(referralLink)}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Share your referral link</a></p>
+    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:8px 0 0">Your link: ${escapeHtml(referralLink)}</p>` : ''}`;
+
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${who} has reviewed a clean you did.</p>
+    <div style="background:#f4f1ea;border-radius:12px;padding:20px 20px 16px;margin:0 0 20px">
+      <p style="margin:0 0 2px;font-size:32px;font-weight:700;line-height:1;color:#123b4a">${one(overall)}<span style="font-size:16px;font-weight:400;color:#8a8a8a"> / 5</span></p>
+      <p style="margin:0 0 16px;font-size:16px;color:#14b8a6;letter-spacing:0.1em">${stars(overall)}</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">${rows}</table>
+      <p style="margin:14px 0 0;font-size:14px;color:#1a1a1a">
+        ${wouldUseAgain ? '✓ They would book you again' : 'They did not say they would book again'}</p>
+    </div>
+    ${comment ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#fff;border-left:3px solid #14b8a6;font-size:15px;line-height:1.6;font-style:italic;color:#333">${escapeHtml(comment)}</blockquote>` : ''}
+    <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">See it on your profile</a></p>
+    ${asks}`);
+
+  const text = `${cleanerName ? String(cleanerName).split(' ')[0] + ',\n\n' : ''}${who} has reviewed a clean you did.\n\n`
+    + `Overall: ${one(overall)}/5\n`
+    + dims.map((d) => `  ${d.label}: ${one(d.value)}`).join('\n')
+    + `\n  ${wouldUseAgain ? 'Would book you again' : 'Did not say they would book again'}\n`
+    + (comment ? `\n"${comment}"\n` : '')
+    + `\nSee it on your profile: ${APP_URL}/maid\n`
+    + (good && googleUrl ? `\nIf Match Maid has been worth using, a review on Google helps the next cleaner find us: ${googleUrl}\n` : '')
+    + (good && referralLink ? `\nKnow another cleaner? Earn $${creditDollars} credit once they have been on a paid plan for a month: ${referralLink}\n` : '');
+
+  return sendEmail({ to, subject: `${who} rated your clean ${one(overall)}/5`, html, text });
+}
+
 export async function sendNudgeEmail({ to, name, kind, unsubUrl }) {
   const n = NUDGE[kind];
   if (!n) return { ok: false, error: `unknown nudge kind ${kind}` };

@@ -13,6 +13,7 @@ import {
   emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail,
   sendVerificationDecisionEmail, sendVerificationPendingEmail,
   sendNudgeEmail, sendPreLaunchUpdateEmail, sendNewMessageEmail,
+  sendReviewRequestEmail, sendCleanerReviewEmail,
 } from './email.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -3052,6 +3053,32 @@ async function postReviewRequest(enquiryId) {
     [convId, cleaner_user_id, 'Your clean is complete. How did it go? Tap here to leave a review.']
   );
   await query('update conversations set last_message_at = now() where id = $1', [convId]);
+
+  // And by email. The in-app prompt only reaches someone who opens the portal,
+  // and most people will not - a review that never gets written is a cleaner
+  // with no evidence they are any good. Fire-and-forget: a failed send must
+  // never stop the prompt itself being posted.
+  emailReviewRequest(enquiryId).catch((e) => console.error('[email] review request:', e));
+}
+
+async function emailReviewRequest(enquiryId) {
+  const { rows } = await query(
+    `select clu.email, clu.full_name as client_name,
+            coalesce(cpf.business_name, cu.full_name) as cleaner_name,
+            to_char(e.scheduled_on, 'Dy DD Mon') as when
+       from enquiries e
+       join cleaner_profiles cpf on cpf.id = e.cleaner_id
+       join users cu on cu.id = cpf.user_id
+       join client_profiles clp on clp.id = e.client_id
+       join users clu on clu.id = clp.user_id
+      where e.id = $1`,
+    [enquiryId]
+  );
+  const r = rows[0];
+  if (!r?.email) return;
+  await sendReviewRequestEmail({
+    to: r.email, name: r.client_name, cleanerName: r.cleaner_name, when: r.when,
+  });
 }
 
 // --- Scheduled tasks -------------------------------------------------------
@@ -3430,6 +3457,59 @@ app.get('/api/review', async (req, res) => {
   }
 });
 
+
+// The category labels the cleaner sees, in the order the review form asks them.
+const REVIEW_LABELS = {
+  quality: 'Quality of clean',
+  value: 'Value for money',
+  timeliness: 'Finished on time',
+  punctuality: 'Turned up on time',
+  communication: 'Communication',
+};
+
+// Absolute base for links that go INTO an email - a relative path is dead in an
+// inbox. Same default as email.js, and set from the same APP_URL on Render.
+const APP_URL = process.env.APP_URL || 'https://matchmaid.co.nz';
+
+// Where a cleaner is sent to review Match Maid itself. Unset until there is a
+// Google Business Profile to point at, and the ask is left out entirely rather
+// than linking somewhere that does not exist.
+const GOOGLE_REVIEW_URL = process.env.GOOGLE_REVIEW_URL || '';
+
+async function emailCleanerTheirReview(cleanerId, clientId, r) {
+  const { rows } = await query(
+    `select cu.email, cu.full_name as cleaner_name, cpf.referral_code,
+            clu.full_name as client_name
+       from cleaner_profiles cpf
+       join users cu on cu.id = cpf.user_id
+       join client_profiles clp on clp.id = $2
+       join users clu on clu.id = clp.user_id
+      where cpf.id = $1`,
+    [cleanerId, clientId]
+  );
+  const row = rows[0];
+  if (!row?.email) return;
+
+  // Only a cleaner with a code gets the referral ask; generating one here would
+  // be a write on the way out of a read.
+  const referralLink = row.referral_code
+    ? `${APP_URL}/login?role=maid&mode=signup&ref=${encodeURIComponent(row.referral_code)}`
+    : '';
+
+  await sendCleanerReviewEmail({
+    to: row.email,
+    cleanerName: row.cleaner_name,
+    clientName: row.client_name,
+    overall: r.overall,
+    dims: REVIEW_DIMS.map((d) => ({ label: REVIEW_LABELS[d] || d, value: r[d] })),
+    wouldUseAgain: r.wouldUseAgain,
+    comment: r.text,
+    referralLink,
+    creditDollars: Math.round(REFERRAL_CREDIT_CENTS / 100),
+    googleUrl: GOOGLE_REVIEW_URL,
+  });
+}
+
 app.post('/api/review', async (req, res) => {
   try {
     const { conversationId, userId, wouldUseAgain, comment } = req.body ?? {};
@@ -3470,6 +3550,11 @@ app.post('/api/review', async (req, res) => {
        wouldUseAgain, text]
     );
     await refreshCleanerRating(conv.cleaner_id);
+    // Tell the cleaner, with every category rather than just the headline: a
+    // cleaner scoring 4.8 overall but 3.1 on timeliness has been told something
+    // they can act on; "4.8 stars" tells them nothing.
+    emailCleanerTheirReview(conv.cleaner_id, conv.client_id, { ...scores, overall, wouldUseAgain, text })
+      .catch((e) => console.error('[email] cleaner review:', e));
     res.json({ ok: true, overall: Math.round(overall * 10) / 10 });
   } catch (err) {
     console.error(err);
