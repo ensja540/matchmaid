@@ -1197,7 +1197,7 @@ const CWIZ_CONTENT = {
       <div class="avatar" id="cwizAvatar">${cprof.photo ? `<img src="${cprof.photo}" alt="" />` : '<span>Photo</span>'}</div>
       <label class="btn outline sm">Upload photo <span class="muted">(optional)</span><input type="file" id="cwizPhoto" accept="image/*" hidden /></label>
     </div>
-    <label class="field"><span>Full name</span><input id="cwizName" type="text" value="${attr(cprof.fullName)}" placeholder="Jack Ensor" /></label>
+    <label class="field"><span>Full name</span><input id="cwizName" type="text" value="${attr(cprof.fullName)}" placeholder="Alex Taylor" /></label>
     <label class="field"><span>Email</span><input id="cwizEmail" type="email" value="${attr(cprof.email)}" placeholder="you@example.com" /></label>
     <label class="field"><span>Phone <span class="muted">(optional)</span></span><input id="cwizPhone" type="text" value="${attr(cprof.phone)}" placeholder="Optional" /></label>`,
   suburb: () => `
