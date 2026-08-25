@@ -814,15 +814,54 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------- Review: draggable star inputs ---------- */
 .rating-stars.lg { font-size: 1.7rem; letter-spacing: 2px; }
-.star-input { display: flex; align-items: center; gap: 0.7rem; }
-.star-input .rating-stars { cursor: pointer; touch-action: none; user-select: none; }
-.star-input:focus-visible { outline: 2px solid var(--copper); outline-offset: 3px; border-radius: 4px; }
-.star-val { font-family: var(--sans); font-weight: 700; font-size: 0.95rem; min-width: 2.2rem; }
-.review-dims { display: flex; flex-direction: column; gap: 1.3rem; margin-bottom: 1.6rem; }
-.review-dim-head { display: flex; flex-direction: column; margin-bottom: 0.35rem; }
-.review-dim-head .muted { font-size: 0.84rem; }
-.review-again { margin-bottom: 1.4rem; }
-.review-again strong { display: block; margin-bottom: 0.5rem; }
+/* Leaving a review: one question per screen, big stars, nothing preselected.
+   See review.js for why it stopped being a single page of small rows. */
+.rv-title { margin: 0 0 1rem; font-size: 1.5rem; }
+.rv-form { display: flex; flex-direction: column; }
+
+.rv-dots { display: flex; gap: 0.35rem; margin-bottom: 1.2rem; }
+.rv-dot { flex: 1; height: 4px; border-radius: 999px; background: var(--line); transition: background 0.2s ease; }
+.rv-dot.done { background: var(--gold); }
+.rv-dot.now { background: var(--copper); }
+
+/* Only the current step is in the document at all - hidden steps would still
+   be reachable by Tab and read out by a screen reader. */
+.rv-step { display: none; }
+.rv-step.on { display: block; }
+.rv-step-count { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.4rem; font-weight: 600; }
+.rv-q { font-family: var(--serif); font-size: 1.45rem; margin: 0 0 0.3rem; }
+.rv-hint-sub { color: var(--muted); font-size: 0.9rem; margin: 0 0 1.4rem; }
+
+.rv-stars-wrap { text-align: center; margin-bottom: 1.6rem; }
+/* Big enough to hit with a thumb: this is written on a phone more often than
+   not, and the old 1.7rem row was a 27px target for a 0.1 step. */
+.rating-stars.xl { font-size: 3rem; letter-spacing: 6px; }
+.rv-stars { display: inline-block; cursor: pointer; touch-action: none; user-select: none; padding: 0.3rem 0.2rem; border-radius: 10px; }
+.rv-stars:focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; }
+.rv-readout { display: flex; align-items: baseline; justify-content: center; gap: 0.5rem; margin: 0.5rem 0 0; min-height: 1.9rem; }
+.rv-num { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rv-word { font-size: 0.95rem; color: var(--copper-dark); font-weight: 600; }
+/* The prompt retires once they have answered - it has done its job. */
+.rv-hint { font-size: 0.8rem; color: var(--muted); margin: 0.3rem 0 0; transition: opacity 0.2s ease; }
+.rv-step.rated .rv-hint { opacity: 0; }
+
+.rv-again-box { display: flex; gap: 0.6rem; margin-bottom: 1.4rem; }
+.chip.select.lg { padding: 0.8rem 1.8rem; font-size: 1rem; }
+
+/* The last screen recaps every score, and each line goes back to it. Someone
+   who rated in a hurry should be able to fix it without starting again. */
+.rv-summary { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.rv-sum-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.5rem; }
+.rv-sum-avg { text-transform: none; letter-spacing: 0; font-size: 0.9rem; color: var(--ink); }
+.rv-sum-list { list-style: none; margin: 0; padding: 0; }
+.rv-sum-row { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 1rem; padding: 0.45rem 0; background: none; border: none; border-bottom: 1px solid var(--line); font: inherit; font-size: 0.9rem; color: var(--ink); cursor: pointer; text-align: left; }
+.rv-sum-row:hover { color: var(--copper-dark); }
+.rv-sum-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rv-sum-note { font-size: 0.78rem; margin: 0.6rem 0 0; }
+
+.rv-nav { display: flex; gap: 0.6rem; margin-top: 1.6rem; }
+.rv-nav .btn { flex: 1; }
+.rv-nav .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 
 /* ---------- Review breakdown bars (cleaner profile) ---------- */
 .review-breakdown { margin-top: 1.6rem; padding-top: 1.2rem; border-top: 1px solid var(--line); }

@@ -865,13 +865,11 @@ function openReviewModal(conversationId) {
   const who = convo ? convo.withBusiness || convo.with : 'your cleaner';
   const existing = reviewCache[conversationId] || null;
 
+  // Stepped, so the submit button lives inside the flow rather than under it.
   reviewModalBody.innerHTML = `
-    <h2 style="margin-top:0">Review ${escapeHtml(who)}</h2>
-    <p class="muted">Drag across the stars. You can land on any decimal. Your overall
-      rating is the average of these five.</p>
-    <form id="reviewForm">
-      ${Review.formHTML(existing)}
-      <div class="cp-actions"><button class="btn solid full" type="submit">${existing ? 'Update review' : 'Submit review'}</button></div>
+    <h2 class="rv-title">How was ${escapeHtml(who)}?</h2>
+    <form id="reviewForm" class="rv-form">
+      ${Review.stepsHTML(existing)}
       <p class="save-msg" id="reviewMsg"></p>
     </form>`;
   reviewModal.hidden = false;
