@@ -70,6 +70,15 @@ let statsRange = 30;
 let statsData = null;
 let statsTable = false;
 
+// Which country's marketplace the board is reporting on. The two share tables
+// and nothing else, so summing them would produce a number that describes no
+// real market - "23 cleaners" across two countries tells you nothing about
+// whether either one works. One at a time, switched here.
+let adminCountry = 'NZ';
+const COUNTRY_LABEL = { NZ: 'New Zealand', AU: 'Australia' };
+const withAdminCountry = (url) => url + (url.includes('?') ? '&' : '?') + 'country=' + adminCountry;
+
+
 if (!sessionUser) {
   body.innerHTML = '<div class="panel-card"><p class="muted">Please <a href="/login">log in</a> with the admin account to review documents.</p></div>';
 } else {
@@ -81,14 +90,6 @@ if (!sessionUser) {
 
 // One section visible at a time. Everything still loads up front (the queries
 // are cheap and it keeps the tab counts live), the tabs just decide what shows.
-// Which country's marketplace the board is reporting on. The two share tables
-// and nothing else, so summing them would produce a number that describes no
-// real market - "23 cleaners" across two countries tells you nothing about
-// whether either one works. One at a time, switched here.
-let adminCountry = 'NZ';
-const COUNTRY_LABEL = { NZ: 'New Zealand', AU: 'Australia' };
-const withAdminCountry = (url) => url + (url.includes('?') ? '&' : '?') + 'country=' + adminCountry;
-
 function mountCountrySwitch() {
   const head = document.querySelector('.admin-head');
   if (!head || head.querySelector('.cc-switch')) return;
