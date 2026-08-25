@@ -49,6 +49,13 @@ const STEERABLE = /^\/(?:$|au(?:$|\/)|browse|for-customers|for-maids|cleaners)/;
 // asked rather than looked for under au/.
 const AU_PAGE = /^\/(?:$|for-customers$|for-maids$|browse$|cleaners(?:$|\/))/;
 
+// Pages that exist in BOTH countries, which is a smaller set than AU_PAGE.
+// Note /cleaners$ and not /cleaners/ - the hub exists on both sides, but the
+// pages under it do not pair up at all: New Zealand has suburbs (Ponsonby,
+// Riccarton), Australia has cities (Sydney, Perth). Offering to "switch
+// country" on /cleaners/ponsonby would be offering a 404.
+const PAIRED_PAGE = /^\/(?:$|for-customers$|for-maids$|browse$|cleaners$)/;
+
 const isAuPath = (p) => p === AU_BASE || p.startsWith(AU_BASE + '/');
 // The path with any /au prefix taken off: the same page's address on whichever
 // side it is being asked for.
@@ -66,27 +73,51 @@ function wantsToStay(req) {
   return /(?:^|;\s*)mm_stay=1/.test(String(req.headers.cookie || ''));
 }
 
-// --- Steering people to their own country's site ----------------------------
-// Runs BEFORE the /au rewrite below, so it decides on the URL the visitor
-// actually asked for rather than on one this server invented.
+// --- Sending people to their own country's site -----------------------------
+// GEO_STEER picks how:
 //
-// Three things it deliberately does NOT do:
+//   banner   (default) - serve what was asked for, and let the page offer the
+//                        other country. Nothing is ever hidden from anyone.
+//   redirect           - bounce them automatically, the old behaviour.
+//   off                - do nothing at all.
 //
-//  * It never redirects when Cloudflare cannot tell us where the visitor is.
-//    Googlebot crawls mostly from the United States, so it sees both sites and
-//    can index both - which is the whole point of doing the SEO. A visitor on a
-//    VPN, or reaching the origin directly, gets the site they asked for.
+// The default is `banner`, and it is the default because redirecting on IP
+// costs traffic three ways:
+//
+//   * Crawling. Google crawls from wherever it likes, and a page that redirects
+//     the crawler is a page that does not get indexed as itself. Their own
+//     guidance is to use hreflang and let people choose - which we already have
+//     on every paired page.
+//   * Sharing. A New Zealander who posts a matchmaid.com.au link, or an
+//     Australian who posts a .co.nz one, currently sends every reader to a
+//     different page than the one they meant. That kills referral traffic
+//     quietly, and it is the cheapest traffic there is.
+//   * Trust. Being moved somewhere you did not ask to go reads as broken.
+//
+// A banner keeps every URL reachable and shareable from anywhere while still
+// putting the right country in front of the person who needs it.
+//
+// The /au -> new-domain redirects below are NOT steering and are not affected:
+// a moved page is a moved page, and that one is a 301 for everyone.
+//
+// What this still deliberately does NOT do, in redirect mode:
+//
+//  * It never fires when Cloudflare cannot tell us where the visitor is.
 //  * It never touches /api, /assets or any other non-page path. Redirecting an
 //    XHR breaks the page that issued it rather than moving the reader.
-//  * It always leaves an escape. ?stay=1 pins you to the side you are on and
-//    sets a cookie, so someone who deliberately opened the other country's site
-//    is inconvenienced once rather than trapped in a loop. Without that, anyone
-//    travelling could not reach their own account.
+//  * It always leaves an escape - ?stay=1 plus a cookie - so someone who
+//    deliberately opened the other country's site is inconvenienced once rather
+//    than trapped in a loop.
+const GEO_MODE = (() => {
+  const m = String(process.env.GEO_STEER || '').toLowerCase();
+  return ['banner', 'redirect', 'off'].includes(m) ? m : 'banner';
+})();
+
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   const path = req.path;
   if (!STEERABLE.test(path)) return next();
-  if (String(process.env.GEO_STEER || '').toLowerCase() === 'off') return next();
+  if (GEO_MODE === 'off') return next();
 
   const auHost = onAuDomain(req);
   const bare = barePath(path);
@@ -98,6 +129,9 @@ app.use((req, res, next) => {
     if (auHost) return res.redirect(301, bare + reqQuery(req));
     if (AU_ORIGIN) return res.redirect(301, AU_ORIGIN + bare + reqQuery(req));
   }
+
+  // Everything past here is the automatic bounce, which only `redirect` does.
+  if (GEO_MODE !== 'redirect') return next();
 
   if (req.query?.stay === '1') {
     res.setHeader('Set-Cookie', `${STAY_COOKIE}=1; Path=/; Max-Age=2592000; SameSite=Lax`);
@@ -167,6 +201,34 @@ app.use(
 // Deliberately touches nothing — no DB, no auth — so the keep-alive ping that
 // stops Render's free tier idling out is as cheap as a request can be.
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
+
+// Where the visitor is, and where the other country's version of this page
+// lives. Read by geo-banner.js to offer the swap without ever performing it.
+//
+// No database, no auth, and deliberately not cached: it is per-visitor by
+// definition, and a cached answer would offer half of New Zealand the
+// Australian site.
+app.get('/api/geo', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const cc = ipCountry(req);
+  const auHost = onAuDomain(req);
+  const path = String(req.query.path || '/');
+  // Only ever build a link to a page that exists on the other side. Anything
+  // else - a portal, terms, a New Zealand suburb page - has one home, and
+  // offering to "switch country" on it would be offering a 404.
+  const bare = barePath(path.split('?')[0] || '/');
+  const paired = PAIRED_PAGE.test(bare);
+  const forAu = auHost || (!AU_ORIGIN && isAuPath(path));
+  const site = forAu ? 'AU' : 'NZ';
+
+  let other = null;
+  if (paired && cc && cc !== site && (cc === 'NZ' || cc === 'AU')) {
+    other = cc === 'AU'
+      ? { country: 'AU', name: 'Australia', url: AU_ORIGIN ? AU_ORIGIN + bare : AU_BASE + (bare === '/' ? '' : bare) }
+      : { country: 'NZ', name: 'New Zealand', url: (AU_ORIGIN || auHost) ? NZ_ORIGIN + bare : bare };
+  }
+  res.json({ country: cc, site, other });
+});
 
 // --- Geo gate on signup ----------------------------------------------------
 // --- Countries --------------------------------------------------------------

@@ -83,10 +83,30 @@ Expected: `200`; a canonical on `matchmaid.com.au`; a `301` from `/au` to `/`;
 The regression suite lives in the session scratchpad as `au-domain-test.mjs` —
 run it against a server with `AU_DOMAIN` set and it exercises all of the above.
 
-## One decision left
+## Steering: banner, not redirect
 
-Once Australia is on its own ccTLD, the geo-steering rule that hides `/au` from
-New Zealand visitors is no longer doing anything for search — the domain itself
-tells Google where the site belongs. Keep it only if you still want New
-Zealanders bounced off the Australian site for a non-SEO reason. To turn the
-steering off entirely: `GEO_STEER=off`.
+`GEO_STEER` has three settings and defaults to **`banner`**:
+
+| Value | What happens |
+|---|---|
+| `banner` (default) | Serve what was asked for; the page offers the other country in a dismissible bar. |
+| `redirect` | Bounce the visitor automatically, with `?stay=1` as an escape. |
+| `off` | Nothing. |
+
+The default is `banner` because redirecting on IP costs traffic three ways:
+
+- **Crawling.** Google crawls from wherever it likes, and a page that redirects
+  the crawler is a page that does not get indexed as itself. Google's own
+  guidance is hreflang plus letting people choose — which every paired page
+  already has.
+- **Sharing.** A New Zealander posting a `matchmaid.com.au` link sends every
+  reader somewhere other than the page they meant. That kills referral traffic
+  silently, and referral traffic is the cheapest there is.
+- **Trust.** Being moved somewhere you did not ask to go reads as broken.
+
+The banner only appears when the visitor is in the *other* country AND the page
+has a twin there. `/cleaners/ponsonby` never offers Australia: New Zealand has
+suburb pages and Australia has city pages, so there is nothing to switch to.
+
+The `/au` redirects are NOT steering and are unaffected by this setting — a
+moved page is a moved page, and that one is a 301 for everyone.

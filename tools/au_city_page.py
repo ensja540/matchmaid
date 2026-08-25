@@ -31,7 +31,7 @@ from site_config import (NZ_ORIGIN, AU_ORIGIN, AU_BASE, AU_ON_OWN_DOMAIN,
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Origins live in site_config so a domain move is one edit, not three.
 ORIGIN = NZ_ORIGIN
-CSS = '/styles.css?v=117'
+CSS = '/styles.css?v=118'
 NL = '\n'
 
 NOTICE = ('\U0001F9FD Now open in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin - '
@@ -176,6 +176,7 @@ def chrome_bottom(cta_heading):
         '      </div>' + NL +
         '    </footer>' + NL +
         '    <script src="/reveal.js?v=6"></script>' + NL +
+        '    <script src="/geo-banner.js?v=1"></script>' + NL +
         '  </body>' + NL +
         '</html>' + NL
     )
