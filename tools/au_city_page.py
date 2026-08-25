@@ -22,9 +22,15 @@ Where they differ from the New Zealand pages, they differ on purpose:
 import io
 import json
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from site_config import (NZ_ORIGIN, AU_ORIGIN, AU_BASE, AU_ON_OWN_DOMAIN,
+                         nz_url, au_url, au_path)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ORIGIN = 'https://matchmaid.co.nz'
+# Origins live in site_config so a domain move is one edit, not three.
+ORIGIN = NZ_ORIGIN
 CSS = '/styles.css?v=115'
 NL = '\n'
 

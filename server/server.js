@@ -21,6 +21,41 @@ const publicDir = join(here, '..'); // project root holds index.html etc.
 const app = express();
 app.use(express.json({ limit: '8mb' })); // room for base64 photos + ID documents
 
+// --- Australia on its own domain --------------------------------------------
+// Dormant until AU_DOMAIN is set (e.g. AU_DOMAIN=matchmaid.com.au). Until then
+// Australia lives at /au on the New Zealand domain and none of this runs.
+//
+// Why the move is coming: Google treats .co.nz as hard-geotargeted to New
+// Zealand, and Search Console's country setting is unavailable for a ccTLD. No
+// amount of hreflang makes /au rank in Australia, so the Australian pages need
+// an Australian domain to do anything. Point matchmaid.com.au at this same
+// service, set AU_DOMAIN, and that host serves the Australian pages at its root.
+//
+// The /au prefix keeps working on that host, but 301s to the bare path: two
+// URLs for one page is exactly the duplication the move is meant to fix.
+const AU_DOMAIN = String(process.env.AU_DOMAIN || '').toLowerCase().replace(/^www\./, '');
+const bareHost = (req) => String(req.hostname || '').toLowerCase().replace(/^www\./, '');
+const onAuDomain = (req) => !!AU_DOMAIN && bareHost(req) === AU_DOMAIN;
+// The pages that exist on the Australian side. Assets, /api and the shared
+// pages are NOT in here: they live at the root on both hosts and must be served
+// as asked rather than looked for under au/.
+const AU_PAGE = /^\/(?:$|for-customers$|for-maids$|browse$|cleaners(?:$|\/))/;
+
+app.use((req, res, next) => {
+  if (!onAuDomain(req)) return next();
+  const path = req.path;
+  // One canonical URL per page on this host.
+  if (path === '/au' || path.startsWith('/au/')) {
+    return res.redirect(301, path.slice(3) || '/');
+  }
+  // Serve the Australian tree at the root of the Australian domain.
+  if (AU_PAGE.test(path)) {
+    req.url = '/au' + (path === '/' ? '/index.html' : path) +
+              (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+  }
+  next();
+});
+
 // --- Steering people to their own country's site ----------------------------
 // Australia lives under /au, and must not be visible from New Zealand. Both
 // rules are enforced here, ahead of anything that serves a file.
@@ -170,7 +205,11 @@ const isCountry = (c) => Object.prototype.hasOwnProperty.call(COUNTRIES, String(
 function reqCountry(req) {
   const raw = req.query?.country ?? req.body?.country ?? '';
   const cc = String(raw).toUpperCase();
-  return isCountry(cc) ? cc : DEFAULT_COUNTRY;
+  if (isCountry(cc)) return cc;
+  // On the Australian domain the country is implied by the host, so a call that
+  // forgets to send it still gets Australian data rather than New Zealand's.
+  if (typeof onAuDomain === 'function' && onAuDomain(req)) return 'AU';
+  return DEFAULT_COUNTRY;
 }
 
 // Where the visitor actually is, per Cloudflare. Distinct from reqCountry:

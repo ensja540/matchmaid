@@ -29,9 +29,15 @@ import io
 import os
 import re
 import json
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from site_config import (NZ_ORIGIN, AU_ORIGIN, AU_BASE, AU_ON_OWN_DOMAIN,
+                         nz_url, au_url, au_path)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ORIGIN = 'https://matchmaid.co.nz'
+# Origins live in site_config so a domain move is one edit, not three.
+ORIGIN = NZ_ORIGIN
 
 # The six metros Australia opens in. Blurb is the local-knowledge line on each
 # city page - the one thing on it that a template cannot fake.
