@@ -548,6 +548,96 @@ async function initMessages() {
 }
 if (sessionUser?.id) initMessages();
 
+// ---- Perfect-review celebration -------------------------------------------
+// A cleaner who gets full marks hears about it the next time they open the
+// portal, once. The server decides what counts and what is still unseen; this
+// only draws it and says when it has been seen.
+//
+// Marked seen on CLOSE rather than on load. A fetch that never rendered - a
+// tab closed mid-load, a dropped connection - must not burn the only time they
+// were going to be told.
+const celebrateModal = document.getElementById('celebrateModal');
+const celebrateBody = document.getElementById('celebrateBody');
+let celebratePending = [];
+
+function closeCelebration() {
+  if (!celebrateModal || celebrateModal.hidden) return;
+  celebrateModal.hidden = true;
+  const ids = celebratePending.map((r) => r.id);
+  celebratePending = [];
+  if (!ids.length || !sessionUser?.id) return;
+  fetch('/api/celebrations/seen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: sessionUser.id, reviewIds: ids }),
+  }).catch(() => {
+    // If this fails they see it once more next time, which is the right way
+    // round: a repeat is better than never being told.
+  });
+}
+
+document.getElementById('celebrateClose')?.addEventListener('click', closeCelebration);
+celebrateModal?.addEventListener('click', (e) => {
+  if (e.target === celebrateModal) closeCelebration();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeCelebration();
+});
+
+function celebrationHTML(list) {
+  const first = list[0];
+  const more = list.length - 1;
+  return `
+    <div class="cb-burst" aria-hidden="true">
+      ${Array.from({ length: 14 }, (_, i) =>
+        `<i style="--i:${i}"></i>`).join('')}
+    </div>
+    <p class="cb-eyebrow">${more > 0 ? `${list.length} perfect reviews` : 'A perfect review'}</p>
+    <h2 class="cb-title" id="celebrateTitle">Five out of five.</h2>
+    <div class="cb-stars" aria-label="5 out of 5">★★★★★</div>
+    <p class="cb-who">${escapeHtml(first.from)} rated every part of your clean full marks
+      <span class="cb-when">${escapeHtml(first.when)}</span></p>
+    ${first.comment
+      ? `<blockquote class="cb-quote">${escapeHtml(first.comment)}</blockquote>`
+      : ''}
+    ${more > 0
+      ? `<p class="cb-more">And ${more} other${more === 1 ? '' : 's'} since you last looked.</p>`
+      : ''}
+    <p class="cb-note">This is what customers see first when they compare cleaners.
+      Reviews like this are the reason someone picks you.</p>
+    <div class="cb-actions">
+      <button class="btn solid" type="button" data-cb-profile>See my profile</button>
+      <button class="btn outline" type="button" data-cb-close>Nice</button>
+    </div>`;
+}
+
+function showCelebration(list) {
+  if (!celebrateModal || !celebrateBody || !list.length) return;
+  celebratePending = list;
+  celebrateBody.innerHTML = celebrationHTML(list);
+  celebrateModal.hidden = false;
+  celebrateBody.querySelector('[data-cb-close]')?.addEventListener('click', closeCelebration);
+  celebrateBody.querySelector('[data-cb-profile]')?.addEventListener('click', () => {
+    closeCelebration();
+    const tab = tabs?.querySelector('[data-tab="profile"]');
+    if (tab) tab.click();
+  });
+  document.getElementById('celebrateClose')?.focus?.();
+}
+
+function checkCelebrations() {
+  if (!sessionUser?.id || !mHasFetch) return;
+  mGet(`/api/celebrations?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((d) => {
+      const list = (d && d.reviews) || [];
+      if (list.length) showCelebration(list);
+    })
+    .catch(() => {});
+}
+
+if (sessionUser?.id) checkCelebrations();
+
+
 let pollTimer = null;
 const msgSig = (m) => (m ? m.length + '|' + (m[m.length - 1]?.body || '') : '0');
 const convoSig = () => convos.map((c) => c.id + ':' + (c.lastBody || '')).join('~');

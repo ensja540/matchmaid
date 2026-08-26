@@ -814,6 +814,34 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------- Review: draggable star inputs ---------- */
 .rating-stars.lg { font-size: 1.7rem; letter-spacing: 2px; }
+/* Perfect-review celebration. Restrained on purpose: this is a moment, not a
+   slot machine. The burst is CSS-only and respects reduced-motion. */
+.celebrate-overlay .modal.celebrate { text-align: center; max-width: 440px; padding-top: 2.4rem; overflow: hidden; position: relative; }
+.cb-burst { position: absolute; inset: 0 0 auto; height: 160px; pointer-events: none; }
+.cb-burst i { position: absolute; top: 24px; left: 50%; width: 7px; height: 7px; border-radius: 2px; opacity: 0; background: var(--copper);
+  animation: cb-fly 1100ms cubic-bezier(.2,.7,.3,1) forwards; animation-delay: calc(var(--i) * 22ms);
+  transform: rotate(calc(var(--i) * 26deg)); }
+.cb-burst i:nth-child(3n) { background: var(--gold); }
+.cb-burst i:nth-child(3n+1) { background: var(--copper-dark); }
+@keyframes cb-fly {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.6); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc((var(--i) - 6.5) * 26px), 120px) rotate(220deg) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cb-burst { display: none; }
+}
+.cb-eyebrow { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0 0 0.4rem; }
+.cb-title { font-family: var(--serif); font-size: 2rem; margin: 0 0 0.6rem; }
+.cb-stars { font-size: 2.2rem; letter-spacing: 6px; color: var(--gold); line-height: 1; margin-bottom: 0.8rem; }
+.cb-who { font-size: 0.95rem; margin: 0 0 1rem; }
+.cb-when { color: var(--muted); font-size: 0.82rem; display: block; margin-top: 0.15rem; }
+.cb-quote { margin: 0 0 1rem; padding: 0.8rem 1rem; background: var(--paper-2); border-left: 3px solid var(--copper); font-family: var(--serif); font-size: 1.05rem; font-style: italic; text-align: left; }
+.cb-more { font-size: 0.88rem; color: var(--copper-dark); font-weight: 600; margin: 0 0 1rem; }
+.cb-note { font-size: 0.85rem; color: var(--muted); line-height: 1.5; margin: 0 0 1.4rem; }
+.cb-actions { display: flex; gap: 0.6rem; }
+.cb-actions .btn { flex: 1; }
+
 /* The country banner. Replaced an automatic IP redirect - see geo-banner.js.
    One quiet line at the very top: it is an offer, not an interruption. */
 .geo-bar { display: flex; align-items: center; gap: 0.8rem; padding: 0.55rem 1rem; background: var(--ink); color: var(--paper); font-size: 0.85rem; }

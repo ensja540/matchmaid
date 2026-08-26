@@ -3642,6 +3642,74 @@ app.post('/api/review', async (req, res) => {
   }
 });
 
+// --- Celebrating a perfect review ------------------------------------------
+// A cleaner who gets full marks should hear about it the next time they open
+// the portal, once. Five out of five means every one of the five categories
+// was a 5 - not a 4.8 rounded up - because the celebration says "perfect" and
+// it should be true. Change this one number to loosen it.
+const CELEBRATE_AT = 5;
+
+app.get('/api/celebrations', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    // Uncelebrated, published, perfect - and only this cleaner's own.
+    const { rows } = await query(
+      `select r.id, r.overall, r.comment,
+              to_char(r.created_at, 'DD Mon') as when,
+              clu.full_name as client_name
+         from reviews r
+         join cleaner_profiles cpf on cpf.id = r.cleaner_id
+         join client_profiles clp on clp.id = r.client_id
+         join users clu on clu.id = clp.user_id
+        where cpf.user_id = $1
+          and r.status = 'published'
+          and r.overall >= $2
+          and r.celebrated_at is null
+        order by r.created_at desc`,
+      [userId, CELEBRATE_AT]
+    );
+    res.json({
+      reviews: rows.map((r) => ({
+        id: r.id,
+        overall: Number(r.overall),
+        comment: r.comment || '',
+        when: r.when,
+        // First name only: the celebration is a moment, not a record.
+        from: String(r.client_name || '').split(' ')[0] || 'A customer',
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load celebrations.' });
+  }
+});
+
+// Stamped once the cleaner has actually SEEN it, not when it was fetched: a
+// fetch that never rendered - a closed tab, a dropped connection - must not
+// burn the only time they were going to be told.
+app.post('/api/celebrations/seen', async (req, res) => {
+  try {
+    const { userId, reviewIds } = req.body ?? {};
+    if (!userId || !Array.isArray(reviewIds) || !reviewIds.length)
+      return res.status(400).json({ error: 'userId and reviewIds are required.' });
+    const ids = reviewIds.filter((id) => UUID_RE.test(String(id)));
+    if (!ids.length) return res.status(400).json({ error: 'No valid review ids.' });
+    // Scoped to the caller's own reviews, so an id from elsewhere does nothing.
+    const { rowCount } = await query(
+      `update reviews r set celebrated_at = now()
+         from cleaner_profiles cpf
+        where cpf.id = r.cleaner_id and cpf.user_id = $1
+          and r.id = any($2::uuid[]) and r.celebrated_at is null`,
+      [userId, ids]
+    );
+    res.json({ ok: true, marked: rowCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not record that.' });
+  }
+});
+
 // Per-category averages for a cleaner's public profile.
 async function reviewBreakdown(cleanerId) {
   const { rows } = await query(
