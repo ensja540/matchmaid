@@ -90,26 +90,30 @@ Expected: `200`; a canonical on `matchmaid.com.au`; a `301` from `/au` to `/`;
 The regression suite lives in the session scratchpad as `au-domain-test.mjs` —
 run it against a server with `AU_DOMAIN` set and it exercises all of the above.
 
-## Steering: banner, not redirect
+## Steering
 
-`GEO_STEER` has three settings and defaults to **`banner`**:
+`GEO_STEER` has three settings and defaults to **`redirect`**:
 
 | Value | What happens |
 |---|---|
-| `banner` (default) | Serve what was asked for; the page offers the other country in a dismissible bar. |
-| `redirect` | Bounce the visitor automatically, with `?stay=1` as an escape. |
+| `redirect` (default) | An Australian IP on the New Zealand site is sent to the same page on `matchmaid.com.au`, and a New Zealand IP on the Australian site is sent back. `?stay=1` is the escape. |
+| `banner` | Serve what was asked for; the page offers the other country in a dismissible bar. |
 | `off` | Nothing. |
 
-The default is `banner` because redirecting on IP costs traffic three ways:
+I argued for `banner` and Jack chose `redirect`. Recording why, because two of
+my three objections do not survive contact with this direction of travel:
 
-- **Crawling.** Google crawls from wherever it likes, and a page that redirects
-  the crawler is a page that does not get indexed as itself. Google's own
-  guidance is hreflang plus letting people choose — which every paired page
-  already has.
-- **Sharing.** A New Zealander posting a `matchmaid.com.au` link sends every
-  reader somewhere other than the page they meant. That kills referral traffic
-  silently, and referral traffic is the cheapest there is.
-- **Trust.** Being moved somewhere you did not ask to go reads as broken.
+- **Crawling.** We never redirect when Cloudflare cannot place the visitor, and
+  Googlebot crawls from the United States — so it is never redirected and both
+  sites stay fully crawlable. Real risk for a blanket rule; not for this one.
+- **Sharing.** Sending an Australian who was handed a `.co.nz` link to the same
+  page on `.com.au` is closer to a feature than a bug.
+- **Trust.** This one stands — being moved somewhere you did not ask to go can
+  read as broken. That is what `?stay=1` and its cookie are for.
+
+**To view the Australian site from New Zealand:** add `?stay=1` to any URL. It
+sets a cookie for 30 days. Without it you are bounced back, like any other New
+Zealand visitor.
 
 The banner only appears when the visitor is in the *other* country AND the page
 has a twin there. `/cleaners/ponsonby` never offers Australia: New Zealand has
