@@ -31,6 +31,12 @@ from site_config import (NZ_ORIGIN, AU_ORIGIN, AU_BASE, AU_ON_OWN_DOMAIN,
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Origins live in site_config so a domain move is one edit, not three.
 ORIGIN = NZ_ORIGIN
+# Where the Australian pages live. While Australia was a subfolder AU_P was
+# '/au'; now it has its own host it is '' and every internal link is just the
+# bare path. Applied as a final pass over the built HTML (see localise) rather
+# than threaded through fifty string concatenations.
+AU_P = AU_BASE
+AU_HOME = au_path('/')
 CSS = '/styles.css?v=119'
 NL = '\n'
 
@@ -109,11 +115,11 @@ def head(title, desc, url, ld_blocks):
         '    <meta property="og:description" content="' + esc(desc) + '" />' + NL +
         '    <meta property="og:url" content="' + url + '" />' + NL +
         '    <meta property="og:locale" content="en_AU" />' + NL +
-        '    <meta property="og:image" content="' + ORIGIN + '/og-image.png" />' + NL +
+        '    <meta property="og:image" content="' + AU_ORIGIN + '/og-image.png" />' + NL +
         '    <meta property="og:image:width" content="1200" />' + NL +
         '    <meta property="og:image:height" content="630" />' + NL +
         '    <meta name="twitter:card" content="summary_large_image" />' + NL +
-        '    <meta name="twitter:image" content="' + ORIGIN + '/og-image.png" />' + NL +
+        '    <meta name="twitter:image" content="' + AU_ORIGIN + '/og-image.png" />' + NL +
         '    <link rel="preconnect" href="https://fonts.googleapis.com" />' + NL +
         '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />' + NL +
         '    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+'
@@ -205,7 +211,7 @@ def faqs(city, rates):
 
 
 def city_page(slug, city, state, rates, hero, local, others):
-    url = '%s/au/cleaners/%s' % (ORIGIN, slug)
+    url = au_url('/cleaners/%s' % slug)
     title = 'House cleaners in %s, %s | Match Maid' % (city, state)
     desc = ('Find a trusted local house cleaner in %s. Browse independent cleaners with rates up '
             'front, read reviews, and contact the one you choose. Free for households.' % city)
@@ -215,7 +221,7 @@ def city_page(slug, city, state, rates, hero, local, others):
     ld_service = {
         '@context': 'https://schema.org', '@type': 'Service',
         'serviceType': 'House cleaning',
-        'provider': {'@type': 'Organization', 'name': 'Match Maid', 'url': ORIGIN + '/au'},
+        'provider': {'@type': 'Organization', 'name': 'Match Maid', 'url': au_url('/')},
         'areaServed': {
             '@type': 'City', 'name': city,
             'containedInPlace': {
@@ -231,9 +237,9 @@ def city_page(slug, city, state, rates, hero, local, others):
               'mainEntity': [{'@type': 'Question', 'name': q,
                               'acceptedAnswer': {'@type': 'Answer', 'text': a}} for q, a in qa]}
     ld_crumb = {'@context': 'https://schema.org', '@type': 'BreadcrumbList', 'itemListElement': [
-        {'@type': 'ListItem', 'position': 1, 'name': 'Match Maid Australia', 'item': ORIGIN + '/au'},
+        {'@type': 'ListItem', 'position': 1, 'name': 'Match Maid Australia', 'item': au_url('/')},
         {'@type': 'ListItem', 'position': 2, 'name': 'Cleaners by city',
-         'item': ORIGIN + '/au/cleaners'},
+         'item': au_url('/cleaners')},
         {'@type': 'ListItem', 'position': 3, 'name': city, 'item': url},
     ]}
 
@@ -311,7 +317,7 @@ def city_page(slug, city, state, rates, hero, local, others):
 
 
 def hub_page():
-    url = ORIGIN + '/au/cleaners'
+    url = au_url('/cleaners')
     title = 'House cleaners by city in Australia | Match Maid'
     desc = ('Browse independent local house cleaners by city - Sydney, Melbourne, Brisbane, Perth, '
             'Hobart and Darwin. Rates up front, free for households.')
@@ -319,7 +325,7 @@ def hub_page():
           'name': 'Australian cities Match Maid covers',
           'itemListElement': [
               {'@type': 'ListItem', 'position': i + 1, 'name': c,
-               'item': '%s/au/cleaners/%s' % (ORIGIN, s)}
+               'item': au_url('/cleaners/%s' % s)}
               for i, (s, c, _st, _r, _h, _l) in enumerate(CITIES)]}
     # Reuses .benefit, the same card the New Zealand hub uses; a new class would
     # have needed new CSS to say exactly the same thing.
@@ -355,18 +361,30 @@ def hub_page():
             chrome_bottom('Find your cleaner.'))
 
 
+def localise(html):
+    """Point every internal link at wherever Australia currently lives.
+
+    The templates are written with /au paths because that is what they were
+    born with; this is the single place that knows better. href="/au" is
+    handled before the /au/ prefix so the bare root does not become "//".
+    """
+    return (html
+            .replace('href="/au"', 'href="%s"' % AU_HOME)
+            .replace('"/au/', '"%s/' % AU_P))
+
+
 def build():
     out_dir = os.path.join(ROOT, 'au', 'cleaners')
     os.makedirs(out_dir, exist_ok=True)
     written = []
     for slug, city, state, rates, hero, local in CITIES:
         others = [(s, c) for s, c, _st, _r, _h, _l in CITIES if s != slug]
-        html = city_page(slug, city, state, rates, hero, local, others)
+        html = localise(city_page(slug, city, state, rates, hero, local, others))
         io.open(os.path.join(out_dir, slug + '.html'), 'w', encoding='utf-8',
                 newline='').write(html)
         written.append('au/cleaners/%s.html' % slug)
     io.open(os.path.join(out_dir, 'index.html'), 'w', encoding='utf-8',
-            newline='').write(hub_page())
+            newline='').write(localise(hub_page()))
     written.append('au/cleaners/index.html')
     return written
 

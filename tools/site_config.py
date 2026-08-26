@@ -26,10 +26,11 @@ import os
 NZ_ORIGIN = 'https://matchmaid.co.nz'
 NZ_BASE = ''
 
-# Today: Australia is a subfolder of the New Zealand domain.
-# After the move: AU_ORIGIN = 'https://matchmaid.com.au' and AU_BASE = ''.
-AU_ORIGIN = os.environ.get('AU_ORIGIN', 'https://matchmaid.co.nz')
-AU_BASE = os.environ.get('AU_BASE', '/au')
+# Australia moved onto its own domain on 26 August 2026. AU_DOMAIN is set on
+# Render, so that host serves the Australian pages at its root and /au is a
+# permanent redirect to it.
+AU_ORIGIN = os.environ.get('AU_ORIGIN', 'https://matchmaid.com.au')
+AU_BASE = os.environ.get('AU_BASE', '')
 
 # True once Australia has its own domain. Several things change at that point:
 # hreflang becomes cross-domain, the /au prefix disappears from internal links,

@@ -1,5 +1,12 @@
 # Moving Australia onto matchmaid.com.au
 
+> **Done — 26 August 2026.** `matchmaid.com.au` is live on Render behind
+> Cloudflare, `AU_DOMAIN` is set, and every canonical, og:url, hreflang and
+> structured-data `@id` on the Australian pages points at it. `/au` is a
+> permanent 301 to the new domain. What follows is the record of how, and what
+> to check if any of it needs redoing.
+
+
 Australia currently lives at `matchmaid.co.nz/au`. That works, but it cannot
 rank: Google treats `.co.nz` as hard-geotargeted to New Zealand, and Search
 Console's international targeting setting is unavailable for a ccTLD, so no

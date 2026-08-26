@@ -71,6 +71,13 @@ CITIES = [
 # Content substitutions, longest first so "New Zealand" is never half-matched by
 # a later "Zealand" rule. Order within this list is significant.
 CONTENT = [
+    # The blanket "New Zealand" -> "Australia" rule leaves this reading
+    # "Australia marketplace"; it wants the adjective.
+    ('New Zealand marketplace connecting', 'Australian marketplace connecting'),
+    # areaServed listed the two New Zealand cities, which the city rules below
+    # turn into two Australian ones. Australia is open in six.
+    ('            { "@type": "City", "name": "Christchurch" },\n            { "@type": "City", "name": "Auckland" }',
+     '            { "@type": "City", "name": "Sydney" },\n            { "@type": "City", "name": "Melbourne" },\n            { "@type": "City", "name": "Brisbane" },\n            { "@type": "City", "name": "Perth" },\n            { "@type": "City", "name": "Hobart" },\n            { "@type": "City", "name": "Darwin" }'),
     # Australia does not have a "criminal check". The document is a National
     # Police Check, from the AFP or an accredited provider, and a cleaner told
     # to get the wrong one cannot act on the instruction.
@@ -105,13 +112,16 @@ CONTENT = [
     ('NZ', 'Australia'),
 ]
 
-# Absolute-path rewrites. Applied to href/src attributes only.
+# Where each shared page lives on the Australian side. Built from site_config so
+# it follows the domain: while Australia was a subfolder these mapped to
+# /au/..., and now it has its own host they map to themselves - the same path on
+# a different domain. The generator never needs to know which is current.
 LINK_MAP = {
-    '/': '/au',
-    '/browse': '/au/browse',
-    '/for-customers': '/au/for-customers',
-    '/for-maids': '/au/for-maids',
-    '/cleaners': '/au/cleaners',
+    '/': au_path('/'),
+    '/browse': au_path('/browse'),
+    '/for-customers': au_path('/for-customers'),
+    '/for-maids': au_path('/for-maids'),
+    '/cleaners': au_path('/cleaners'),
 }
 
 
@@ -170,19 +180,36 @@ def swap_content(html):
     return html
 
 
-def canonicalise(html, nz_path, au_path):
-    """Point canonical/og:url at the /au URL and add the hreflang pair."""
-    html = html.replace(f'{ORIGIN}{nz_path}"', f'{ORIGIN}{au_path}"')
+def canonicalise(html, nz_path, au_full):
+    """Point canonical/og:url at the Australian URL and add the hreflang pair.
+
+    au_full is absolute, because once Australia has its own domain the origin
+    changes and not just the path. Named au_full rather than au_path so it does
+    not shadow the au_path() helper imported from site_config.
+    """
+    html = html.replace(f'{ORIGIN}{nz_path}"', f'{au_full}"')
+    # Social images too. They resolve either way - both domains are the same
+    # server - but a share card that fetches its image from the other country's
+    # domain is one more origin for a scraper to trip over, and it reads wrong
+    # to anyone who inspects it.
+    html = html.replace(f'{ORIGIN}/og-image.png', f'{AU_ORIGIN}/og-image.png')
+    html = html.replace(f'{ORIGIN}/assets/', f'{AU_ORIGIN}/assets/')
+    # Structured-data identity. The two sites are different WebSites, so they
+    # cannot share an @id while declaring different urls - that is one entity
+    # with two contradictory addresses, and a search engine has to pick. Each
+    # side gets @ids on its own domain.
+    html = html.replace(f'"@id": "{ORIGIN}/#', f'"@id": "{AU_ORIGIN}/#')
+    html = html.replace(f'"@id":"{ORIGIN}/#', f'"@id":"{AU_ORIGIN}/#')
     html = html.replace('<html lang="en-NZ">', '<html lang="en-AU">')
     # Structured data carries its own language, and en-NZ is on the protect list
     # (it has to be, or the blanket rule turns it into en-Australia), so it is
     # corrected here rather than in the content pass.
     html = html.replace('"inLanguage": "en-NZ"', '"inLanguage": "en-AU"')
     html = html.replace('"inLanguage":"en-NZ"', '"inLanguage":"en-AU"')
-    return add_hreflang(html, nz_path, au_path)
+    return add_hreflang(html, nz_path, au_full)
 
 
-def add_hreflang(html, nz_path, au_path):
+def add_hreflang(html, nz_path, au_full):
     """Both sides of a pair must list BOTH alternates, and agree.
 
     Google ignores hreflang that is not reciprocal, so the New Zealand page has
@@ -192,7 +219,7 @@ def add_hreflang(html, nz_path, au_path):
     """
     tags = (
         f'\n    <link rel="alternate" hreflang="en-NZ" href="{ORIGIN}{nz_path}" />'
-        f'\n    <link rel="alternate" hreflang="en-AU" href="{ORIGIN}{au_path}" />'
+        f'\n    <link rel="alternate" hreflang="en-AU" href="{au_full}" />'
         f'\n    <link rel="alternate" hreflang="x-default" href="{ORIGIN}{nz_path}" />'
     )
     html = re.sub(r'\n\s*<link rel="alternate" hreflang="[^"]*"[^>]*/>', '', html)
@@ -209,12 +236,13 @@ COUNTRY_SCRIPT = (
 )
 
 
-def build_page(nz_file, au_file, nz_path, au_path):
+def build_page(nz_file, au_file, nz_path):
+    au_full = au_url(nz_path)
     src = io.open(os.path.join(ROOT, nz_file), encoding='utf-8').read()
     out = absolutise(src)
     out = relink(out)
     out = swap_content(out)
-    out = canonicalise(out, nz_path, au_path)
+    out = canonicalise(out, nz_path, au_full)
     # Ahead of every other script, so the country is set before anything reads it.
     out = out.replace('<script src="/analytics.js', COUNTRY_SCRIPT + '<script src="/analytics.js', 1)
     # The Australian town -> suburbs map has to be in place BEFORE demo.js runs,
@@ -226,17 +254,19 @@ def build_page(nz_file, au_file, nz_path, au_path):
     io.open(dest, 'w', encoding='utf-8', newline='').write(out)
 
     # The New Zealand original needs the same reciprocal pair.
-    nz_out = add_hreflang(src, nz_path, au_path)
+    nz_out = add_hreflang(src, nz_path, au_full)
     if nz_out != src:
         io.open(os.path.join(ROOT, nz_file), 'w', encoding='utf-8', newline='').write(nz_out)
     return au_file
 
 
+# The path is the same on both sides; au_url() turns it into the right absolute
+# URL for wherever Australia currently lives.
 PAGES = [
-    ('index.html',           'au/index.html',           '/',              '/au'),
-    ('for-customers.html',   'au/for-customers.html',   '/for-customers', '/au/for-customers'),
-    ('for-maids.html',       'au/for-maids.html',       '/for-maids',     '/au/for-maids'),
-    ('browse.html',          'au/browse.html',          '/browse',        '/au/browse'),
+    ('index.html',         'au/index.html',         '/'),
+    ('for-customers.html', 'au/for-customers.html', '/for-customers'),
+    ('for-maids.html',     'au/for-maids.html',     '/for-maids'),
+    ('browse.html',        'au/browse.html',        '/browse'),
 ]
 
 if __name__ == '__main__':
