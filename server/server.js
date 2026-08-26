@@ -1506,7 +1506,7 @@ app.post('/api/verification', async (req, res) => {
     // Fire-and-forget - never fails the upload.
     if (reviewReady) {
       const who = await query(
-        'select u.email, u.full_name from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
+        'select u.email, u.full_name, u.country from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
         [cleanerId]
       );
       sendVerificationPendingEmail({
@@ -2106,7 +2106,7 @@ app.post('/api/admin/verification-decision', async (req, res) => {
     // Tell the cleaner either way. Fire-and-forget: a failed send must never
     // undo a decision that is already recorded.
     const who = await query(
-      'select u.email, u.full_name from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
+      'select u.email, u.full_name, u.country from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1',
       [cleaner_id]
     );
     const c = who.rows[0];
@@ -2116,6 +2116,8 @@ app.post('/api/admin/verification-decision', async (req, res) => {
         name: c.full_name,
         type,
         approved: decision === 'approve',
+        // Australia has a police check, not a criminal check.
+        country: c.country,
       }).catch((e) => console.error('[email] verification decision:', e));
     }
 
@@ -2488,6 +2490,7 @@ async function notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, su
   const svc = serviceSlug ? await query('select name from service_types where slug = $1', [serviceSlug]) : { rows: [] };
   await sendEnquiryEmail({
     to,
+    country: await userCountry(clientUserId),
     cleanerName: cleaner.rows[0].name,
     clientName: client.rows[0]?.full_name || 'A customer',
     service: svc.rows[0]?.name || '',
@@ -2595,6 +2598,7 @@ async function notifyNewMessage({ conversationId, senderUserId, kind }) {
 
   const sent = await sendNewMessageEmail({
     to,
+    country: await userCountry(recipientId),
     toName: toCleaner ? p.cleaner_name : p.client_name,
     fromName: toCleaner ? p.client_name : p.cleaner_name,
     body: last[0]?.body || '',
@@ -3158,6 +3162,7 @@ async function emailReviewRequest(enquiryId) {
   if (!r?.email) return;
   await sendReviewRequestEmail({
     to: r.email, name: r.client_name, cleanerName: r.cleaner_name, when: r.when,
+    country: r.country,
   });
 }
 
@@ -3291,7 +3296,7 @@ app.get('/api/unsubscribe', async (req, res) => {
 // that kind, anyone opted out, removed accounts, and anyone too new.
 const NUDGE_SEGMENTS = {
   cleaner_no_rate: `
-    select u.id, u.email, u.full_name, u.role from users u
+    select u.id, u.email, u.full_name, u.role, u.country from users u
       join cleaner_profiles cp on cp.user_id = u.id
      where u.role = 'cleaner' and u.email_verified and cp.hourly_rate_min is null`,
   // No service areas at all. Unlike the two below it, this does NOT require an
@@ -3299,7 +3304,7 @@ const NUDGE_SEGMENTS = {
   // anywhere, so the gap is worth naming whether or not they ever went live -
   // and in practice everyone here is a draft account that stopped partway.
   cleaner_no_areas: `
-    select u.id, u.email, u.full_name, u.role from users u
+    select u.id, u.email, u.full_name, u.role, u.country from users u
       join cleaner_profiles cp on cp.user_id = u.id
      where u.role = 'cleaner' and u.email_verified
        and not exists (select 1 from cleaner_service_areas csa where csa.cleaner_id = cp.id)`,
@@ -3307,18 +3312,18 @@ const NUDGE_SEGMENTS = {
   // problem than an unbadged one, and the 14-day cooldown means whichever fires
   // first is the only one they hear for a fortnight.
   cleaner_no_availability: `
-    select u.id, u.email, u.full_name, u.role from users u
+    select u.id, u.email, u.full_name, u.role, u.country from users u
       join cleaner_profiles cp on cp.user_id = u.id
      where u.role = 'cleaner' and u.email_verified
        and cp.listing_status = 'active'
        and not exists (select 1 from availability_rules ar where ar.cleaner_id = cp.id)`,
   cleaner_no_id: `
-    select u.id, u.email, u.full_name, u.role from users u
+    select u.id, u.email, u.full_name, u.role, u.country from users u
       join cleaner_profiles cp on cp.user_id = u.id
      where u.role = 'cleaner' and u.email_verified
        and cp.listing_status = 'active' and not cp.id_verified`,
   customer_no_suburb: `
-    select u.id, u.email, u.full_name, u.role from users u
+    select u.id, u.email, u.full_name, u.role, u.country from users u
       join client_profiles lp on lp.user_id = u.id
      where u.role = 'client' and u.email_verified and lp.default_suburb_id is null`,
 };
@@ -3330,8 +3335,8 @@ async function nudgeCandidates(kind) {
   const base = NUDGE_SEGMENTS[kind];
   if (!base) return { ready: [], cooling: [] };
   const { rows } = await query(
-    `${base.replace('select u.id, u.email, u.full_name, u.role',
-                    `select u.id, u.email, u.full_name, u.role, ${RECENTLY_MAILED} as cooling`)}
+    `${base.replace('select u.id, u.email, u.full_name, u.role, u.country',
+                    `select u.id, u.email, u.full_name, u.role, u.country, ${RECENTLY_MAILED} as cooling`)}
        and u.removed_at is null and u.status = 'active' and not u.nudge_opt_out
        and u.created_at < now() - interval '${NUDGE_MIN_AGE_HOURS} hours'
        and not exists (select 1 from nudges n where n.user_id = u.id and n.kind = $1)
@@ -3380,6 +3385,7 @@ app.post('/api/tasks/nudges', async (req, res) => {
         } catch { continue; } // already sent by a concurrent run
         const r = await sendNudgeEmail({
           to: p.email, name: p.full_name, kind, unsubUrl: unsubUrlFor(p.id),
+          country: p.country,
         });
         // Belt and braces behind the emailEnabled() guard above: if a send is
         // skipped rather than attempted, give the claim back so this person can
@@ -3412,7 +3418,7 @@ app.post('/api/tasks/prelaunch-update', async (req, res) => {
   const kind = String(req.query.tag || 'prelaunch_2026_08').trim().slice(0, 60);
   try {
     const all = await query(
-      `select u.id, u.email, u.full_name, u.role, cp.referral_code, ${RECENTLY_MAILED} as cooling
+      `select u.id, u.email, u.full_name, u.role, u.country, cp.referral_code, ${RECENTLY_MAILED} as cooling
          from users u
          left join cleaner_profiles cp on cp.user_id = u.id
         where u.role in ('client','cleaner')
@@ -3558,7 +3564,7 @@ const GOOGLE_REVIEW_URL = process.env.GOOGLE_REVIEW_URL || '';
 
 async function emailCleanerTheirReview(cleanerId, clientId, r) {
   const { rows } = await query(
-    `select cu.email, cu.full_name as cleaner_name, cpf.referral_code,
+    `select cu.email, cu.full_name as cleaner_name, cu.country, cpf.referral_code,
             clu.full_name as client_name
        from cleaner_profiles cpf
        join users cu on cu.id = cpf.user_id
@@ -3578,6 +3584,7 @@ async function emailCleanerTheirReview(cleanerId, clientId, r) {
 
   await sendCleanerReviewEmail({
     to: row.email,
+    country: row.country,
     cleanerName: row.cleaner_name,
     clientName: row.client_name,
     overall: r.overall,

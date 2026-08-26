@@ -57,13 +57,26 @@ export async function sendEmail({ to, subject, html, text }) {
 // opt-out. Transactional mail (a confirmation code, an enquiry someone sent
 // you) deliberately does NOT get one: unsubscribing from those would break the
 // account, and they aren't the kind of message the opt-out governs.
-function shell(bodyHtml, unsubUrl) {
+// Which country's footer an email signs off with. "Christchurch, NZ" under a
+// message to a Sydney cleaner is the kind of detail that quietly says this was
+// not built for you.
+const COUNTRY_FOOTER = {
+  NZ: { where: 'Christchurch, NZ', site: 'matchmaid.co.nz' },
+  AU: { where: 'Australia', site: 'matchmaid.com.au' },
+};
+
+// The word for a background check, per country. Australia does not have a
+// "criminal check" - it has a National Police Check.
+export const POLICE_CHECK_TERM = { NZ: 'criminal check', AU: 'police check' };
+
+function shell(bodyHtml, unsubUrl, country) {
+  const f = COUNTRY_FOOTER[country] || COUNTRY_FOOTER.NZ;
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#1a1a1a">
     <div style="font-size:20px;font-weight:700;letter-spacing:-0.01em;color:#123b4a;margin-bottom:24px">Match&nbsp;Maid</div>
     ${bodyHtml}
     <hr style="border:none;border-top:1px solid #e6e6e6;margin:28px 0 16px" />
-    <p style="font-size:12px;color:#8a8a8a;line-height:1.5;margin:0">Match Maid · Christchurch, NZ<br/>
-      You're receiving this because someone used this address on matchmaid.co.nz.${
+    <p style="font-size:12px;color:#8a8a8a;line-height:1.5;margin:0">Match Maid · ${f.where}<br/>
+      You're receiving this because someone used this address on ${f.site}.${
         unsubUrl
           ? `<br/><a href="${unsubUrl}" style="color:#8a8a8a">Unsubscribe from these updates</a>`
           : ''
@@ -84,7 +97,7 @@ export async function sendVerificationEmail({ to, name, code }) {
 }
 
 // --- Email: you have a new enquiry (to the cleaner) ------------------------
-export async function sendEnquiryEmail({ to, cleanerName, clientName, service, suburb, message }) {
+export async function sendEnquiryEmail({ to, cleanerName, clientName, service, suburb, message, country }) {
   const hi = cleanerName ? `Hi ${escapeHtml(cleanerName)},` : 'Hi,';
   const bits = [service && `a <strong>${escapeHtml(service)}</strong>`, suburb && `in <strong>${escapeHtml(suburb)}</strong>`]
     .filter(Boolean).join(' ');
@@ -93,7 +106,7 @@ export async function sendEnquiryEmail({ to, cleanerName, clientName, service, s
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">Good news - <strong>${escapeHtml(clientName || 'a customer')}</strong> has sent you a new enquiry${bits ? ' for ' + bits : ''} on Match Maid. It's exclusively yours.</p>
     ${message ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#f4f1ea;border-left:3px solid #14b8a6;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333">"${escapeHtml(message)}"</blockquote>` : ''}
     <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Reply in your portal</a></p>
-    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">Replying quickly keeps you at the top of search results.</p>`);
+    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">Replying quickly keeps you at the top of search results.</p>`, null, country);
   const text = `${cleanerName ? cleanerName + ',\n\n' : ''}${clientName || 'A customer'} has sent you a new enquiry${bits ? ' for ' + service + (suburb ? ' in ' + suburb : '') : ''} on Match Maid.${message ? '\n\n"' + message + '"' : ''}\n\nReply in your portal: ${APP_URL}/maid`;
   return sendEmail({ to, subject: `New Match Maid enquiry from ${clientName || 'a customer'}`, html, text });
 }
@@ -101,11 +114,14 @@ export async function sendEnquiryEmail({ to, cleanerName, clientName, service, s
 // --- Email: your document was approved / declined (to the cleaner) ---------
 const VERIF_LABEL = { id: 'ID', police: 'criminal check', insurance: 'insurance' };
 const VERIF_BADGE = { id: 'ID verified', police: 'Criminal checked', insurance: 'Insured' };
+const VERIF_LABEL_AU = { id: 'ID', police: 'police check', insurance: 'insurance' };
+const VERIF_BADGE_AU = { id: 'ID verified', police: 'Police checked', insurance: 'Insured' };
 
-export async function sendVerificationDecisionEmail({ to, name, type, approved }) {
+export async function sendVerificationDecisionEmail({ to, name, type, approved, country }) {
   const hi = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
-  const what = VERIF_LABEL[type] || 'document';
-  const badge = VERIF_BADGE[type] || 'verified';
+  const au = country === 'AU';
+  const what = (au ? VERIF_LABEL_AU : VERIF_LABEL)[type] || 'document';
+  const badge = (au ? VERIF_BADGE_AU : VERIF_BADGE)[type] || 'verified';
   const html = approved
     ? shell(`
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
@@ -151,7 +167,7 @@ ${APP_URL}/admin`;
 // The message is quoted rather than summarised - most replies are short enough
 // to answer from the inbox, and a notification that makes you log in to find
 // out whether it needs an answer is a worse notification.
-export async function sendNewMessageEmail({ to, toName, fromName, body, portal }) {
+export async function sendNewMessageEmail({ to, toName, fromName, body, portal, country }) {
   const hi = toName ? `Hi ${escapeHtml(String(toName).split(' ')[0])},` : 'Hi,';
   const who = escapeHtml(fromName || 'Someone');
   const trimmed = String(body || '').trim();
@@ -161,7 +177,7 @@ export async function sendNewMessageEmail({ to, toName, fromName, body, portal }
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px"><strong>${who}</strong> has sent you a message on Match Maid.</p>
     ${preview ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#f4f1ea;border-left:3px solid #14b8a6;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333">${escapeHtml(preview)}</blockquote>` : ''}
     <p style="margin:0 0 8px"><a href="${APP_URL}${portal || '/customer'}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Reply in your portal</a></p>
-    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">We'll only email you once about this conversation until you have read it, so a quick back-and-forth won't fill your inbox.</p>`);
+    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">We'll only email you once about this conversation until you have read it, so a quick back-and-forth won't fill your inbox.</p>`, null, country);
   const text = `${toName ? String(toName).split(' ')[0] + ',\n\n' : ''}${fromName || 'Someone'} has sent you a message on Match Maid.${preview ? `\n\n"${preview}"` : ''}\n\nReply: ${APP_URL}${portal || '/customer'}`;
   return sendEmail({ to, subject: `New message from ${fromName || 'a Match Maid user'}`, html, text });
 }
@@ -228,7 +244,7 @@ const NUDGE = {
 // gets written is a cleaner with no proof they are any good.
 //
 // One ask, one link, straight into the form. No "we value your feedback".
-export async function sendReviewRequestEmail({ to, name, cleanerName, when }) {
+export async function sendReviewRequestEmail({ to, name, cleanerName, when, country }) {
   const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
   const who = escapeHtml(cleanerName || 'your cleaner');
   const html = shell(`
@@ -241,7 +257,7 @@ export async function sendReviewRequestEmail({ to, name, cleanerName, when }) {
     <p style="margin:0 0 8px"><a href="${APP_URL}/customer?tab=messages" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Rate this clean</a></p>
     <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">
       If something went wrong, say so - we would rather know. Reply to this email and it comes
-      straight to us.</p>`);
+      straight to us.</p>`, null, country);
   const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${cleanerName || 'Your cleaner'} cleaned for you${when ? ` on ${when}` : ''}. How did it go?\n\nIt takes about a minute, and it is the main thing other households have to go on.\n\nRate this clean: ${APP_URL}/customer?tab=messages\n\nIf something went wrong, reply to this email and it comes straight to us.`;
   return sendEmail({ to, subject: `How did your clean with ${cleanerName || 'your cleaner'} go?`, html, text });
 }
@@ -258,7 +274,7 @@ export async function sendReviewRequestEmail({ to, name, cleanerName, when }) {
 // entirely until there is a Google Business Profile to point at.
 export async function sendCleanerReviewEmail({
   to, cleanerName, clientName, overall, dims, wouldUseAgain, comment,
-  referralLink, creditDollars, googleUrl,
+  referralLink, creditDollars, googleUrl, country,
 }) {
   const hi = cleanerName ? `Hi ${escapeHtml(String(cleanerName).split(' ')[0])},` : 'Hi,';
   const who = escapeHtml(clientName ? String(clientName).split(' ')[0] : 'A customer');
@@ -309,7 +325,7 @@ export async function sendCleanerReviewEmail({
     </div>
     ${comment ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#fff;border-left:3px solid #14b8a6;font-size:15px;line-height:1.6;font-style:italic;color:#333">${escapeHtml(comment)}</blockquote>` : ''}
     <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">See it on your profile</a></p>
-    ${asks}`);
+    ${asks}`, null, country);
 
   const text = `${cleanerName ? String(cleanerName).split(' ')[0] + ',\n\n' : ''}${who} has reviewed a clean you did.\n\n`
     + `Overall: ${one(overall)}/5\n`
@@ -323,7 +339,7 @@ export async function sendCleanerReviewEmail({
   return sendEmail({ to, subject: `${who} rated your clean ${one(overall)}/5`, html, text });
 }
 
-export async function sendNudgeEmail({ to, name, kind, unsubUrl }) {
+export async function sendNudgeEmail({ to, name, kind, unsubUrl, country }) {
   const n = NUDGE[kind];
   if (!n) return { ok: false, error: `unknown nudge kind ${kind}` };
   const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
@@ -331,7 +347,7 @@ export async function sendNudgeEmail({ to, name, kind, unsubUrl }) {
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${n.lead}</p>
     <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${n.body}</p>
-    <p style="margin:0 0 8px"><a href="${APP_URL}${n.href}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">${escapeHtml(n.cta)}</a></p>`, unsubUrl);
+    <p style="margin:0 0 8px"><a href="${APP_URL}${n.href}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">${escapeHtml(n.cta)}</a></p>`, unsubUrl, country);
   const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${n.lead}\n\n${n.body}\n\n${n.cta}: ${APP_URL}${n.href}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`;
   return sendEmail({ to, subject: n.subject, html, text });
 }

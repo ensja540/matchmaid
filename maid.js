@@ -36,9 +36,26 @@ if (sessionUser && sessionUser.role !== 'cleaner' && ROLE_HOME[sessionUser.role]
 
 // Verification process state (demo: persisted in localStorage).
 const VERIF_KEY = 'mm_maid_verif';
+// The background check is called something different in each country, comes
+// from a different body, and is bought in a different place. Telling an
+// Australian cleaner to get a New Zealand Ministry of Justice check from
+// checkplease.co.nz is not a wording problem - it is an instruction they cannot
+// follow.
+const POLICE_CHECK = {
+  NZ: {
+    label: 'Criminal check',
+    desc: 'Upload your criminal record (Ministry of Justice) check.',
+    extra: `Don't have a criminal check? <a href="https://checkplease.co.nz/" target="_blank" rel="noopener">Get one here</a>.`,
+  },
+  AU: {
+    label: 'Police check',
+    desc: 'Upload your National Police Check.',
+    extra: `Don't have a police check? <a href="https://www.afp.gov.au/what-we-do/services/criminal-records/national-police-checks" target="_blank" rel="noopener">Get one from the AFP</a>, or any accredited provider.`,
+  },
+};
 const VERIF_ITEMS = [
   { key: 'id', label: 'ID verified', desc: 'Upload a photo of your driver licence or passport, plus a selfie so we can check it is you.', selfie: true },
-  { key: 'police', label: 'Criminal check', desc: 'Upload your criminal record (Ministry of Justice) check.', extra: `Don't have a criminal check? <a href="https://checkplease.co.nz/" target="_blank" rel="noopener">Get one here</a>.` },
+  { key: 'police', ...(POLICE_CHECK[MM_COUNTRY] || POLICE_CHECK.NZ) },
   { key: 'insurance', label: 'Insured', desc: 'Upload your public-liability insurance certificate.' },
 ];
 function loadVerif() {
@@ -1271,7 +1288,7 @@ function gettingStartedHTML() {
     { n: 1, label: 'Set your profile', desc: 'Add your business name, a short bio and your fees.', tab: 'profile', done: profileSet },
     { n: 2, label: 'Set your availability', desc: 'Mark the mornings, afternoons and evenings you can work. This is what matches you to clients.', tab: 'availability', done: availSet },
     { n: 3, label: 'Choose where you work', desc: 'Christchurch-wide by default, or tick specific suburbs.', tab: 'profile', done: profileSet },
-    { n: 4, label: 'Get verified', desc: 'Upload ID, a criminal check and insurance to earn trust badges.', tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
+    { n: 4, label: 'Get verified', desc: `Upload ID, a ${MM_COUNTRY === 'AU' ? 'police' : 'criminal'} check and insurance to earn trust badges.`, tab: 'profile', done: ['id', 'police', 'insurance'].some((k) => verif[k] && verif[k] !== 'none') },
   ];
   // Once the profile itself is fully set up (details, availability and areas),
   // retire the whole get-started card - verification is a separate optional nudge.

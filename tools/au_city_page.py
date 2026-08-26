@@ -260,7 +260,7 @@ def city_page(slug, city, state, rates, hero, local, others):
         '</a>' + NL +
         '            <a class="btn outline lg" href="/au/for-maids">List your services</a>' + NL +
         '          </div>' + NL +
-        '          <img class="trust-badges" src="/assets/brand/trust_badges.svg" alt="Cleaners '
+        '          <img class="trust-badges" src="/assets/brand/trust_badges_au.svg" alt="Cleaners '
         'can be verified, police checked and insured" />' + NL +
         '        </div>' + NL +
         '        <div class="hero-art"><img src="/assets/brand/hero_graphic.svg" alt="A Match Maid '

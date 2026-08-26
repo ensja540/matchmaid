@@ -71,6 +71,17 @@ CITIES = [
 # Content substitutions, longest first so "New Zealand" is never half-matched by
 # a later "Zealand" rule. Order within this list is significant.
 CONTENT = [
+    # Australia does not have a "criminal check". The document is a National
+    # Police Check, from the AFP or an accredited provider, and a cleaner told
+    # to get the wrong one cannot act on the instruction.
+    ('Criminal checked', 'Police checked'),
+    ('criminal checked', 'police checked'),
+    ('Criminal check', 'Police check'),
+    ('criminal check', 'police check'),
+    ('criminal-check', 'police-check'),
+    # The badge artwork has the label baked in as SVG text, so the whole asset
+    # is swapped rather than the words inside it.
+    ('/assets/brand/trust_badges.svg', '/assets/brand/trust_badges_au.svg'),
     # First, because the broad "across New Zealand" rule below would otherwise
     # eat its prefix and leave "Now open across Australia" - which is a lie:
     # six metros is not a country.
@@ -163,6 +174,11 @@ def canonicalise(html, nz_path, au_path):
     """Point canonical/og:url at the /au URL and add the hreflang pair."""
     html = html.replace(f'{ORIGIN}{nz_path}"', f'{ORIGIN}{au_path}"')
     html = html.replace('<html lang="en-NZ">', '<html lang="en-AU">')
+    # Structured data carries its own language, and en-NZ is on the protect list
+    # (it has to be, or the blanket rule turns it into en-Australia), so it is
+    # corrected here rather than in the content pass.
+    html = html.replace('"inLanguage": "en-NZ"', '"inLanguage": "en-AU"')
+    html = html.replace('"inLanguage":"en-NZ"', '"inLanguage":"en-AU"')
     return add_hreflang(html, nz_path, au_path)
 
 
