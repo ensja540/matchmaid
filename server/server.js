@@ -108,9 +108,26 @@ function wantsToStay(req) {
 //  * It always leaves an escape - ?stay=1 plus a cookie - so someone who
 //    deliberately opened the other country's site is inconvenienced once rather
 //    than trapped in a loop.
+// Default: redirect. Jack's call, after I argued for the banner.
+//
+// Two of the three objections I raised do not survive contact with this
+// direction of travel:
+//
+//   * Crawling. We never redirect when Cloudflare cannot place the visitor,
+//     and Googlebot crawls from the United States - so it is never redirected,
+//     and both sites stay fully crawlable. The risk was real for a blanket
+//     rule; it is not real for this one.
+//   * Sharing. Sending an Australian who was given a .co.nz link to the same
+//     page on .com.au is closer to a feature than a bug. What genuinely broke
+//     sharing was the OTHER direction - bouncing New Zealanders off the
+//     Australian site - and that only costs anything while /au is the only
+//     place the Australian pages live.
+//
+// What is left is the third: being moved somewhere you did not ask to go can
+// read as broken. That is what ?stay=1 and the cookie are for.
 const GEO_MODE = (() => {
   const m = String(process.env.GEO_STEER || '').toLowerCase();
-  return ['banner', 'redirect', 'off'].includes(m) ? m : 'banner';
+  return ['banner', 'redirect', 'off'].includes(m) ? m : 'redirect';
 })();
 
 app.use((req, res, next) => {
@@ -222,7 +239,9 @@ app.get('/api/geo', (req, res) => {
   const site = forAu ? 'AU' : 'NZ';
 
   let other = null;
-  if (paired && cc && cc !== site && (cc === 'NZ' || cc === 'AU')) {
+  // Someone who used ?stay=1 has already answered this question. Offering them
+  // the swap again is the nagging the escape hatch exists to prevent.
+  if (paired && cc && cc !== site && (cc === 'NZ' || cc === 'AU') && !wantsToStay(req)) {
     other = cc === 'AU'
       ? { country: 'AU', name: 'Australia', url: AU_ORIGIN ? AU_ORIGIN + bare : AU_BASE + (bare === '/' ? '' : bare) }
       : { country: 'NZ', name: 'New Zealand', url: (AU_ORIGIN || auHost) ? NZ_ORIGIN + bare : bare };
