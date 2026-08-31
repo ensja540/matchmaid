@@ -37,7 +37,7 @@ ORIGIN = NZ_ORIGIN
 # than threaded through fifty string concatenations.
 AU_P = AU_BASE
 AU_HOME = au_path('/')
-CSS = '/styles.css?v=119'
+CSS = '/styles.css?v=120'
 NL = '\n'
 
 NOTICE = ('\U0001F9FD Now open in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin - '
