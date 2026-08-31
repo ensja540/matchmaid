@@ -258,8 +258,8 @@ def city_page(slug, city, state, rates, hero, local, others):
         '          <h1>House cleaners<br />in ' + esc(city) + '.</h1>' + NL +
         '          <p class="lede">' + NL +
         '            ' + esc(hero) + ' Browse independent local cleaners who cover ' + esc(city) +
-        ', see their hourly rates in plain sight, and message the one you like. No bidding wars, '
-        'no middleman, and it\'s free for households.' + NL +
+        ', see their transparent hourly rates, and message the one you like. No bidding wars, '
+        'no middlemen, and it\'s free for households.' + NL +
         '          </p>' + NL +
         '          <div class="hero-actions">' + NL +
         '            <a class="btn solid lg" href="/au/browse">Find a cleaner in ' + esc(city) +
