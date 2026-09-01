@@ -42,7 +42,7 @@ NL = '\n'
 
 NOTICE = ('\U0001F9FD Now open in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin - '
           'browse local cleaners, see their rates up front, and message the one you pick. '
-          'Free for households and cleaners.')
+          'Free for households and for cleaners while we grow.')
 
 # slug, city, state, (low, typical, high) AUD hourly, hero line, local-knowledge line.
 CITIES = [
@@ -280,11 +280,12 @@ def city_page(slug, city, state, rates, hero, local, others):
         '        </div>' + NL +
         '        <div class="benefit-grid reveal">' + NL +
         '          <div class="benefit"><span class="b-mark">01 &middot; FREE</span><h3>Always free '
-        'for you</h3><p>Search, compare and contact ' + esc(city) + ' cleaners at no cost. You '
-        'never pay Match Maid a cent.</p></div>' + NL +
+        'for you</h3><p>Search, compare and contact ' + esc(city) + ' cleaners at no cost. We will only ever take a small '
+        'monthly fee from cleaners, which keeps the service free for customers.'
+        '</p></div>' + NL +
         '          <div class="benefit"><span class="b-mark">02 &middot; TRANSPARENT</span><h3>Rates '
-        'up front</h3><p>Every cleaner\'s hourly rate is shown before you get in touch. No quotes '
-        'to chase, no surprises.</p></div>' + NL +
+        'up front</h3><p>Every cleaner\'s hourly rate is shown before you get in touch. We want full '
+        'transparency for customers.</p></div>' + NL +
         '          <div class="benefit"><span class="b-mark">03 &middot; YOUR PICK</span><h3>Choose '
         'your own cleaner</h3><p>See reviews and verified badges, then pick the person who\'s the '
         'right fit for your home.</p></div>' + NL +
