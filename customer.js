@@ -895,6 +895,14 @@ function openReviewModal(conversationId) {
       reviewCache[conversationId] = { ...data, overall: res.overall };
       pendingReviews = pendingReviews.filter((p) => p.conversationId !== conversationId);
       reviewModal.hidden = true;
+      // They have just told us the clean went well and are still thinking about
+      // it. Only fires at 4+, once per person, and not at all until there is a
+      // Google Business Profile to point at.
+      window.GoogleAsk?.maybeAsk(res.overall, {
+        title: 'Glad that went well.',
+        body: 'If Match Maid made finding a cleaner easier, a line on Google helps '
+            + 'the next household know we are worth a look.',
+      });
       render();
     } catch {
       btn.disabled = false;

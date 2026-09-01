@@ -653,6 +653,190 @@ function checkCelebrations() {
 }
 
 if (sessionUser?.id) checkCelebrations();
+if (sessionUser?.id) refreshPendingClientReviews().then(() => { if (current === 'overview') render(); });
+
+// ---- Reviewing the household ----------------------------------------------
+// The mirror of the customer's review, kept deliberately short. Three fields,
+// not seven: a cleaner filling this in is standing in a driveway between jobs.
+// How did it go, would you go back, anything to add.
+//
+// It matters because of who reads it. The next cleaner deciding whether to take
+// an enquiry from that house sees the average on the house profile.
+let pendingClientReviews = [];
+
+function refreshPendingClientReviews() {
+  if (!sessionUser?.id || !mHasFetch) return Promise.resolve();
+  return mGet(`/api/pending-client-reviews?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((list) => { pendingClientReviews = Array.isArray(list) ? list : []; })
+    .catch(() => {});
+}
+
+function pendingClientReviewsHTML() {
+  if (!pendingClientReviews.length) return '';
+  const one = pendingClientReviews.length === 1;
+  return `<div class="panel-card review-nudge">
+    <h2>How ${one ? 'was that house' : 'were those houses'}?</h2>
+    <p class="muted">A quick word helps the next cleaner know what they are walking into.</p>
+    ${pendingClientReviews.map((p) =>
+      `<button type="button" class="btn solid sm" data-house-review="${escapeHtml(p.conversationId)}">
+         Rate ${escapeHtml(p.client)}${p.suburb ? `, ${escapeHtml(p.suburb)}` : ''}
+       </button>`).join('')}
+  </div>`;
+}
+
+function houseReviewHTML(who, existing) {
+  const r = existing || {};
+  const val = Number(r.rating) || 0;
+  const again = typeof r.wouldCleanAgain === 'boolean' ? r.wouldCleanAgain : null;
+  return `
+    <h2 class="rv-title">How was ${escapeHtml(who)}?</h2>
+    <form id="houseReviewForm" class="rv-form">
+      <section class="rv-step on" data-value="${val}">
+        <h3 class="rv-q">Rate the job overall</h3>
+        <div class="rv-stars-wrap">
+          <div class="rv-stars" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="5"
+               aria-valuenow="${val}" aria-valuetext="${val ? val.toFixed(1) + ' out of 5' : 'not rated yet'}">
+            <span class="rating-stars xl"><i style="width:${(val / 5) * 100}%"></i></span>
+          </div>
+          <p class="rv-readout"><span class="rv-num">${val ? val.toFixed(1) : '—'}</span>
+            <span class="rv-word">${Review.wordFor(val)}</span></p>
+          <p class="rv-hint">Tap a star, or drag across for anything in between</p>
+        </div>
+        <h3 class="rv-q">Would you clean for this house again?</h3>
+        <div class="chip-select rv-again-box" id="houseAgain">
+          <button type="button" class="chip select lg ${again === true ? 'on' : ''}" data-again="yes">Yes</button>
+          <button type="button" class="chip select lg ${again === false ? 'on' : ''}" data-again="no">No</button>
+        </div>
+        <label class="field"><span>Anything the next cleaner should know? (optional)</span>
+          <textarea name="comment" rows="3" placeholder="Access, pets, parking…">${escapeHtml(r.comment || '')}</textarea>
+        </label>
+      </section>
+      <div class="rv-nav">
+        <button class="btn solid" type="submit" disabled>${existing ? 'Update' : 'Submit'}</button>
+      </div>
+      <p class="save-msg" id="houseReviewMsg"></p>
+    </form>`;
+}
+
+async function openHouseReview(conversationId) {
+  if (!clientModal || !conversationId || !sessionUser?.id) return;
+  const p = pendingClientReviews.find((x) => x.conversationId === conversationId);
+  const who = p ? p.client : 'this house';
+
+  let existing = null;
+  try {
+    const d = await mGet(`/api/client-review?conversationId=${encodeURIComponent(conversationId)}&userId=${encodeURIComponent(sessionUser.id)}`);
+    existing = d?.review || null;
+  } catch {}
+
+  clientModalBody.innerHTML = houseReviewHTML(who, existing);
+  clientModal.hidden = false;
+
+  const form = clientModalBody.querySelector('#houseReviewForm');
+  const step = form.querySelector('.rv-step');
+  const stars = form.querySelector('.rating-stars');
+  const fill = form.querySelector('.rating-stars > i');
+  const slider = form.querySelector('.rv-stars');
+  const num = form.querySelector('.rv-num');
+  const word = form.querySelector('.rv-word');
+  const submit = form.querySelector('button[type=submit]');
+  const msg = form.querySelector('#houseReviewMsg');
+  let again = typeof existing?.wouldCleanAgain === 'boolean' ? existing.wouldCleanAgain : null;
+
+  const value = () => Number(step.dataset.value) || 0;
+  const sync = () => { submit.disabled = !(value() > 0 && again !== null); };
+  const set = (n) => {
+    step.dataset.value = n;
+    slider.setAttribute('aria-valuenow', n);
+    slider.setAttribute('aria-valuetext', n ? `${n.toFixed(1)} out of 5` : 'not rated yet');
+    fill.style.width = `${(n / 5) * 100}%`;
+    num.textContent = n ? n.toFixed(1) : '—';
+    word.textContent = Review.wordFor(n);
+    step.classList.toggle('rated', n > 0);
+    sync();
+  };
+
+  // Same control as the customer's review: tap for a whole star, drag for the
+  // decimals. A tap that did not move snaps to the star under the finger.
+  const ratioAt = (x) => {
+    const r = stars.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (x - r.left) / r.width));
+  };
+  let dragging = false, moved = false, downX = 0;
+  stars.addEventListener('pointerdown', (e) => {
+    dragging = true; moved = false; downX = e.clientX;
+    stars.setPointerCapture?.(e.pointerId); e.preventDefault();
+  });
+  stars.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    if (Math.abs(e.clientX - downX) > 4) moved = true;
+    if (moved) set(Math.min(5, Math.max(1, Math.round(ratioAt(e.clientX) * 50) / 10)));
+  });
+  stars.addEventListener('pointerup', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    if (!moved) set(Math.min(5, Math.max(1, Math.ceil(ratioAt(e.clientX) * 5) || 1)));
+  });
+  stars.addEventListener('pointercancel', () => { dragging = false; });
+  slider.addEventListener('keydown', (e) => {
+    const cur = value();
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { set(cur ? Math.min(5, Math.round((cur + 0.1) * 10) / 10) : 3); e.preventDefault(); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { set(cur ? Math.max(1, Math.round((cur - 0.1) * 10) / 10) : 3); e.preventDefault(); }
+    if (e.key >= '1' && e.key <= '5') { set(Number(e.key)); e.preventDefault(); }
+  });
+
+  const box = form.querySelector('#houseAgain');
+  box.querySelectorAll('[data-again]').forEach((b) =>
+    b.addEventListener('click', () => {
+      box.querySelectorAll('[data-again]').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      again = b.dataset.again === 'yes';
+      sync();
+    }));
+
+  set(value());
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submit.disabled = true;
+    msg.textContent = 'Saving…';
+    msg.className = 'save-msg pending';
+    try {
+      const res = await fetch('/api/client-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId, userId: sessionUser.id,
+          rating: value(), wouldCleanAgain: again,
+          comment: form.comment.value.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not save.');
+      pendingClientReviews = pendingClientReviews.filter((x) => x.conversationId !== conversationId);
+      clientModal.hidden = true;
+      // A finished review is the moment to ask for the Google one - they have
+      // just had a good experience and are already thinking about the job.
+      maybeAskForGoogle(value());
+      render();
+    } catch (err) {
+      submit.disabled = false;
+      msg.textContent = err.message;
+      msg.className = 'save-msg err';
+    }
+  });
+}
+
+// The Google ask, shared with the customer portal. Only fires after a rating of
+// 4+, once per person, and never at all without a Business Profile set.
+function maybeAskForGoogle(score) {
+  window.GoogleAsk?.maybeAsk(score, {
+    title: 'Glad that one went well.',
+    body: 'If Match Maid has been worth using, a line on Google is how the next '
+        + 'cleaner finds us - and how households know we are real.',
+  });
+}
+
 
 
 let pollTimer = null;
@@ -751,6 +935,7 @@ const PANELS = {
     const newCount = enquiries.filter((e) => e.status === 'new').length;
     return `
       <h1>Welcome ${firstName}!</h1>
+      ${pendingClientReviewsHTML()}
       ${gettingStartedHTML()}
       <div class="trial-banner">
         <div class="trial-top">
@@ -905,6 +1090,9 @@ const PANELS = {
 // ---------- Wiring ----------
 const WIRE = {
   overview() {
+    panel.querySelectorAll('[data-house-review]').forEach((b) =>
+      b.addEventListener('click', () => openHouseReview(b.dataset.houseReview))
+    );
     panel.querySelector('[data-goto]')?.addEventListener('click', () => {
       current = 'enquiries';
       tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'enquiries'));

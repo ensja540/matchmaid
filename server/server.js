@@ -219,6 +219,14 @@ app.use(
 // stops Render's free tier idling out is as cheap as a request can be.
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 
+// Where to send someone who wants to review Match Maid itself. Served rather
+// than baked into the pages so it can be set once, in one env var, without a
+// deploy - and so it is empty until there is a Google Business Profile, which
+// is what stops the ask being shown at all.
+app.get('/api/google-review-url', (_req, res) => {
+  res.json({ url: process.env.GOOGLE_REVIEW_URL || '' });
+});
+
 // Where the visitor is, and where the other country's version of this page
 // lives. Read by geo-banner.js to offer the swap without ever performing it.
 //
@@ -1383,7 +1391,12 @@ app.get('/api/client-profile', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'No such user.' });
     const r = rows[0];
+    // How other cleaners have found this household. The reason the review
+    // exists at all: it is read here, when someone is deciding whether to go.
+    const cp = await query('select id from client_profiles where user_id = $1', [userId]);
+    const reputation = cp.rows[0] ? await clientReputation(cp.rows[0].id) : null;
     res.json({
+      reputation,
       fullName: r.full_name,
       email: r.email,
       phone: r.phone || '',
@@ -3521,6 +3534,146 @@ async function refreshCleanerRating(cleanerId) {
 }
 
 // The reviewer must be the client on that conversation.
+// --- The cleaner's review of the household ---------------------------------
+// Deliberately three fields where the customer's is seven. A cleaner filling
+// this in is standing in a driveway between jobs: how did it go, would you go
+// back, anything to add. That is the whole thing.
+//
+// The value of it is on the OTHER side: a cleaner deciding whether to accept an
+// enquiry can see how the last cleaner found that house.
+async function cleanerOnConversation(conversationId, userId) {
+  const { rows } = await query(
+    `select c.id, c.cleaner_id, c.client_id
+       from conversations c join cleaner_profiles cpf on cpf.id = c.cleaner_id
+      where c.id = $1 and cpf.user_id = $2`,
+    [conversationId, userId]
+  );
+  return rows[0] ?? null;
+}
+
+async function refreshClientRating(clientId) {
+  await query(
+    `update client_profiles clp set
+       avg_rating   = (select avg(rating) from client_reviews r
+                        where r.client_id = clp.id and r.status = 'published'),
+       review_count = (select count(*) from client_reviews r
+                        where r.client_id = clp.id and r.status = 'published')
+     where clp.id = $1`,
+    [clientId]
+  );
+}
+
+// Cleans this cleaner has finished but not yet reviewed. Mirrors
+// /api/pending-reviews on the customer side, including waiting for the same
+// completion signal - so neither side is asked before the clean has happened.
+app.get('/api/pending-client-reviews', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+    const { rows } = await query(
+      `select c.id as conversation_id, clu.full_name as client_name,
+              coalesce(s.name, es.name) as suburb
+         from conversations c
+         join cleaner_profiles cpf on cpf.id = c.cleaner_id
+         join client_profiles clp on clp.id = c.client_id
+         join users clu on clu.id = clp.user_id
+         left join suburbs s on s.id = clp.default_suburb_id
+         left join enquiries e on e.id = c.enquiry_id
+         left join suburbs es on es.id = e.suburb_id
+        where cpf.user_id = $1
+          and exists (select 1 from messages m
+                       where m.conversation_id = c.id and m.kind = 'review_request')
+          and not exists (select 1 from client_reviews r where r.conversation_id = c.id)
+        order by c.last_message_at desc`,
+      [userId]
+    );
+    res.json(rows.map((r) => ({
+      conversationId: r.conversation_id,
+      // First name only. This is a prompt, not a record.
+      client: String(r.client_name || '').split(' ')[0] || 'this household',
+      suburb: r.suburb || '',
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load pending household reviews.' });
+  }
+});
+
+app.get('/api/client-review', async (req, res) => {
+  try {
+    const { conversationId, userId } = req.query;
+    if (!conversationId || !userId)
+      return res.status(400).json({ error: 'conversationId and userId are required.' });
+    if (!(await cleanerOnConversation(conversationId, userId)))
+      return res.status(403).json({ error: 'Only the cleaner on this thread can review it.' });
+    const { rows } = await query(
+      `select rating, would_clean_again, comment from client_reviews where conversation_id = $1`,
+      [conversationId]
+    );
+    const r = rows[0];
+    res.json({
+      review: r
+        ? { rating: Number(r.rating), wouldCleanAgain: r.would_clean_again, comment: r.comment || '' }
+        : null,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load that review.' });
+  }
+});
+
+app.post('/api/client-review', async (req, res) => {
+  try {
+    const { conversationId, userId, rating, wouldCleanAgain, comment } = req.body ?? {};
+    if (!conversationId || !userId)
+      return res.status(400).json({ error: 'conversationId and userId are required.' });
+
+    const conv = await cleanerOnConversation(conversationId, userId);
+    if (!conv) return res.status(403).json({ error: 'Only the cleaner on this thread can review it.' });
+
+    const n = Number(rating);
+    if (!Number.isFinite(n) || n < 1 || n > 5)
+      return res.status(400).json({ error: 'Please rate the clean between 1 and 5.' });
+    if (typeof wouldCleanAgain !== 'boolean')
+      return res.status(400).json({ error: 'Please say whether you would clean for them again.' });
+    const text = typeof comment === 'string' ? comment.trim().slice(0, 2000) || null : null;
+
+    await query(
+      `insert into client_reviews (conversation_id, cleaner_id, client_id, rating, would_clean_again, comment)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (conversation_id) do update set
+         rating = excluded.rating,
+         would_clean_again = excluded.would_clean_again,
+         comment = excluded.comment`,
+      [conversationId, conv.cleaner_id, conv.client_id, Math.round(n * 10) / 10, wouldCleanAgain, text]
+    );
+    await refreshClientRating(conv.client_id);
+    res.json({ ok: true, rating: Math.round(n * 10) / 10 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not save your review.' });
+  }
+});
+
+// What a cleaner sees about a household before accepting: the average, how many
+// cleaners have been, and how many would go back. Names are deliberately left
+// out - a household should not be identifiable-by-quote to the next cleaner.
+async function clientReputation(clientId) {
+  const { rows } = await query(
+    `select count(*)::int as n, avg(rating) as rating,
+            avg(case when would_clean_again then 1.0 else 0.0 end) as again
+       from client_reviews where client_id = $1 and status = 'published'`,
+    [clientId]
+  );
+  const r = rows[0];
+  if (!r || !r.n) return null;
+  return {
+    count: r.n,
+    rating: Math.round(Number(r.rating) * 10) / 10,
+    wouldCleanAgainPct: Math.round(Number(r.again) * 100),
+  };
+}
+
 async function clientOnConversation(conversationId, userId) {
   const { rows } = await query(
     `select c.id, c.cleaner_id, c.client_id

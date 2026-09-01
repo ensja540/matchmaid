@@ -845,6 +845,15 @@ a { color: inherit; text-decoration: none; }
 .cb-actions { display: flex; gap: 0.6rem; }
 .cb-actions .btn { flex: 1; }
 
+/* The Google ask. Fires once, after someone has just rated a clean 4+, so it
+   arrives on the back of a good moment rather than interrupting one. */
+.ga-overlay { z-index: 300; }
+.ga-modal { max-width: 420px; text-align: center; }
+.ga-title { font-family: var(--serif); font-size: 1.6rem; margin: 0 0 0.6rem; }
+.ga-body { color: var(--muted); font-size: 0.95rem; line-height: 1.55; margin: 0 0 1.4rem; }
+.ga-actions { display: flex; gap: 0.6rem; }
+.ga-actions .btn { flex: 1; }
+
 /* The country banner. Replaced an automatic IP redirect - see geo-banner.js.
    One quiet line at the very top: it is an offer, not an interruption. */
 .geo-bar { display: flex; align-items: center; gap: 0.8rem; padding: 0.55rem 1rem; background: var(--ink); color: var(--paper); font-size: 0.85rem; }
