@@ -19,6 +19,7 @@ import {
 // the same numbers this file enforces - importing server.js would start a
 // second HTTP server, which is why they used to be restated by hand.
 import { COUNTRY_FLOORS, COUNTRY_FLOOR_WHY } from './floors.mjs';
+import { notifyUnderpriced } from './underpriced.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, '..'); // project root holds index.html etc.
@@ -3678,6 +3679,28 @@ app.post('/api/tasks/referral-credits', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not sweep referral credits.' });
+  }
+});
+
+// Tells any cleaner listed below their country's floor that their listing has
+// come off the directory, and what to do about it.
+//
+// An endpoint as well as a script because Render's free tier has no shell, so a
+// script alone could be written and never actually run. Same guard as the other
+// tasks, and the same dry-run-by-default rule as the nudges below: nothing is
+// sent unless the caller passes send=1, so the safe call is the informative one.
+app.post('/api/tasks/underpriced-notices', async (req, res) => {
+  if (!process.env.CRON_SECRET)
+    return res.status(503).json({ error: 'CRON_SECRET is not set on this server.' });
+  if (!cronAuthorised(req)) return res.status(403).json({ error: 'Forbidden.' });
+  try {
+    const send = String(req.query.send ?? req.body?.send ?? '') === '1';
+    const report = await notifyUnderpriced({ send });
+    console.log(`underpriced notices: ${report.found} under floor, ${report.pending} pending, ${report.sent} sent${report.dryRun ? ' (dry run)' : ''}`);
+    res.json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not send the underpriced notices.' });
   }
 });
 
