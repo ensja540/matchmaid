@@ -145,6 +145,38 @@ export async function sendVerificationDecisionEmail({ to, name, type, approved, 
   });
 }
 
+// --- Email: your rate is below the floor, so your listing is down ----------
+// Transactional, and deliberately so: this is not a marketing nudge but the
+// notice that their listing has come off the directory, which they are owed
+// whether or not they opted out of nudges.
+//
+// It leads with the consequence rather than the rule. "Your listing is hidden"
+// is the thing they need to know; the minimum wage is why, and goes second.
+// No scolding - the overwhelmingly likely cause is a typo or a value typed in
+// while they were trying the form out, and an email that treats it as a typo
+// is the one that gets it fixed.
+export async function sendRateFloorEmail({ to, name, rate, floor, why, country }) {
+  const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
+  const cur = country === 'AU' ? 'A$' : '$';
+  const askFor = Math.ceil(floor);
+  const shown = `${cur}${rate}`;
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">Your Match Maid listing is showing an hourly rate of <strong>${escapeHtml(shown)}</strong>, so we have taken it out of search for now. It looks like a typo rather than your real price.</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">The lowest rate we can list is <strong>${cur}${askFor} an hour</strong> &mdash; ${escapeHtml(why)}, and a listing under it isn't an offer anyone could take up.</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">Set your real hourly fee and your listing goes straight back up. It takes about a minute.</p>
+    <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Fix my rate</a></p>
+    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">Nothing else has changed &mdash; your profile, your areas and your messages are all still there.</p>`, null, country);
+  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}Your Match Maid listing is showing an hourly rate of ${shown}, so we have taken it out of search for now. It looks like a typo rather than your real price.
+
+The lowest rate we can list is ${cur}${askFor} an hour - ${why}, and a listing under it isn't an offer anyone could take up.
+
+Set your real hourly fee and your listing goes straight back up: ${APP_URL}/maid
+
+Nothing else has changed - your profile, your areas and your messages are all still there.`;
+  return sendEmail({ to, subject: 'Your Match Maid listing is paused - please check your rate', html, text });
+}
+
 // --- Email: a document is waiting for review (to the admin) ----------------
 // Goes to ADMIN_EMAIL so there is no need to keep checking the admin page.
 export async function sendVerificationPendingEmail({ to, cleanerName, cleanerEmail, type, hasSelfie }) {

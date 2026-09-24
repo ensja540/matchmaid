@@ -898,10 +898,24 @@ function openReviewModal(conversationId) {
       // They have just told us the clean went well and are still thinking about
       // it. Only fires at 4+, once per person, and not at all until there is a
       // Google Business Profile to point at.
-      window.GoogleAsk?.maybeAsk(res.overall, {
-        title: 'Glad that went well.',
-        body: 'If Match Maid made finding a cleaner easier, a line on Google helps '
-            + 'the next household know we are worth a look.',
+      // Two asks, never both. Google is the bigger favour and is gated on a
+      // Business Profile existing, so it goes first; the share ask picks up the
+      // five-star reviews it stayed silent on.
+      Promise.resolve(
+        window.GoogleAsk?.maybeAsk(res.overall, {
+          title: 'Glad that went well.',
+          body: 'If Match Maid made finding a cleaner easier, a line on Google helps '
+              + 'the next household know we are worth a look.',
+        })
+      ).then((shown) => {
+        if (shown) return;
+        window.ShareAsk?.maybeAsk(res.overall, {
+          shareUrl: location.origin,
+          shareText: 'I found my cleaner on Match Maid - every rate is up front and it is free to use.',
+          title: 'Loved your experience?',
+          body: 'Share Match Maid with a friend so we can keep growing. The more households '
+              + 'who use it, the more cleaners join - and the better it gets for everyone.',
+        });
       });
       render();
     } catch {

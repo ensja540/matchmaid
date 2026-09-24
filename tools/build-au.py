@@ -86,12 +86,41 @@ CONTENT = [
     ('Criminal check', 'Police check'),
     ('criminal check', 'police check'),
     ('criminal-check', 'police-check'),
+    # The New Zealand city pages have no Australian twin - Australia is open in
+    # metros, not in Auckland and Christchurch - so the LINK MAP cannot help
+    # here and the hrefs are rewritten to the nearest equivalent metro. Lower
+    # case, and first, so they are settled before the prose rules below turn the
+    # visible "Auckland" into "Melbourne" and leave the href behind.
+    ('/cleaners/auckland', '/cleaners/melbourne'),
+    ('/cleaners/christchurch', '/cleaners/sydney'),
+    # /house-cleaning-prices is New Zealand-only: the rates on it are NZD and
+    # drawn from New Zealand listings. Rather than link Australians at a page of
+    # the wrong country's money, the sentence carrying the link is replaced.
+    ('Not sure what to budget? <a href="/house-cleaning-prices">See what a clean costs</a>.',
+     'Every cleaner shows their hourly rate before you get in touch.'),
+    ('<a class="btn outline lg" href="/house-cleaning-prices">What a clean costs</a>',
+     '<a class="btn outline lg" href="/for-maids">List your services</a>'),
     # The badge artwork has the label baked in as SVG text, so the whole asset
     # is swapped rather than the words inside it.
     ('/assets/brand/trust_badges.svg', '/assets/brand/trust_badges_au.svg'),
     # First, because the broad "across New Zealand" rule below would otherwise
     # eat its prefix and leave "Now open across Australia" - which is a lie:
     # six metros is not a country.
+    # The WHOLE sentence, not just its opening clause. The old rule swapped the
+    # prefix and let the New Zealand tail run on, which was fine while both
+    # sides said the same thing. Australia now says something different -
+    # opening, not open - so the tail has to go with it or the notice reads
+    # "no local cleaners, see their rates up front".
+    #
+    # Australia has no active cleaners (see LAUNCHED in au_city_page.py). Put
+    # the open version back here at the same time you flip that flag.
+    ('Now open across New Zealand - browse local cleaners, see their rates up front, and message'
+     ' the one you pick. Free for households and for cleaners while we grow.',
+     'Match Maid is opening in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin - we are'
+     ' signing up cleaners now. Free for households, and never a commission on a job.'),
+    # Kept below the full-sentence rule above, for any page whose notice is
+    # worded differently: a prefix swap still beats leaving "New Zealand" on an
+    # Australian page.
     ('Now open across New Zealand - browse local cleaners',
      'Now open in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin - browse local cleaners'),
     ("New Zealand's biggest network of cleaners", "Australia's biggest network of cleaners"),

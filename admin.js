@@ -106,7 +106,8 @@ function mountCountrySwitch() {
     wrap.querySelectorAll('.cc-btn').forEach((x) => x.classList.toggle('active', x === b));
     // Every cached payload belongs to the country it was fetched for, so all of
     // it is thrown away rather than shown under the wrong flag.
-    peopleData = null; coverageData = null; pairingsData = null;
+    peopleData = null; coverageData = null; pairingsData = null; messagesData = null;
+    openThread = null;
     // Tear the Leaflet map down rather than dropping the reference: an
     // orphaned map keeps its handlers and its tiles for the old country.
     if (coverageMap) { coverageMap.remove(); coverageMap = null; }
@@ -118,6 +119,7 @@ function mountCountrySwitch() {
     if (panel === 'people') showPeople();
     if (panel === 'coverage') showCoverage();
     if (panel === 'pairings') showPairings();
+    if (panel === 'messages') showMessages();
     if (panel === 'verifications') load();
     if (panel === 'reviews') loadReviews();
   });
@@ -137,6 +139,7 @@ adminTabs?.addEventListener('click', (e) => {
   if (btn.dataset.tab === 'coverage') showCoverage();
   if (btn.dataset.tab === 'people') showPeople();
   if (btn.dataset.tab === 'pairings') showPairings();
+  if (btn.dataset.tab === 'messages') showMessages();
 });
 // A count on a tab, so a full review queue is visible without opening it.
 function setTabCount(tab, n) {
@@ -260,6 +263,184 @@ function renderPairings() {
 
   pairingsBody.innerHTML =
     hero + funnel + list + (d.pairings.length && excluded ? `<div class="panel-card">${excluded}</div>` : '');
+}
+
+// ---------- Messages: the threads, and which ones have gone quiet ----------
+// Pairings is the scoreboard; this is the tape. It exists to answer one
+// question quickly - "did that enquiry actually reach someone, and did they do
+// anything about it" - so the sort is by whatever moved last and the filters
+// are the three ways a thread goes wrong, not a generic search box.
+const messagesBody = document.getElementById('messagesBody');
+let messagesData = null, messagesFilter = 'all', messagesQuery = '', openThread = null;
+
+async function showMessages() {
+  if (!messagesBody) return;
+  if (messagesData) { renderMessages(); return; }
+  messagesBody.innerHTML = '<div class="panel-card"><p class="muted">Loading…</p></div>';
+  try {
+    const res = await fetch(withAdminCountry(`/api/admin/conversations?userId=${encodeURIComponent(sessionUser.id)}`));
+    if (res.status === 403) {
+      messagesBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
+      return;
+    }
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    messagesData = await res.json();
+    renderMessages();
+  } catch (err) {
+    console.error('conversations:', err);
+    messagesBody.innerHTML =
+      `<div class="panel-card"><p class="muted">Could not load conversations (${esc(err.message || 'network error')}).
+       <button class="btn ghost sm" type="button" data-msg-retry>Retry</button></p></div>`;
+    messagesBody.querySelector('[data-msg-retry]')?.addEventListener('click', () => { messagesData = null; showMessages(); });
+  }
+}
+
+// "3 days" is the unit that matters here - an enquiry answered in four hours
+// and one answered in four minutes are the same good outcome, and one left for
+// a week is the only thing worth a second look.
+function ago(iso) {
+  if (!iso) return '';
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 31) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+const stamp = (iso) => (iso ? new Date(iso).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+
+// What the thread needs, in one phrase, ranked worst first. Only one shows:
+// a thread that is both unopened and a week old is not two problems.
+function threadState(t) {
+  if (!t.cleanerReplied && t.neverOpened) return { cls: 'bad', label: t.waitingDays >= 1 ? `Never opened · ${t.waitingDays}d` : 'Never opened' };
+  if (!t.cleanerReplied && t.awaiting === 'cleaner') return { cls: 'warn', label: t.waitingDays >= 1 ? `No reply · ${t.waitingDays}d` : 'Read, no reply yet' };
+  if (t.awaiting === 'cleaner') return { cls: 'warn', label: `Cleaner's turn · ${t.waitingDays}d` };
+  if (t.awaiting === 'customer') return { cls: 'ok', label: `Customer's turn · ${t.waitingDays}d` };
+  return { cls: 'ok', label: 'Talking' };
+}
+
+function messageRow(m) {
+  // The two date actions are posted as messages but read as events, so they are
+  // rendered as events - quoting "date_proposal" back as if someone typed it
+  // would make the transcript a worse record than the portal it mirrors.
+  if (m.kind !== 'text') {
+    const what = m.kind === 'date_proposal' ? 'proposed a date'
+      : m.kind === 'date_confirmed' ? 'confirmed the date'
+      : m.kind.replace(/_/g, ' ');
+    return `<p class="mt-event">${m.from === 'cleaner' ? 'Cleaner' : 'Customer'} ${esc(what)} · ${esc(stamp(m.sentAt))}</p>`;
+  }
+  return `<div class="mt-msg ${m.from}">
+    <p class="mt-body">${esc(m.body)}</p>
+    <p class="mt-meta">${esc(stamp(m.sentAt))}${m.readAt ? ` · read ${esc(stamp(m.readAt))}` : ' · unread'}</p>
+  </div>`;
+}
+
+function threadCard(t) {
+  const st = threadState(t);
+  const open = openThread === t.id;
+  const words = t.messages.filter((m) => m.kind === 'text').length;
+  const transcript = open
+    ? `<div class="mt-thread">
+         ${t.messages.length ? t.messages.map(messageRow).join('') : '<p class="muted">The enquiry was opened but nothing was ever written.</p>'}
+         <p class="mt-legend muted">Customer left, cleaner right. Started ${esc(stamp(t.startedAt))}${t.lastNotifiedAt ? ` · last reply email sent ${esc(stamp(t.lastNotifiedAt))}` : ''}</p>
+       </div>`
+    : '';
+  return `<article class="mt-card ${st.cls}${open ? ' open' : ''}" data-thread="${esc(t.id)}">
+    <button class="mt-head" type="button" data-thread-toggle="${esc(t.id)}" aria-expanded="${open}">
+      <span class="mt-who">
+        <strong>${esc(t.customer)}</strong> <span class="pr-amp">&rarr;</span> <strong>${esc(t.cleaner)}</strong>
+        ${t.isSelf ? '<span class="mt-tag">your own account</span>' : ''}
+      </span>
+      <span class="mt-state ${st.cls}">${esc(st.label)}</span>
+    </button>
+    <p class="mt-facts">
+      ${t.suburb ? `<span class="pr-fact">${esc(t.suburb)}</span>` : ''}
+      ${t.service ? `<span class="pr-fact">${esc(t.service)}</span>` : ''}
+      <span class="pr-fact">${words} message${words === 1 ? '' : 's'}</span>
+      <span class="pr-fact">last ${esc(ago(t.lastMessageAt || t.startedAt))}</span>
+      ${t.unreadByCleaner ? `<span class="pr-fact">${t.unreadByCleaner} unread by cleaner</span>` : ''}
+    </p>
+    ${open ? '' : `<p class="mt-peek muted">${esc((t.messages.find((m) => m.kind === 'text')?.body || '').slice(0, 160))}</p>`}
+    ${transcript}
+  </article>`;
+}
+
+function renderMessages() {
+  const d = messagesData;
+  if (!d || !messagesBody) return;
+  const tot = d.totals || {};
+
+  const chips = [
+    ['all', 'All', d.threads.length],
+    ['awaiting', 'Cleaner’s turn', tot.awaitingCleaner || 0],
+    ['unopened', 'Never opened', tot.neverOpened || 0],
+    ['stuck', 'Stuck', tot.stuck || 0],
+  ];
+
+  const q = messagesQuery.trim().toLowerCase();
+  const list = d.threads.filter((t) => {
+    if (messagesFilter === 'awaiting' && t.awaiting !== 'cleaner') return false;
+    if (messagesFilter === 'unopened' && !t.neverOpened) return false;
+    if (messagesFilter === 'stuck' && !(!t.cleanerReplied && t.awaiting === 'cleaner' && t.waitingDays >= 1)) return false;
+    if (!q) return true;
+    return [t.customer, t.cleaner, t.customerEmail, t.cleanerEmail, t.suburb]
+      .filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
+  });
+
+  const hero = `<div class="panel-card pr-hero">
+    <div class="pr-hero-num">
+      <strong>${(tot.threads || 0).toLocaleString()}</strong>
+      <span>conversation${tot.threads === 1 ? '' : 's'}</span>
+    </div>
+    <dl class="pr-hero-side">
+      <div><dt>Cleaner’s turn</dt><dd>${(tot.awaitingCleaner || 0).toLocaleString()}</dd></div>
+      <div><dt>Never opened</dt><dd>${(tot.neverOpened || 0).toLocaleString()}</dd></div>
+      <div><dt>Stuck a day+</dt><dd>${(tot.stuck || 0).toLocaleString()}</dd></div>
+    </dl>
+  </div>`;
+
+  const controls = `<div class="panel-card mt-controls">
+    <div class="mt-chips">${chips.map(([k, label, n]) =>
+      `<button type="button" class="mt-chip ${messagesFilter === k ? 'active' : ''}" data-msg-filter="${k}">${label}${n ? ` <span class="mt-chip-n">${n}</span>` : ''}</button>`).join('')}</div>
+    <input class="mt-search" type="search" placeholder="Search a name, email or suburb" value="${esc(messagesQuery)}" data-msg-search />
+  </div>`;
+
+  // Said out loud rather than quietly filtered, same as the pairings board:
+  // the totals above exclude your own test threads, but the list still shows
+  // them, tagged - they are usually the ones you came here to check.
+  const note = tot.selfTest
+    ? `<p class="fn-note muted">The counts above leave out ${tot.selfTest} thread${tot.selfTest === 1 ? '' : 's'} involving your own account. ${tot.selfTest === 1 ? 'It is' : 'They are'} still listed below, tagged.</p>`
+    : '';
+
+  const body = list.length
+    ? `<div class="mt-list">${list.map(threadCard).join('')}</div>`
+    : `<div class="panel-card"><p class="muted">${d.threads.length ? 'No conversation matches that filter.' : 'No conversations yet. The first enquiry a customer sends lands here.'}</p></div>`;
+
+  messagesBody.innerHTML = hero + controls + (note ? `<div class="panel-card">${note}</div>` : '') + body;
+
+  messagesBody.querySelectorAll('[data-msg-filter]').forEach((b) =>
+    b.addEventListener('click', () => { messagesFilter = b.dataset.msgFilter; renderMessages(); }));
+  const search = messagesBody.querySelector('[data-msg-search]');
+  search?.addEventListener('input', () => {
+    messagesQuery = search.value;
+    const at = search.selectionStart;
+    renderMessages();
+    // Re-rendering replaces the input, so the caret is put back where it was -
+    // otherwise typing a second character jumps to the end of the field.
+    const next = messagesBody.querySelector('[data-msg-search]');
+    next?.focus();
+    try { next?.setSelectionRange(at, at); } catch {}
+  });
+  messagesBody.querySelectorAll('[data-thread-toggle]').forEach((b) =>
+    b.addEventListener('click', () => {
+      // One open at a time: these are read one after another, and a page of
+      // expanded transcripts is a worse way to find the next problem.
+      openThread = openThread === b.dataset.threadToggle ? null : b.dataset.threadToggle;
+      renderMessages();
+      if (openThread) messagesBody.querySelector(`[data-thread="${openThread}"]`)?.scrollIntoView({ block: 'nearest' });
+    }));
 }
 
 // ---------- People: the register ----------

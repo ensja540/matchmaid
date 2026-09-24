@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="/analytics.js?v=87"></script>
+    <script src="/attribution.js?v=2"></script>
+    <title>House cleaning cost calculator NZ | Match Maid</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#14B8A6" />
+    <meta name="description" content="Work out what a house clean should cost in New Zealand. Enter bedrooms, bathrooms, clean type and how often - get hours and a price range built from rates cleaners actually advertise." />
+    <link rel="canonical" href="https://matchmaid.co.nz/cleaning-cost-calculator" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Match Maid" />
+    <meta property="og:title" content="House cleaning cost calculator NZ" />
+    <meta property="og:description" content="Enter your home, get hours and a price range built from rates New Zealand cleaners actually advertise. Free, no email required." />
+    <meta property="og:url" content="https://matchmaid.co.nz/cleaning-cost-calculator" />
+    <meta property="og:locale" content="en_NZ" />
+    <meta property="og:image" content="https://matchmaid.co.nz/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://matchmaid.co.nz/og-image.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="/styles.css?v=125" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"House cleaning cost calculator","url":"https://matchmaid.co.nz/cleaning-cost-calculator","applicationCategory":"UtilitiesApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","offers":{"@type":"Offer","price":"0","priceCurrency":"NZD"},"description":"Estimates what a house clean costs in New Zealand from bedrooms, bathrooms, clean type and frequency, using rates cleaners advertise on Match Maid.","publisher":{"@type":"Organization","name":"Match Maid","url":"https://matchmaid.co.nz/"}}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How accurate is a cleaning cost calculator?","acceptedAnswer":{"@type":"Answer","text":"It gives a range, not a quote. The hours come from the size of the home and the type of clean, and the rates are what cleaners currently advertise on Match Maid. A cleaner who has seen your home may quote differently, and that quote is the real number."}},{"@type":"Question","name":"How many hours does a house clean take?","acceptedAnswer":{"@type":"Answer","text":"Roughly one hour as a base, plus about half an hour per bedroom and a third of an hour per bathroom. A one-bedroom flat is around two hours, a three-bedroom house around three. A deep clean takes roughly twice as long, and a first clean longer again."}},{"@type":"Question","name":"Does booking more often make it cheaper?","acceptedAnswer":{"@type":"Answer","text":"Per visit, yes. A weekly cleaner is maintaining a home rather than resetting it, so the same house takes roughly 15 percent less time than it would fortnightly, and a one-off takes about 40 percent more. The hourly rate does not change - the hours do."}}]}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Match Maid","item":"https://matchmaid.co.nz/"},{"@type":"ListItem","position":2,"name":"House cleaning prices","item":"https://matchmaid.co.nz/house-cleaning-prices"},{"@type":"ListItem","position":3,"name":"Cost calculator","item":"https://matchmaid.co.nz/cleaning-cost-calculator"}]}</script>
+  </head>
+  <body class="pitch-body role-customer">
+    <div class="notice-bar">
+      🧽 Now open across New Zealand - browse local cleaners, see their rates up front, and message the one you pick. Free for households and for cleaners while we grow.
+    </div>
+    <header class="pitch-top">
+      <a class="brand" href="/"><img class="brand-mark" src="/assets/logo-mark.svg" alt="Match Maid" /></a>
+      <div class="pitch-top-right">
+        <a class="ulink cross-link" href="/for-maids">Are you a cleaner?</a>
+        <a class="ulink" href="/for-customers">Why Match Maid</a>
+        <a class="btn sm" href="/login?role=customer">Log in</a>
+        <a class="btn sm solid create" href="/browse">Browse cleaners</a>
+      </div>
+    </header>
+
+    <main>
+      <nav class="crumbs container" aria-label="Breadcrumb">
+        <a href="/">Match Maid</a> <span aria-hidden="true">&rsaquo;</span> <a href="/house-cleaning-prices">House cleaning prices</a> <span aria-hidden="true">&rsaquo;</span> <span aria-current="page">Cost calculator</span>
+      </nav>
+
+      <section class="pitch-hero container">
+        <div class="hero-copy" style="max-width:34rem">
+          <p class="eyebrow">Free &middot; No email required</p>
+          <h1>What should your<br />clean cost?</h1>
+          <p class="lede">
+            Tell it about your home and it will tell you how many hours the job takes and what
+            that comes to, using rates cleaners actually advertise on Match Maid. It is an
+            estimate with the working shown, not a quote dressed up as one.
+          </p>
+        </div>
+      </section>
+
+      <section class="section container">
+        <div class="calc-wrap">
+          <form class="calc-form" id="calc" novalidate>
+            <h2 class="calc-h">Your home</h2>
+            <label class="field"><span>Bedrooms</span>
+              <select id="calcBeds">
+                <option value="1">1 bedroom</option>
+                <option value="2">2 bedrooms</option>
+                <option value="3" selected>3 bedrooms</option>
+                <option value="4">4 bedrooms</option>
+                <option value="5">5+ bedrooms</option>
+              </select>
+            </label>
+            <label class="field"><span>Bathrooms</span>
+              <select id="calcBaths">
+                <option value="1" selected>1 bathroom</option>
+                <option value="2">2 bathrooms</option>
+                <option value="3">3+ bathrooms</option>
+              </select>
+            </label>
+            <label class="field"><span>Type of clean</span>
+              <select id="calcType">
+                <option value="regular" selected>Regular clean</option>
+                <option value="deep">Deep clean</option>
+                <option value="end-of-tenancy">End of tenancy clean</option>
+              </select>
+            </label>
+            <label class="field" id="calcFreqRow"><span>How often</span>
+              <select id="calcFreq">
+                <option value="weekly">Weekly</option>
+                <option value="fortnightly" selected>Fortnightly</option>
+                <option value="monthly">Monthly</option>
+                <option value="one-off">One-off</option>
+              </select>
+            </label>
+          </form>
+
+          <div class="calc-result">
+            <h2 class="calc-h">The estimate</h2>
+            <div id="calcOut" aria-live="polite"></div>
+          </div>
+        </div>
+        <p class="reveal" style="max-width:64ch; margin-top:1.6rem; color:var(--muted); font-size:0.9rem">
+          An estimate, not a quote. Cleaners set their own rates and price the home in front of
+          them - which is why every rate on Match Maid is shown before you make contact, and why
+          nobody bids for your job.
+        </p>
+      </section>
+
+      <section class="section container secbg secbg-tint secbg-pad">
+        <p class="eyebrow reveal">The working</p>
+        <h2 class="reveal" style="margin-bottom:1rem">How it gets to the number</h2>
+        <p class="reveal" style="max-width:64ch; margin-bottom:1.4rem">
+          No black box. Three inputs, and you can check each of them against the
+          <a href="/house-cleaning-prices">price page</a>.
+        </p>
+        <div class="faq-list">
+          <div class="faq-item reveal">
+            <h3>1. Hours, from the size of the home</h3>
+            <p>About an hour as a base, plus roughly half an hour per bedroom and a third of an hour per bathroom. That puts a one-bedroom flat near two hours and a three-bedroom house near three, which matches what cleans actually take.</p>
+          </div>
+          <div class="faq-item reveal">
+            <h3>2. Hours again, from the type of clean</h3>
+            <p>A deep clean runs about 2.2 times a regular clean of the same home, an end-of-tenancy clean about 2.4 - they cover the oven, inside the fridge, interior windows, inside cupboards, carpet and a wall wash on top of the usual.</p>
+          </div>
+          <div class="faq-item reveal">
+            <h3>3. Hours a third time, from how often you book</h3>
+            <p>A weekly clean takes about 15% less time than a fortnightly one; a monthly clean about 15% more; a one-off about 40% more. The hourly rate is not what changes when you book regularly - the hours are.</p>
+          </div>
+          <div class="faq-item reveal">
+            <h3>Then the rate</h3>
+            <p>$35-$50 an hour for a regular clean, $50-$65 for a deep or end-of-tenancy clean. Those are the bands cleaners advertise on Match Maid as at September 2026, not an industry guess.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section container">
+        <p class="eyebrow reveal">Next</p>
+        <h2 class="reveal" style="margin-bottom:1rem">Once you have a number</h2>
+        <div class="area-links reveal">
+          <a class="area-link" href="/house-cleaning-prices">What a clean costs</a>
+          <a class="area-link" href="/end-of-tenancy-cleaning">End of tenancy cleaning</a>
+          <a class="area-link" href="/deep-cleaning">Deep cleaning</a>
+          <a class="area-link" href="/cleaners">Cleaners by area</a>
+        </div>
+      </section>
+
+      <section class="pitch-cta">
+        <div class="narrow reveal">
+          <p class="eyebrow">Ready when you are</p>
+          <h2>See who charges what.</h2>
+          <div class="hero-actions" style="justify-content:center; margin-top:2rem">
+            <a class="btn solid lg" href="/browse">Browse cleaners</a>
+            <a class="btn outline lg" href="/for-customers">How it works</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="splash-footer accent">
+      <div class="sf-inner">
+        <span class="sf-brand">Match Maid</span>
+        <span class="sf-mid">Free for households &middot; Rates up front &middot; You choose who</span>
+        <span class="sf-copy">&copy; <span id="sf-year"></span> &middot; Christchurch, NZ &middot; <a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></span>
+      </div>
+      <p class="footer-disclaimer">Match Maid is a directory service only. We do not accept liability for cleaning issues or disputes. Please do thorough due diligence and pay for services directly to the cleaner upon job completion.</p>
+    </footer>
+
+    <script src="/session.js?v=89"></script>
+    <script src="/social.js?v=1"></script>
+    <script src="/reveal.js?v=87"></script>
+    <script>document.getElementById('sf-year').textContent = new Date().getFullYear();</script>
+    <script src="/cost-calculator.js?v=1"></script>
+    <script src="/feedback.js?v=64"></script>
+    <script src="/geo-banner.js?v=1"></script>
+  </body>
+</html>

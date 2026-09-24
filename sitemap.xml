@@ -6,7 +6,7 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
@@ -15,7 +15,7 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
@@ -24,7 +24,7 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/for-customers" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/for-customers" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/for-customers" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -33,7 +33,7 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/for-customers" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/for-customers" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/for-customers" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -42,7 +42,7 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/for-maids" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/for-maids" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/for-maids" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -51,7 +51,7 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/for-maids" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/for-maids" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/for-maids" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -60,7 +60,7 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/browse" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/browse" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/browse" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -69,151 +69,241 @@
     <xhtml:link rel="alternate" hreflang="en-NZ" href="https://matchmaid.co.nz/browse" />
     <xhtml:link rel="alternate" hreflang="en-AU" href="https://matchmaid.com.au/browse" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://matchmaid.co.nz/browse" />
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://matchmaid.co.nz/cleaners/auckland</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/christchurch</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/house-cleaning-prices</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/end-of-tenancy-cleaning</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/deep-cleaning</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaning-cost-calculator</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://matchmaid.co.nz/cleaners/riccarton</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/papanui</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/merivale</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/fendalton</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/cashmere</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/halswell</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/ponsonby</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/mount-eden</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/remuera</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/takapuna</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/devonport</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/henderson</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/howick</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/cleaners/manukau</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/addington</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/barrington</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/beckenham</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/opawa</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/somerfield</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/spreydon</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/st-martins</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/sydenham</loc>
+    <lastmod>2026-09-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://matchmaid.co.nz/cleaners/point-chevalier</loc>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.com.au/cleaners</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.com.au/cleaners/sydney</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.com.au/cleaners/melbourne</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.com.au/cleaners/brisbane</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.com.au/cleaners/perth</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.com.au/cleaners/hobart</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.com.au/cleaners/darwin</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/terms</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://matchmaid.co.nz/privacy</loc>
-    <lastmod>2026-08-26</lastmod>
+    <lastmod>2026-09-25</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>

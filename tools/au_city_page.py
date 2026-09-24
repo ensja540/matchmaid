@@ -37,12 +37,36 @@ ORIGIN = NZ_ORIGIN
 # than threaded through fifty string concatenations.
 AU_P = AU_BASE
 AU_HOME = au_path('/')
-CSS = '/styles.css?v=121'
+CSS = '/styles.css?v=125'
 NL = '\n'
 
-NOTICE = ('\U0001F9FD Now open in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin - '
-          'browse local cleaners, see their rates up front, and message the one you pick. '
-          'Free for households and for cleaners while we grow.')
+# Australia has no active cleaners yet. 2,422 suburbs are searchable and nobody
+# is listed, so every search on these pages returns an empty result.
+#
+# The pages stay indexed rather than being pulled: they are the only thing on
+# the site recruiting Australian cleaners, and noindexing throws away whatever
+# authority they have built since the domain move. But they must not promise a
+# directory that is not there - a page that says "browse local cleaners" and
+# then shows nobody is the fastest way to lose a visitor for good, and repeated
+# empty results is what teaches a search engine that the site is not worth
+# ranking at all.
+#
+# So while LAUNCHED is False these pages lead with recruiting cleaners and are
+# honest about the stage. Flip it to True the moment there is supply and every
+# page goes back to promising a search that works. Check with:
+#
+#   select count(distinct cp.id) from cleaner_profiles cp
+#     join cleaner_service_areas csa on csa.cleaner_id = cp.id
+#     join suburbs s on s.id = csa.suburb_id
+#    where cp.listing_status = 'active' and s.country = 'AU'
+LAUNCHED = False
+
+NOTICE = (("\U0001F9FD Now open in Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin "
+           "- browse local cleaners, see their rates up front, and message the one you pick. "
+           "Free for households and for cleaners while we grow.") if LAUNCHED else
+          ("\U0001F9FD Match Maid is opening in Sydney, Melbourne, Brisbane, Perth, Hobart "
+           "and Darwin - we are signing up cleaners now. Free for households, and never a "
+           "commission on a job."))
 
 # slug, city, state, (low, typical, high) AUD hourly, hero line, local-knowledge line.
 CITIES = [
@@ -204,9 +228,13 @@ def faqs(city, rates):
          'households. You arrange the clean and payment directly with your cleaner, and Match Maid '
          'never takes a commission.' % city),
         ('Which %s suburbs are covered?' % city,
-         'All of them. Cleaners set the suburbs they travel to, and the search only shows you '
-         'people who cover yours - so a result in %s is someone who will actually come to your '
-         'address.' % city),
+         ('All of them. Cleaners set the suburbs they travel to, and the search only shows you '
+          'people who cover yours - so a result in %s is someone who will actually come to your '
+          'address.' % city) if LAUNCHED else
+         ('Every %s suburb is searchable, but we are still signing up the cleaners to fill them. '
+          'Cleaners set the suburbs they travel to, so as they join, the search starts returning '
+          'people who actually come to your address rather than a list of names miles away.'
+          % city)),
     ]
 
 
@@ -257,14 +285,24 @@ def city_page(slug, city, state, rates, hero, local, others):
         '          <p class="eyebrow">' + esc(state) + ' &middot; ' + esc(city) + '</p>' + NL +
         '          <h1>House cleaners<br />in ' + esc(city) + '.</h1>' + NL +
         '          <p class="lede">' + NL +
-        '            ' + esc(hero) + ' Browse independent local cleaners who cover ' + esc(city) +
-        ', see their transparent hourly rates, and message the one you like. No bidding wars, '
-        'no middlemen, and it\'s free for households.' + NL +
+        '            ' + esc(hero) +
+        ((' Browse independent local cleaners who cover ' + esc(city) + ', see their transparent '
+          'hourly rates, and message the one you like. No bidding wars, no middlemen, and it is '
+          'free for households.') if LAUNCHED else
+         (' Match Maid is opening in ' + esc(city) + ' and signing up cleaners now. Rates are '
+          'shown up front, households never pay us a cent, and we take no commission from '
+          'cleaners - so the first ' + esc(city) + ' cleaners to list get every enquiry we '
+          'send.')) + NL +
         '          </p>' + NL +
         '          <div class="hero-actions">' + NL +
-        '            <a class="btn solid lg" href="/au/browse">Find a cleaner in ' + esc(city) +
-        '</a>' + NL +
-        '            <a class="btn outline lg" href="/au/for-maids">List your services</a>' + NL +
+        (('            <a class="btn solid lg" href="/au/browse">Find a cleaner in ' + esc(city) +
+          '</a>' + NL +
+          '            <a class="btn outline lg" href="/au/for-maids">List your services</a>' + NL)
+         if LAUNCHED else
+         ('            <a class="btn solid lg" href="/login?role=maid&amp;mode=signup&amp;'
+          'country=AU">List your services in ' + esc(city) + '</a>' + NL +
+          '            <a class="btn outline lg" href="/au/for-customers">I want a cleaner '
+          'here</a>' + NL)) +
         '          </div>' + NL +
         '          <img class="trust-badges" src="/assets/brand/trust_badges_au.svg" alt="Cleaners '
         'can be verified, police checked and insured" />' + NL +
@@ -272,6 +310,27 @@ def city_page(slug, city, state, rates, hero, local, others):
         '        <div class="hero-art"><img src="/assets/brand/hero_graphic.svg" alt="A Match Maid '
         'cleaner listing with reviews and a message button" /></div>' + NL +
         '      </section>' + NL + NL +
+        ('' if LAUNCHED else
+         '      <section class="section container">' + NL +
+         '        <div class="status-band reveal">' + NL +
+         '          <p class="eyebrow">Opening in ' + esc(city) + '</p>' + NL +
+         '          <h2>We are signing up cleaners first.</h2>' + NL +
+         # Says the same honest thing without naming the other country. An
+         # Australian reading this is being told what is true HERE - nothing an
+         # Australian sees may read as New Zealand, and "we are live over there"
+         # is exactly that, however good it sounds as a credibility line.
+         '          <p>There is no point sending you a search that comes back empty, so here is '
+         'where things stand. Match Maid is opening in ' + esc(city) +
+         ' and we are recruiting independent cleaners now. Households can register so we can '
+         'tell them the moment someone covers their suburb.</p>' + NL +
+         '          <div class="hero-actions" style="margin-top:1.6rem">' + NL +
+         '            <a class="btn solid" href="/login?role=maid&amp;mode=signup&amp;country=AU">'
+         'I am a cleaner - list me</a>' + NL +
+         '            <a class="btn outline" href="/login?role=customer&amp;mode=signup&amp;'
+         'country=AU">I want a cleaner - tell me when</a>' + NL +
+         '          </div>' + NL +
+         '        </div>' + NL +
+         '      </section>' + NL + NL) +
         '      <section class="section container secbg secbg-tint stagger">' + NL +
         '        <div class="reveal" style="margin-bottom:2.4rem">' + NL +
         '          <p class="eyebrow">Why Match Maid</p>' + NL +
@@ -346,9 +405,15 @@ def hub_page():
         '          <p class="eyebrow">Australia</p>' + NL +
         '          <h1>House cleaners,<br />city by city.</h1>' + NL +
         '          <p class="lede">' + NL +
-        '            Match Maid is open in six Australian cities. Pick yours to see what a clean '
-        'costs there and who covers your suburb - or <a href="/au/browse">search your suburb '
-        'directly</a>. Free for households, and no commission taken from cleaners.' + NL +
+        ('            Match Maid is open in six Australian cities. Pick yours to see what a '
+         'clean costs there and who covers your suburb - or <a href="/au/browse">search your '
+         'suburb directly</a>. Free for households, and no commission taken from cleaners.'
+         if LAUNCHED else
+         '            Match Maid is opening in six Australian cities and signing up cleaners now. '
+         'Pick yours to see what a clean should cost there and how it works - or, if you clean '
+         'for a living, <a href="/login?role=maid&amp;mode=signup&amp;country=AU">list your '
+         'services</a> and be one of the first. Free for households, and no commission taken from '
+         'cleaners, ever.') + NL +
         '          </p>' + NL +
         '        </div>' + NL +
         '      </section>' + NL + NL +

@@ -54,6 +54,21 @@ try {
   ck('  ...and gets the Australian page', /lang="en-AU"/.test((await get('/', AU, 'AU')).body));
   ck('  ...on a city page too', (await where('/cleaners/sydney', AU, 'AU')) === '200');
 
+  // ---- pages with no twin are served, never bounced ---------------------------
+  // New Zealand has Riccarton and Auckland; Australia has Sydney and Perth.
+  // Steering these sent someone who found the page in search to a 404 on the
+  // other domain. The banner has always refused unpaired pages; the redirect
+  // used not to, and redirect is the default mode.
+  ck('an Australian who lands on a NZ suburb page is served it',
+    (await where('/cleaners/riccarton', NZ, 'AU')) === '200', await where('/cleaners/riccarton', NZ, 'AU'));
+  ck('  ...and on a NZ city page',
+    (await where('/cleaners/auckland', NZ, 'AU')) === '200', await where('/cleaners/auckland', NZ, 'AU'));
+  ck('a New Zealander who lands on an AU city page is served it',
+    (await where('/cleaners/sydney', AU, 'NZ')) === '200', await where('/cleaners/sydney', AU, 'NZ'));
+  ck('the hub itself still pairs, and still steers',
+    (await where('/cleaners', NZ, 'AU')) === '302 https://matchmaid.com.au/cleaners',
+    await where('/cleaners', NZ, 'AU'));
+
   // ---- /au is now the OLD address, on both hosts ------------------------------
   ck('/au on the NZ domain 301s to the AU domain',
     (await where('/au', NZ, null)) === '301 https://matchmaid.com.au/', await where('/au', NZ, null));

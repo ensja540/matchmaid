@@ -15,6 +15,10 @@ import {
   sendNudgeEmail, sendPreLaunchUpdateEmail, sendNewMessageEmail,
   sendReviewRequestEmail, sendCleanerReviewEmail,
 } from './email.js';
+// The price floors live in their own module so the maintenance scripts can read
+// the same numbers this file enforces - importing server.js would start a
+// second HTTP server, which is why they used to be restated by hand.
+import { COUNTRY_FLOORS, COUNTRY_FLOOR_WHY } from './floors.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, '..'); // project root holds index.html etc.
@@ -163,6 +167,16 @@ app.use((req, res, next) => {
   // the host; on the New Zealand one it is whether the path sits under /au.
   const forAu = auHost || (!AU_ORIGIN && isAuPath(path));
 
+  // Only bounce a page that exists on the other side. The suburb and city
+  // pages match STEERABLE but do not pair up - New Zealand has Riccarton and
+  // Auckland, Australia has Sydney and Perth - so steering them sent an
+  // Australian who found /cleaners/riccarton in search to a 404 on .com.au, and
+  // a New Zealander who found /cleaners/sydney to a 404 on .co.nz. The banner
+  // has always refused unpaired pages (see /api/geo); the redirect did not, and
+  // redirect is the default mode. Serve what was asked for instead: a page in
+  // the wrong country's currency still beats nothing.
+  if (!PAIRED_PAGE.test(bare)) return next();
+
   // Australia is not visible from New Zealand.
   if (forAu && cc === 'NZ') return res.redirect(302, nzHref(bare, auHost) + reqQuery(req));
   // An Australian visitor on the New Zealand site gets their own.
@@ -203,6 +217,40 @@ app.get('/au/cleaners', (_req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(join(publicDir, 'au', 'cleaners', 'index.html'));
 });
+// The quick-book link: /b/<CODE>, short enough to put in a Facebook bio, a
+// Gumtree ad or a business card, and it lands on that cleaner's own listing
+// with the Contact button in reach.
+//
+// Registered ahead of express.static for the same reason the hubs above are:
+// this is a route, not a file, and static would 404 it first.
+//
+// It is the SAME code as the referral scheme. A visitor who books off this link
+// and makes an account is a customer that cleaner brought, so the link carries
+// ?ref= through to the signup form and the $10 follows automatically. One code
+// per cleaner that does every job is a code they can actually remember.
+//
+// An unknown code drops the visitor on /browse rather than a 404: a mistyped
+// code off a poster should still land them somewhere they can find a cleaner.
+// The redirect is 302 - a code could be reassigned, and a browser that cached a
+// 301 would send people to the wrong cleaner forever.
+app.get('/b/:code', async (req, res) => {
+  const code = String(req.params.code || '').trim().toUpperCase();
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const { rows } = await query(
+      `select cp.id from cleaner_profiles cp
+         join users u on u.id = cp.user_id
+        where cp.referral_code = $1 and cp.listing_status = 'active' and u.status = 'active'`,
+      [code]
+    );
+    if (!rows.length) return res.redirect(302, '/browse');
+    res.redirect(302, `/browse?cleaner=${encodeURIComponent(rows[0].id)}&ref=${encodeURIComponent(code)}`);
+  } catch (err) {
+    console.error(err);
+    res.redirect(302, '/browse');
+  }
+});
+
 // `extensions: ['html']` lets /customer serve customer.html — clean URLs.
 // `no-cache` = always revalidate, so browsers/Cloudflare never serve a stale
 // page or script (this is what caused "only works on hard refresh").
@@ -279,8 +327,10 @@ const COUNTRIES = {
     timezone: 'Pacific/Auckland',
     base: '',                       // URL prefix: NZ lives at the root
     hreflang: 'en-NZ',
-    // A floor stops absurd listings dragging the whole directory down.
-    minHourlyRate: 20,
+    // The adult minimum wage. See floors.mjs for why it is that and not a
+    // round number, and for the copy that explains it to the cleaner.
+    minHourlyRate: COUNTRY_FLOORS.NZ,
+    minRateWhy: COUNTRY_FLOOR_WHY.NZ,
     cities: ['Christchurch City', 'Auckland'],
   },
   AU: {
@@ -294,9 +344,9 @@ const COUNTRIES = {
     timezone: 'Australia/Sydney',
     base: '/au',
     hreflang: 'en-AU',
-    // Higher than NZ's on purpose: A$20/hr is below the Australian casual
-    // minimum wage, so it cannot be the floor for an Australian listing.
-    minHourlyRate: 30,
+    // Higher than NZ's on purpose - see floors.mjs.
+    minHourlyRate: COUNTRY_FLOORS.AU,
+    minRateWhy: COUNTRY_FLOOR_WHY.AU,
     // The six metros Australia is open in. Enforced by the data as well - these
     // are the only cities with suburbs loaded - but named here so the check is
     // explicit rather than an accident of what got imported.
@@ -385,13 +435,49 @@ const BASE_SERVICE_SLUGS = ['regular', 'deep', 'end-of-tenancy'];
 // have them quoting a number they never chose.
 // Kept for anything still reading a single global floor; the real, per-country
 // value is COUNTRIES[cc].minHourlyRate and that is what the save path enforces.
-const MIN_HOURLY_RATE = 20;
+const MIN_HOURLY_RATE = COUNTRY_FLOORS[DEFAULT_COUNTRY];
+
+// The floor a listing is judged against follows the cleaner it belongs to, not
+// the page being rendered: A$25 is under-priced for an Australian listing and
+// $25 is fine for a New Zealand one, and one directory query serves both.
+const FLOOR_FOR = (alias = 'u') =>
+  `case ${alias}.country ` +
+  Object.values(COUNTRIES).map((c) => `when '${c.code}' then ${c.minHourlyRate}`).join(' ') +
+  ` else ${COUNTRIES[DEFAULT_COUNTRY].minHourlyRate} end`;
+
+// A listing priced below the floor is not an offer, so it does not get shown.
+// Taken down rather than rewritten: the price is theirs to set, so we hide the
+// listing and ask them to fix it (see notify-underpriced.mjs) instead of
+// quietly publishing a number they never chose. An unpriced listing is a
+// different state, already handled elsewhere, and is left alone here.
+// The same floor, for the times the answer is needed in JavaScript rather than
+// in the middle of a query.
+const floorFor = (cc) => COUNTRY_FLOORS[String(cc || '').toUpperCase()] ?? COUNTRY_FLOORS[DEFAULT_COUNTRY];
+
+const atOrAboveFloor = (col, countryAlias = 'u') =>
+  `(${col} is null or ${col} >= ${FLOOR_FOR(countryAlias)})`;
+
+// What the public is shown a cleaner as. A trading name stands whole; a person
+// is their first name only. Someone listing under their own name is putting it
+// on a public directory beside the suburbs they work in, and their surname is
+// not needed for a customer to choose them or to say hello.
+const PUBLIC_NAME = (cp = 'cp', u = 'u') =>
+  `case when nullif(${cp}.business_name, '') is not null then ${cp}.business_name
+        else split_part(trim(${u}.full_name), ' ', 1) end`;
 
 // Capacity throttle: once a cleaner has this many active (accepted, not yet
 // completed) jobs, they're treated as "at capacity" and drop below cleaners
 // with spare capacity in search — so no single listing can hoard every request.
 // A finite individual has a real ceiling; this makes everyone behave like one.
 const CAPACITY_LIMIT = Number(process.env.CAPACITY_LIMIT) || 10;
+
+// How much a cleaner's listing rises for bringing customers who book, and how
+// many of them it takes to get the whole lift. Six points on a hundred-point
+// score: enough to settle a tie between two comparable listings, not enough to
+// put a badly-matched cleaner above a well-matched one. Saturating at three
+// stops the scheme turning into a leaderboard the biggest agency always wins.
+const COMMUNITY_BOOST_MAX = 0.06;
+const COMMUNITY_BOOST_AT = 3;
 
 // --- Referrals --------------------------------------------------------------
 // A cleaner earns $20 of credit toward future payments for every cleaner they
@@ -403,6 +489,16 @@ const CAPACITY_LIMIT = Number(process.env.CAPACITY_LIMIT) || 10;
 // the banner, the referral card and the pre-launch email together. Credits
 // already awarded keep the amount they were awarded at.
 const REFERRAL_CREDIT_CENTS = 2000;
+
+// The other half of the scheme: a cleaner earns $10 for every CUSTOMER they
+// bring who goes on to book a clean. Smaller than the cleaner referral on
+// purpose - a customer is worth less to the network than a cleaner, and pays us
+// nothing directly - but it qualifies on a much shorter fuse, because a booking
+// is a real clean in a real house rather than a subscription a month away.
+//
+// Both schemes pay into the same balance and use the same code. Which one a
+// signup joins is decided by the role on the link, not by the code.
+const CLIENT_REFERRAL_CREDIT_CENTS = 1000;
 // Ambiguous characters (0/O, 1/I/L) removed so a code survives being read aloud.
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const makeReferralCode = () =>
@@ -441,6 +537,39 @@ async function linkReferral(newCleanerId, code) {
   }
 }
 
+// The customer side of the same code. Silently does nothing on an unknown code,
+// exactly like the cleaner one: a typo must never cost someone their signup.
+//
+// Self-referral is blocked on the EMAIL, not the user id. The two sides are
+// separate accounts - an (email, role) pair each - so a cleaner signing up as
+// their own customer produces a different users row, and an id comparison would
+// wave it straight through. The email is the only thing the two accounts of one
+// person share, which makes it the only thing worth checking.
+//
+// Signing up as your own customer to bank $10 is the one cheat this scheme is
+// wide open to otherwise, and it costs nothing to try.
+async function linkClientReferral(newClientId, newUserEmail, code) {
+  const clean = String(code).trim().toUpperCase();
+  if (!clean) return;
+  const { rows } = await query(
+    `select cp.id, lower(u.email) as email
+       from cleaner_profiles cp join users u on u.id = cp.user_id
+      where cp.referral_code = $1`,
+    [clean]
+  );
+  const referrer = rows[0];
+  if (!referrer) return;
+  if (referrer.email === String(newUserEmail || '').toLowerCase().trim()) return; // their own customer account
+  try {
+    await query(
+      'insert into referrals (referrer_cleaner_id, referred_client_id) values ($1, $2)',
+      [referrer.id, newClientId]
+    );
+  } catch (err) {
+    if (err.code !== '23505') throw err; // already referred - the first one keeps them
+  }
+}
+
 // Idempotent: the credit is only stamped when credited_at is still null, so
 // nothing can pay twice however often this runs.
 //
@@ -470,6 +599,24 @@ const REFERRAL_QUALIFY_SQL = `
             or sub.cancelled_at >= coalesce(sub.current_period_start, sub.created_at) + interval '1 month')
   )`;
 
+// A customer referral qualifies the moment that customer has a clean in the
+// diary - one enquiry of theirs with a date agreed on it. scheduled_on is the
+// same column the pairings board reads as "booked", so the referral card and
+// the scoreboard can never disagree about whether a booking happened.
+//
+// Any cleaner's booking counts, including the referrer's own. That is not a
+// loophole left open, it is the main case: a cleaner bringing a customer they
+// already clean for onto Match Maid is exactly the behaviour being paid for.
+// It does mean the scheme is only as honest as the bookings are - two accounts
+// and a fake date earn $10 - which is worth watching on the pairings board
+// before paid plans make the credit worth anything.
+const CLIENT_REFERRAL_QUALIFY_SQL = `
+  r.referred_client_id is not null and exists (
+    select 1 from enquiries e
+     where e.client_id = r.referred_client_id
+       and e.scheduled_on is not null
+  )`;
+
 // Award any referral this cleaner has earned. Safe to call repeatedly - the
 // `credited_at is null` guard means a credit is only ever stamped once.
 async function awardReferralIfQualified(cleanerId) {
@@ -480,17 +627,43 @@ async function awardReferralIfQualified(cleanerId) {
   );
 }
 
+// Credit the referral behind an enquiry that has just been booked, if there is
+// one. Takes the enquiry rather than the client because both places that set a
+// date have the enquiry id to hand and neither has the client id - and going
+// via the enquiry means this can never be called for a booking that did not
+// actually happen.
+//
+// Fire-and-forget at both call sites: a credit is not worth failing a booking
+// over, and the nightly sweep picks up anything a hiccup here drops.
+async function awardClientReferralForEnquiry(enquiryId) {
+  await query(
+    `update referrals r set credit_cents = $2, credited_at = now()
+      where r.credited_at is null
+        and r.referred_client_id = (select e.client_id from enquiries e where e.id = $1)
+        and ${CLIENT_REFERRAL_QUALIFY_SQL}`,
+    [enquiryId, CLIENT_REFERRAL_CREDIT_CENTS]
+  );
+}
+
 // Sweep every uncredited referral. Nothing in the app creates a subscription
 // yet, so today this awards nothing and that is correct - it starts paying out
 // by itself the moment paid plans are real, rather than needing to be
 // remembered and wired up then.
 async function sweepReferralCredits() {
-  const { rowCount } = await query(
+  const cleaners = await query(
     `update referrals r set credit_cents = $1, credited_at = now()
-      where r.credited_at is null and ${REFERRAL_QUALIFY_SQL}`,
+      where r.credited_at is null and r.referred_cleaner_id is not null and ${REFERRAL_QUALIFY_SQL}`,
     [REFERRAL_CREDIT_CENTS]
   );
-  return rowCount;
+  // The customer side is awarded on the booking itself as well as here. This is
+  // the backstop: a booking made while the mail or the process hiccuped still
+  // gets paid the next time the sweep runs.
+  const clients = await query(
+    `update referrals r set credit_cents = $1, credited_at = now()
+      where r.credited_at is null and ${CLIENT_REFERRAL_QUALIFY_SQL}`,
+    [CLIENT_REFERRAL_CREDIT_CENTS]
+  );
+  return { cleaners: cleaners.rowCount, clients: clients.rowCount };
 }
 
 // A removed account keeps every row it owns — enquiries, threads, reviews all
@@ -606,7 +779,14 @@ app.post('/api/register', async (req, res) => {
       // A bad or unknown code must never block a signup — it just earns nobody.
       if (referralCode) await linkReferral(cleanerId, referralCode);
     } else {
-      await query('insert into client_profiles (user_id) values ($1)', [user.id]);
+      const lp = await query(
+        'insert into client_profiles (user_id) values ($1) returning id',
+        [user.id]
+      );
+      // A customer can arrive on a cleaner's invite or quick-book link. Same
+      // code as the cleaner scheme; the role they signed up in decides which
+      // half of it they join.
+      if (referralCode) await linkClientReferral(lp.rows[0].id, user.email, referralCode);
     }
 
     if (gateOn) {
@@ -824,27 +1004,48 @@ app.get('/api/referrals', async (req, res) => {
     const code = await ensureReferralCode(cleanerId);
     const { rows } = await query(
       `select r.credited_at, r.credit_cents,
-              coalesce(nullif(cp.business_name, ''), u.full_name) as name,
-              cp.id_verified as id_verified
+              cp.id_verified,
+              -- Whichever side of the scheme this row belongs to. A cleaner is
+              -- named as they list; a customer gets a first name only, the same
+              -- as everywhere else they appear in public.
+              case when r.referred_cleaner_id is not null then 'cleaner' else 'customer' end as kind,
+              case when r.referred_cleaner_id is not null
+                   then coalesce(nullif(cp.business_name, ''), cu.full_name)
+                   else split_part(trim(lu.full_name), ' ', 1) end as name,
+              -- A referred customer has booked once any enquiry of theirs
+              -- carries a date. Shown even before the credit is stamped so the
+              -- card can say what is still owed rather than only what landed.
+              exists (select 1 from enquiries e
+                       where e.client_id = r.referred_client_id and e.scheduled_on is not null) as has_booked
          from referrals r
-         join cleaner_profiles cp on cp.id = r.referred_cleaner_id
-         join users u on u.id = cp.user_id
+         left join cleaner_profiles cp on cp.id = r.referred_cleaner_id
+         left join users cu on cu.id = cp.user_id
+         left join client_profiles lp on lp.id = r.referred_client_id
+         left join users lu on lu.id = lp.user_id
         where r.referrer_cleaner_id = $1
         order by r.created_at desc`,
       [cleanerId]
     );
 
     const creditCents = rows.reduce((a, r) => a + (r.credit_cents || 0), 0);
+    const customers = rows.filter((r) => r.kind === 'customer');
     res.json({
       code,
       creditCents,
       creditDollars: creditCents / 100,
       perReferralDollars: REFERRAL_CREDIT_CENTS / 100,
+      perCustomerDollars: CLIENT_REFERRAL_CREDIT_CENTS / 100,
       earned: rows.filter((r) => r.credited_at).length,
       pending: rows.filter((r) => !r.credited_at).length,
+      // How far up the rankings the credited customer referrals have moved
+      // them, so the promise on the card is reported back rather than claimed.
+      customersBooked: customers.filter((r) => r.credited_at).length,
+      boostAt: COMMUNITY_BOOST_AT,
       referrals: rows.map((r) => ({
+        kind: r.kind,
         name: r.name,
         idVerified: !!r.id_verified,
+        booked: !!r.has_booked,
         credited: !!r.credited_at,
         creditDollars: (r.credit_cents || 0) / 100,
       })),
@@ -1005,13 +1206,76 @@ app.get('/api/cleaner-rates', async (req, res) => {
          join cleaner_services cs on cs.cleaner_id = cp.id
          join service_types st on st.id = cs.service_type_id
         where cp.listing_status = 'active' and s.country = $3
-          and s.name = any($1) and st.slug = $2 and cp.hourly_rate is not null`,
+          and s.name = any($1) and st.slug = $2 and cp.hourly_rate is not null
+          and ${atOrAboveFloor('cp.hourly_rate', 's')}`,
       [subList, service, reqCountry(req)]
     );
     res.json({ rates: rows.map((r) => Number(r.rate)).filter((n) => Number.isFinite(n)) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load rates.' });
+  }
+});
+
+// What comparable cleaners charge, so a cleaner setting their price can see
+// where it sits. Compared per clean type off clean_rates, NOT off hourly_rate:
+// hourly_rate is the mid of a band across types, so it would measure a $45
+// regular against someone else's regular/deep midpoint.
+//
+// The comparison set is the cleaners competing for the same work — active
+// listings covering at least one suburb this cleaner covers — with the asking
+// cleaner excluded, because a benchmark you are part of moves when you move.
+// Before any service areas are saved (the setup wizard asks for price first)
+// there is no local set to compare against, so it falls back to the whole
+// country and says so.
+const MIN_BENCHMARK_SAMPLE = 3; // below this an "average" is one opinion, not a market
+app.get('/api/rate-benchmark', async (req, res) => {
+  try {
+    const cleanerId = await cleanerIdForUser(req.query.userId);
+    if (!cleanerId) return res.status(404).json({ error: 'No cleaner profile for that user.' });
+
+    const own = await query(
+      `select s.id, s.country from cleaner_service_areas csa
+         join suburbs s on s.id = csa.suburb_id where csa.cleaner_id = $1`,
+      [cleanerId]
+    );
+    const areaIds = own.rows.map((r) => r.id);
+    const country = own.rows[0]?.country || reqCountry(req);
+    const local = areaIds.length > 0;
+
+    const { rows } = await query(
+      `select distinct cp.id, cp.clean_rates
+         from cleaner_profiles cp
+         join cleaner_service_areas csa on csa.cleaner_id = cp.id
+         join suburbs s on s.id = csa.suburb_id
+        where cp.listing_status = 'active' and s.country = $1
+          and cp.id <> $2 and cp.clean_rates is not null
+          ${local ? 'and s.id = any($3)' : ''}`,
+      local ? [country, cleanerId, areaIds] : [country, cleanerId]
+    );
+
+    // One average per clean type. A cleaner who does not offer a type has no
+    // fee for it and simply does not count towards that type's average.
+    const rates = {};
+    for (const r of rows) {
+      const cr = r.clean_rates && typeof r.clean_rates === 'object' ? r.clean_rates : {};
+      for (const slug of ['regular', 'deep']) {
+        const v = Number(cr[slug]);
+        if (Number.isFinite(v) && v > 0) (rates[slug] ||= []).push(v);
+      }
+    }
+    const benchmarks = {};
+    for (const [slug, vals] of Object.entries(rates)) {
+      if (vals.length < MIN_BENCHMARK_SAMPLE) continue;
+      benchmarks[slug] = {
+        average: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length),
+        count: vals.length,
+      };
+    }
+    res.json({ scope: local ? 'area' : 'country', country, benchmarks });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load rate benchmarks.' });
   }
 });
 
@@ -1128,7 +1392,7 @@ app.get('/api/profile', async (req, res) => {
               cp.brings_products, cp.profile_photo_url, cp.service_surcharges,
               cp.residential_address, cp.clean_rates,
               cp.service_lat, cp.service_lng, cp.service_radius_km, cp.service_excluded,
-              u.full_name, u.email
+              u.full_name, u.email, u.country
          from cleaner_profiles cp join users u on u.id = cp.user_id
         where cp.user_id = $1`,
       [userId]
@@ -1170,6 +1434,13 @@ app.get('/api/profile', async (req, res) => {
       serviceCenter: cp.service_lat != null ? { lat: Number(cp.service_lat), lng: Number(cp.service_lng) } : null,
       serviceRadiusKm: cp.service_radius_km != null ? Number(cp.service_radius_km) : null,
       serviceExcluded: Array.isArray(cp.service_excluded) ? cp.service_excluded : [],
+      // Their listing is priced below the floor, so it is not being shown. Told
+      // here as well as by email, because the email can be missed and the
+      // portal is where they would otherwise see "active" and believe it. The
+      // floor comes back with it so the notice can name the number to beat
+      // without the client hard-coding a price.
+      underFloor: cp.hourly_rate_min != null && Number(cp.hourly_rate_min) < floorFor(cp.country),
+      rateFloor: Math.ceil(floorFor(cp.country)),
     });
   } catch (err) {
     console.error(err);
@@ -1218,13 +1489,17 @@ app.put('/api/profile', async (req, res) => {
       // The floor is per-country: A$20 an hour would be below the Australian
       // casual minimum wage, so it cannot be the floor for an Australian
       // listing the way it is for a New Zealand one.
-      const floor = COUNTRIES[await userCountry(userId)].minHourlyRate;
+      const { minHourlyRate: floor, minRateWhy } = COUNTRIES[await userCountry(userId)];
+      // Rates are stored in whole dollars, so the lowest one anybody can
+      // actually set is the floor rounded up. Quoting "$23.95" and then
+      // rejecting $23.95 would be a puzzle rather than an error message.
+      const askFor = Math.ceil(floor);
       const under = BASE_SERVICE_SLUGS
         .map((slug) => ({ slug, v: Math.max(0, Math.round(Number(cleanRates[slug]) || 0)) }))
         .filter((f) => f.v > 0 && f.v < floor);
       if (under.length) {
         return res.status(400).json({
-          error: `The lowest hourly rate on Match Maid is $${floor}. Please set at least $${floor} for every clean you offer.`,
+          error: `The lowest hourly rate on Match Maid is $${askFor} \u2014 ${minRateWhy}. Please set at least $${askFor} for every clean you offer.`,
         });
       }
       for (const slug of BASE_SERVICE_SLUGS) {
@@ -2336,6 +2611,139 @@ app.get('/api/admin/pairings', async (req, res) => {
   }
 });
 
+// --- Admin: the threads themselves, and where each one has stalled ---------
+// Pairings counts what worked. This is the raw material underneath it: the
+// real conversations, ordered by whichever moved last, so an enquiry sitting
+// unopened for three days shows up as itself rather than as a tick the funnel
+// never earned.
+//
+// Reading a thread here deliberately does NOT mark it read. `read_at` is the
+// cleaner's own signal - it is what "they have seen it" means everywhere else
+// in the product, and an admin looking over their shoulder must not be able to
+// forge it, or the column stops being worth reading.
+//
+// Test traffic is flagged rather than dropped. Pairings excludes the admin's
+// own enquiries because they would inflate a scoreboard; here they are the
+// threads you most often want to open, so they are labelled and left in.
+app.get('/api/admin/conversations', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const country = reqCountry(req);
+
+    const { rows: threads } = await query(
+      `select c.id, c.created_at, c.last_message_at, c.last_notified_at,
+              cu.id as cleaner_user_id, cu.email as cleaner_email,
+              coalesce(nullif(cpf.business_name, ''), cu.full_name) as cleaner,
+              clu.id as customer_user_id, clu.email as customer_email,
+              clu.full_name as customer,
+              coalesce(es.name, cls.name) as suburb,
+              st.name as service,
+              e.status as enquiry_status,
+              (lower(cu.email) = ${ADMIN_EMAIL_SQL} or lower(clu.email) = ${ADMIN_EMAIL_SQL}) as is_self
+         from conversations c
+         join cleaner_profiles cpf on cpf.id = c.cleaner_id
+         join users cu on cu.id = cpf.user_id
+         join client_profiles clp on clp.id = c.client_id
+         join users clu on clu.id = clp.user_id
+         left join enquiries e on e.id = c.enquiry_id
+         left join suburbs es on es.id = e.suburb_id
+         left join suburbs cls on cls.id = clp.default_suburb_id
+         left join service_types st on st.id = e.service_type_id
+        where cu.country = ${countryLit(country)} and clu.country = ${countryLit(country)}
+        order by coalesce(c.last_message_at, c.created_at) desc
+        limit 200`
+    );
+    if (!threads.length) return res.json({ threads: [], totals: emptyThreadTotals() });
+
+    // One query for every message in the page of threads, rather than one per
+    // thread: the transcripts are what makes this view worth opening, and
+    // fetching them in a loop would be 200 round trips to show 200 cards.
+    const { rows: msgs } = await query(
+      `select conversation_id, sender_user_id, coalesce(kind, 'text') as kind,
+              body, sent_at, read_at
+         from messages where conversation_id = any($1::uuid[])
+        order by sent_at`,
+      [threads.map((t) => t.id)]
+    );
+    const byThread = new Map();
+    for (const m of msgs) {
+      if (!byThread.has(m.conversation_id)) byThread.set(m.conversation_id, []);
+      byThread.get(m.conversation_id).push(m);
+    }
+
+    const DAY = 86400000;
+    const out = threads.map((t) => {
+      const list = byThread.get(t.id) || [];
+      const side = (m) => (String(m.sender_user_id) === String(t.cleaner_user_id) ? 'cleaner' : 'customer');
+      // A cleaner who has only ever had the system post on their behalf has not
+      // replied. Only their own words count, exactly as the pairings funnel
+      // counts them, so the two boards can never disagree about who answered.
+      const cleanerReplied = list.some((m) => side(m) === 'cleaner' && m.kind === 'text');
+      const last = list[list.length - 1] || null;
+      // Whose move it is. Nobody's, once the other side has read the last
+      // message and simply not written back - that is a decision, not a queue.
+      const awaiting = !last ? null : side(last) === 'customer' ? 'cleaner' : 'customer';
+      const unreadByCleaner = list.filter((m) => side(m) === 'customer' && !m.read_at).length;
+      const unreadByCustomer = list.filter((m) => side(m) === 'cleaner' && !m.read_at).length;
+      const lastAt = last ? new Date(last.sent_at).getTime() : new Date(t.created_at).getTime();
+      const waitingDays = awaiting ? Math.floor((Date.now() - lastAt) / DAY) : null;
+
+      return {
+        id: t.id,
+        customer: t.customer,
+        customerEmail: t.customer_email,
+        cleaner: t.cleaner,
+        cleanerEmail: t.cleaner_email,
+        suburb: t.suburb || '',
+        service: t.service || '',
+        status: t.enquiry_status || '',
+        isSelf: t.is_self,
+        startedAt: t.created_at,
+        lastMessageAt: t.last_message_at,
+        // Null here does not mean "no email went out". It is stamped by the
+        // reply notifier only; the very first enquiry email is sent down a
+        // different path that records nothing, so on a one-message thread this
+        // is null even when the cleaner was emailed. See notifyCleanerOfEnquiry.
+        lastNotifiedAt: t.last_notified_at,
+        cleanerReplied,
+        awaiting,
+        waitingDays,
+        unreadByCleaner,
+        unreadByCustomer,
+        // The cleaner has never opened the thread at all - not the same as not
+        // replying, and the more damning of the two.
+        neverOpened: unreadByCleaner > 0 && !list.some((m) => side(m) === 'customer' && m.read_at),
+        messages: list.map((m) => ({
+          from: side(m),
+          kind: m.kind,
+          body: m.body || '',
+          sentAt: m.sent_at,
+          readAt: m.read_at,
+        })),
+      };
+    });
+
+    const real = out.filter((t) => !t.isSelf);
+    res.json({
+      threads: out,
+      totals: {
+        threads: real.length,
+        awaitingCleaner: real.filter((t) => t.awaiting === 'cleaner').length,
+        neverOpened: real.filter((t) => t.neverOpened).length,
+        // Stuck: the cleaner has never written a word and the customer has been
+        // waiting more than a day. The one number on this board worth chasing.
+        stuck: real.filter((t) => !t.cleanerReplied && t.awaiting === 'cleaner' && t.waitingDays >= 1).length,
+        selfTest: out.length - real.length,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load conversations.' });
+  }
+});
+
+const emptyThreadTotals = () => ({ threads: 0, awaitingCleaner: 0, neverOpened: 0, stuck: 0, selfTest: 0 });
+
 // Hiding sets 'removed' so the review drops off the cleaner's profile and out
 // of their rating; restoring returns it to 'published'. Either way the
 // cleaner's headline average is recomputed from what remains published.
@@ -2360,7 +2768,7 @@ app.post('/api/admin/review-moderate', async (req, res) => {
 app.get('/api/directory', async (_req, res) => {
   try {
     const { rows } = await query(
-      `select cp.id, coalesce(cp.business_name, u.full_name) as name,
+      `select cp.id, ${PUBLIC_NAME('cp', 'u')} as name,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count,
               cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
               coalesce(array_agg(distinct s.name) filter (where s.name is not null), array[]::text[]) as areas
@@ -2369,6 +2777,7 @@ app.get('/api/directory', async (_req, res) => {
          left join cleaner_service_areas csa on csa.cleaner_id = cp.id
          left join suburbs s on s.id = csa.suburb_id
         where cp.listing_status = 'active' and u.status = 'active'
+          and ${atOrAboveFloor('cp.hourly_rate_min', 'u')}
         group by cp.id, u.id
         order by cp.avg_rating desc`
     );
@@ -2395,7 +2804,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
     const id = req.query.id;
     if (!id) return res.status(400).json({ error: 'id is required.' });
     const { rows } = await query(
-      `select cp.id, coalesce(cp.business_name, u.full_name) as name, cp.bio, cp.years_experience,
+      `select cp.id, ${PUBLIC_NAME('cp', 'u')} as name, cp.bio, cp.years_experience,
               nullif(cp.business_name, '') is not null as is_business,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count, cp.addons,
               cp.id_verified, cp.police_verified, cp.insurance_verified, cp.brings_products,
@@ -2459,7 +2868,7 @@ app.get('/api/favourites', async (req, res) => {
     const userId = req.query.userId;
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const { rows } = await query(
-      `select cp.id, coalesce(cp.business_name, u.full_name) as name,
+      `select cp.id, ${PUBLIC_NAME('cp', 'u')} as name,
               cp.hourly_rate_min, cp.hourly_rate_max, cp.avg_rating, cp.review_count,
               cp.id_verified, cp.police_verified, cp.insurance_verified, cp.profile_photo_url
          from client_favourites f
@@ -2960,6 +3369,8 @@ app.post('/api/enquiry/confirm-date', async (req, res) => {
       [enquiryId]
     );
     const { l: label, iso } = rows[0];
+    // A booking is what a customer referral has been waiting for.
+    awardClientReferralForEnquiry(enquiryId).catch((e) => console.error('[referral] confirm-date:', e));
     await postThreadNote(row.conversation_id, userId, `Confirmed - the clean is booked for ${label}.`, 'date_confirmed');
     if (row.conversation_id) {
       notifyNewMessage({ conversationId: row.conversation_id, senderUserId: userId })
@@ -3127,6 +3538,12 @@ app.post('/api/enquiry-status', async (req, res) => {
       [enquiryId, status, scheduled]
     );
 
+    // The other door onto a booking: the cleaner setting the date themselves.
+    // Guarded on a date actually being fixed, so declining an enquiry cannot
+    // pay a referral.
+    if (scheduled) {
+      awardClientReferralForEnquiry(enquiryId).catch((e) => console.error('[referral] accept:', e));
+    }
     // The cleaner can still end a clean early by hand; the daily task does it
     // for everyone who doesn't. Both land in the same place.
     if (status === 'completed') await postReviewRequest(enquiryId);
@@ -3249,9 +3666,15 @@ app.post('/api/tasks/referral-credits', async (req, res) => {
     return res.status(503).json({ error: 'CRON_SECRET is not set on this server.' });
   if (!cronAuthorised(req)) return res.status(403).json({ error: 'Forbidden.' });
   try {
-    const credited = await sweepReferralCredits();
-    console.log(`referral credits: awarded ${credited}`);
-    res.json({ credited, creditCents: REFERRAL_CREDIT_CENTS });
+    const { cleaners, clients } = await sweepReferralCredits();
+    console.log(`referral credits: awarded ${cleaners} cleaner, ${clients} customer`);
+    res.json({
+      credited: cleaners + clients,
+      cleaners,
+      clients,
+      creditCents: REFERRAL_CREDIT_CENTS,
+      clientCreditCents: CLIENT_REFERRAL_CREDIT_CENTS,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not sweep referral credits.' });
@@ -3946,7 +4369,7 @@ app.post('/api/match', async (req, res) => {
     const sql = `
       select
         cp.id,
-        coalesce(cp.business_name, u.full_name) as name,
+        ${PUBLIC_NAME('cp', 'u')} as name,
         -- Whether that name is a trading name or a person's. The card shortens a
         -- person to their first name ("Contact Ana") but must never do that to a
         -- business - "Contact Simply" is not who they are.
@@ -3961,6 +4384,13 @@ app.post('/api/match', async (req, res) => {
           where e.cleaner_id = cp.id and e.status = 'accepted'
             and (e.scheduled_on is null or e.scheduled_on >= current_date)
         ) as active_load,
+        -- Customers this cleaner brought to Match Maid who went on to book.
+        -- Credited ones only: an invite nobody acted on has not grown anything.
+        (
+          select count(*) from referrals rf
+          where rf.referrer_cleaner_id = cp.id
+            and rf.referred_client_id is not null and rf.credited_at is not null
+        ) as community_referrals,
         coalesce(array_agg(distinct st.slug) filter (where st.slug is not null), array[]::text[]) as services,
         coalesce(
           array_agg(distinct (ar.day_of_week::text || '|' || to_char(ar.start_time,'HH24:MI')))
@@ -3980,6 +4410,7 @@ app.post('/api/match', async (req, res) => {
            select d, t from unnest($2::int[], $3::time[]) as x(d, t)
        )
       where cp.listing_status = 'active' and u.status = 'active'
+        and ${atOrAboveFloor('cp.hourly_rate_min', 'u')}
       group by cp.id, u.id`;
 
     const { rows } = await query(sql, [subList, days, starts, reqCountry(req)]);
@@ -4052,7 +4483,18 @@ app.post('/api/match', async (req, res) => {
           else { fair = cMax; priceScore = 1; }
         }
         const ratingScore = (Number(r.avg_rating) || 0) / 5;
-        const score = Math.round(100 * (0.35 * serviceScore + 0.3 * availScore + 0.2 * priceScore + 0.15 * ratingScore));
+        // Bringing customers onto Match Maid lifts a listing. Deliberately
+        // small and capped: it is a thank-you that can break a tie, never a way
+        // to buy the top of the page over being the right cleaner for the job.
+        // The four real signals still decide the order between any two
+        // listings more than a page of referrals could.
+        const communityBonus =
+          (Math.min(Number(r.community_referrals) || 0, COMMUNITY_BOOST_AT) / COMMUNITY_BOOST_AT) *
+          COMMUNITY_BOOST_MAX;
+        const score = Math.min(
+          100,
+          Math.round(100 * (0.35 * serviceScore + 0.3 * availScore + 0.2 * priceScore + 0.15 * ratingScore + communityBonus))
+        );
         const atCapacity = Number(r.active_load) >= CAPACITY_LIMIT;
         return {
           id: r.id,

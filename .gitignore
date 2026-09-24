@@ -7,3 +7,6 @@ server/.env
 # local artifacts / originals (not needed in the deploy)
 *.zip
 unzipped/
+
+# Python bytecode from the page generators in tools/
+__pycache__/

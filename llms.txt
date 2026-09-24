@@ -1,6 +1,6 @@
 # Match Maid
 
-> Match Maid is a marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge - Match Maid never takes a commission on a job. It runs two separate marketplaces: New Zealand at matchmaid.co.nz, and Australia at matchmaid.co.nz/au. They do not share listings - an Australian household sees Australian cleaners only, and vice versa.
+> Match Maid is a marketplace that connects households with independent local house cleaners. Rates are shown up front, it is free for households, and cleaners keep 100% of what they charge - Match Maid never takes a commission on a job. It runs two separate marketplaces: New Zealand at matchmaid.co.nz, and Australia at matchmaid.com.au. They do not share listings - an Australian household sees Australian cleaners only, and vice versa.
 
 ## What it is
 - A directory / marketplace, not a cleaning company. Match Maid introduces households to independent cleaners and does not employ cleaners, take bookings, or handle payments.
@@ -17,7 +17,7 @@
 
 ## What a clean actually costs - New Zealand
 - Cleaners set their own hourly rate and it is shown before you contact anyone.
-- Rates currently advertised on Match Maid run from $24 to $60 an hour, most around $35-$45.
+- Rates currently advertised on Match Maid run from $24 to $60 an hour for a regular clean, most between $35 and $50, with the middle of the market at about $42. A deep clean runs about $29-$80 an hour, most between $50 and $65, middle about $55.
 - The lowest rate a cleaner may advertise is $20 an hour.
 - There is no booking fee, no commission and no charge to households at any point.
 
@@ -26,15 +26,27 @@
 - Cleaner numbers are deepest in Auckland and Christchurch, with cleaners also covering parts of Dunedin. Other towns are open and filling in.
 - Cleaners set a service area as a radius, so coverage is by suburb rather than by whole city.
 
-## Coverage - Australia (matchmaid.co.nz/au)
+## Coverage - Australia (matchmaid.com.au)
 - Open in six cities: Sydney, Melbourne, Brisbane, Perth, Hobart and Darwin. Accounts can only be created in those cities for now.
 - 2,422 suburbs across those six metros are searchable.
 - Prices are in Australian dollars. Advertised rates run from about A$35 to A$80 an hour depending on the city, with most around A$45-$55. The lowest rate an Australian cleaner may advertise is A$30 an hour - above the casual minimum wage.
 - Same model as New Zealand: free for households, no commission from cleaners, rates shown before you make contact.
 
 ## Australian cities
-- [All cities](https://matchmaid.co.nz/au/cleaners): the six metros in one place.
-- [Sydney](https://matchmaid.co.nz/au/cleaners/sydney), [Melbourne](https://matchmaid.co.nz/au/cleaners/melbourne), [Brisbane](https://matchmaid.co.nz/au/cleaners/brisbane), [Perth](https://matchmaid.co.nz/au/cleaners/perth), [Hobart](https://matchmaid.co.nz/au/cleaners/hobart), [Darwin](https://matchmaid.co.nz/au/cleaners/darwin)
+- [All cities](https://matchmaid.com.au/cleaners): the six metros in one place.
+- [Sydney](https://matchmaid.com.au/cleaners/sydney), [Melbourne](https://matchmaid.com.au/cleaners/melbourne), [Brisbane](https://matchmaid.com.au/cleaners/brisbane), [Perth](https://matchmaid.com.au/cleaners/perth), [Hobart](https://matchmaid.com.au/cleaners/hobart), [Darwin](https://matchmaid.com.au/cleaners/darwin)
+
+## What a clean actually costs - the page
+- [House cleaning prices in New Zealand](https://matchmaid.co.nz/house-cleaning-prices): advertised rates by clean type, what a visit costs by home size, and the five things that move the price.
+
+## Cleaning services - New Zealand
+- [End of tenancy cleaning](https://matchmaid.co.nz/end-of-tenancy-cleaning): bond / move-out cleans, what they cover, what they cost, and which cleaners offer a bond-back guarantee.
+- [Deep cleaning](https://matchmaid.co.nz/deep-cleaning): what a deep clean includes over a regular one, how long it takes, and real rates.
+- Only cleans with cleaners actually offering them get a page: regular, deep and end-of-tenancy. Carpet, oven and window cleans exist as service types but have no supply, so there is no page for them.
+
+## Cleaners by city - New Zealand
+- [Auckland](https://matchmaid.co.nz/cleaners/auckland): about $25-$50 an hour for a regular clean.
+- [Christchurch](https://matchmaid.co.nz/cleaners/christchurch): about $24-$60 an hour for a regular clean.
 
 ## Cleaners by suburb
 - [All areas](https://matchmaid.co.nz/cleaners): every suburb with a page of its own, in one place.
@@ -48,10 +60,10 @@
 - [Browse cleaners](https://matchmaid.co.nz/browse): search local cleaners by suburb, clean type, verification and price (no account needed).
 
 ## Key pages - Australia
-- [Home](https://matchmaid.co.nz/au): overview and role gateway.
-- [For households](https://matchmaid.co.nz/au/for-customers)
-- [For cleaners](https://matchmaid.co.nz/au/for-maids)
-- [Browse cleaners](https://matchmaid.co.nz/au/browse)
+- [Home](https://matchmaid.com.au/): overview and role gateway.
+- [For households](https://matchmaid.com.au/for-customers)
+- [For cleaners](https://matchmaid.com.au/for-maids)
+- [Browse cleaners](https://matchmaid.com.au/browse)
 
 ## Shared
 - [Terms of Service](https://matchmaid.co.nz/terms)

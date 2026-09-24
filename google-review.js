@@ -36,12 +36,12 @@ window.GoogleAsk = (function () {
   function show(href, opts) {
     var o = opts || {};
     var wrap = document.createElement('div');
-    wrap.className = 'modal-overlay ga-overlay';
+    wrap.className = 'modal-overlay ask-overlay';
     wrap.innerHTML =
-      '<div class="modal ga-modal" role="dialog" aria-modal="true" aria-labelledby="gaTitle">' +
-      '  <h2 class="ga-title" id="gaTitle">' + (o.title || 'Glad that went well.') + '</h2>' +
-      '  <p class="ga-body">' + (o.body || '') + '</p>' +
-      '  <div class="ga-actions">' +
+      '<div class="modal ask-modal" role="dialog" aria-modal="true" aria-labelledby="gaTitle">' +
+      '  <h2 class="ask-title" id="gaTitle">' + (o.title || 'Glad that went well.') + '</h2>' +
+      '  <p class="ask-body">' + (o.body || '') + '</p>' +
+      '  <div class="ask-actions">' +
       '    <a class="btn solid" target="_blank" rel="noopener" href="' + href + '">Review us on Google</a>' +
       '    <button class="btn outline" type="button" data-ga-no>Not now</button>' +
       '  </div>' +
@@ -60,11 +60,17 @@ window.GoogleAsk = (function () {
   }
 
   // score: what they just rated. opts: { title, body }
+  //
+  // Resolves to whether anything was actually shown, so a caller can offer a
+  // second ask only when this one stayed silent. It has to be a promise: the
+  // Google URL is fetched, so "did it show" is not known synchronously.
   function maybeAsk(score, opts) {
-    if (!(Number(score) >= MIN_SCORE)) return;
-    if (alreadyAsked()) return;
-    url().then(function (href) {
-      if (href) show(href, opts);
+    if (!(Number(score) >= MIN_SCORE)) return Promise.resolve(false);
+    if (alreadyAsked()) return Promise.resolve(false);
+    return url().then(function (href) {
+      if (!href) return false;
+      show(href, opts);
+      return true;
     });
   }
 

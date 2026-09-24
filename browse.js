@@ -64,7 +64,48 @@ function parseLoc(val) {
   return { label: val, suburbs: val ? [val] : [] };
 }
 suburbSel.innerHTML = locationOptions('town:Christchurch');
-showSearchPrompt();
+
+// Deep links from the service and city pages. Someone who clicks through from a
+// page about end-of-tenancy cleans and lands on "Regular house clean" has to
+// redo the choice they already made, and a fair number of them just leave. The
+// values are validated against what is actually in each list, so a stale or
+// hand-typed link falls back to the defaults rather than selecting nothing.
+//
+// Supported: ?service=<slug>, ?town=<name>, ?suburb=<name>. A link that names
+// both a clean type and a place has said enough to run the search on arrival.
+//
+// Also ?cleaner=<id> and ?ref=<code>, which is what /b/<CODE> redirects to: a
+// cleaner's quick-book link, for posting where their customers already are.
+const linkParams = new URLSearchParams(location.search);
+const wantService = linkParams.get('service');
+const wantPlace = linkParams.get('town') ? 'town:' + linkParams.get('town') : linkParams.get('suburb');
+const gotService = !!wantService && DEMO.services.some((s) => s.slug === wantService);
+const gotPlace = !!wantPlace && [...suburbSel.options].some((o) => o.value === wantPlace);
+if (gotService) serviceSel.value = wantService;
+if (gotPlace) suburbSel.value = wantPlace;
+
+if (gotService && gotPlace) runSearch();
+else showSearchPrompt();
+
+// ---- Quick-book arrival -------------------------------------------------
+// Someone who followed a cleaner's own link is not browsing, they came for that
+// cleaner. Open the profile straight away rather than making them search for
+// somebody whose name they already had.
+//
+// The referring code is stashed for the session so it survives the search
+// behind the modal and still reaches the signup form, which is several clicks
+// and no page load away.
+const REF_KEY = 'mm_ref';
+const refFromLink = (linkParams.get('ref') || '').trim().toUpperCase();
+if (refFromLink) {
+  try { sessionStorage.setItem(REF_KEY, refFromLink); } catch {}
+}
+function referringCode() {
+  if (refFromLink) return refFromLink;
+  try { return sessionStorage.getItem(REF_KEY) || ''; } catch { return ''; }
+}
+const wantCleaner = (linkParams.get('cleaner') || '').trim();
+if (wantCleaner) openCleanerModal(wantCleaner);
 
 extrasBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
 verifBox.querySelectorAll('.chip.select').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
@@ -114,8 +155,21 @@ function loadSupply() {
     .then((d) => { supplyLoaded = true; supplyRates = d && Array.isArray(d.rates) ? d.rates : []; renderHist(); })
     .catch(() => {});
 }
-suburbSel.addEventListener('change', loadSupply);
-serviceSel.addEventListener('change', loadSupply);
+// Once results are on screen, the location and the clean type are the two
+// controls that make them WRONG rather than merely unrefined - a page of
+// Christchurch cleaners sitting under "Showing 6 cleaners in Dunedin" is a
+// worse answer than any amount of re-fetching. So these two re-run the search
+// as soon as they change, but only after one has been run: before that,
+// searching on a dropdown nobody has finished setting is noise.
+//
+// The rate, hours, extras and availability stay on the Search button. They
+// narrow a result set rather than replace it, and a slider that fired a request
+// per pixel would be its own bug.
+function rerunIfSearched() {
+  if (lastPrefs) runSearch();
+}
+suburbSel.addEventListener('change', () => { loadSupply(); rerunIfSearched(); });
+serviceSel.addEventListener('change', () => { loadSupply(); rerunIfSearched(); });
 loadSupply();
 
 cal.innerHTML = calendarHTML(slots);
@@ -573,6 +627,10 @@ capForm.addEventListener('submit', async (e) => {
     email: capForm.email.value,
     password: capForm.password.value,
   };
+  // They arrived on a cleaner's quick-book or invite link, so that cleaner
+  // brought them. An unknown code earns nobody and never blocks the signup.
+  const ref = referringCode();
+  if (ref) body.referralCode = ref;
   try {
     const res = await fetch('/api/register', {
       method: 'POST',

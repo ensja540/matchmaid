@@ -40,8 +40,16 @@ const roleSwitchLink = document.getElementById('roleSwitchLink');
 roleSwitchText.textContent = ROLE_SWITCH[role].text;
 roleSwitchLink.textContent = ROLE_SWITCH[role].link;
 
-// A cleaner's share link carries their code: /login?role=maid&mode=signup&ref=XXXXXX
+// A cleaner's share link carries their code. The same code works on both
+// sides - /login?role=maid... invites another cleaner, /login?role=customer...
+// (and the /b/<CODE> quick-book link) brings them a customer - so what a code
+// earns is decided by the role on the link, not by the code itself.
 const refFromLink = (params.get('ref') || '').trim().toUpperCase();
+// A quick-book visitor may have picked the code up on /browse several clicks
+// ago, so fall back to what that page stashed for the session.
+function storedRef() {
+  try { return sessionStorage.getItem('mm_ref') || ''; } catch { return ''; }
+}
 
 function render() {
   const signup = mode === 'signup';
@@ -52,12 +60,14 @@ function render() {
   document.querySelectorAll('[data-signup-only]').forEach((el) => {
     el.style.display = signup ? '' : 'none';
   });
-  // Referrals are cleaner-to-cleaner, so the code field is maid-side only.
+  // The code field is offered on both sides now: a cleaner's code invites other
+  // cleaners and brings them customers, so a customer may well have one.
   document.querySelectorAll('[data-maid-only]').forEach((el) => {
     if (role !== 'maid') el.style.display = 'none';
   });
-  if (signup && role === 'maid' && refFromLink && form.referralCode && !form.referralCode.value) {
-    form.referralCode.value = refFromLink;
+  const carried = refFromLink || storedRef();
+  if (signup && carried && form.referralCode && !form.referralCode.value) {
+    form.referralCode.value = carried;
   }
   submitBtn.textContent = signup ? 'Create account' : 'Log in';
   // Carry login/signup across the switch so a wrong-role signup stays a signup.
@@ -91,7 +101,7 @@ form.addEventListener('submit', async (e) => {
     // ?country=AU; anything else is New Zealand. The server checks it against
     // where the signer-up actually is before it creates anything.
     body.country = SIGNUP_COUNTRY;
-    if (role === 'maid') body.referralCode = form.referralCode?.value.trim() || refFromLink || undefined;
+    body.referralCode = form.referralCode?.value.trim() || refFromLink || storedRef() || undefined;
     // Where they first came from. Null when we never saw an entry (a returning
     // visitor whose storage was cleared) - the server then stores NULL rather
     // than crediting a channel we'd be guessing at.

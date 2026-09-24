@@ -265,6 +265,33 @@ let mpOffers = new Set(Object.keys(mpCleanRates));
 // cannot be the Australian floor. The server decides - this only keeps the form
 // from letting someone type a number it is about to reject.
 const MIN_HOURLY_RATE = MM_COUNTRY === 'AU' ? 30 : 20;
+// What comparable cleaners charge, fetched once and shared by the profile form
+// and the setup wizard. Only used to flag a rate that sits ABOVE the market:
+// telling someone they are cheap invites a price rise, and the cheap end is
+// where a new cleaner gets their first jobs. The server refuses to average a
+// handful of cleaners, so an empty benchmarks object means "not enough to say".
+let mpBenchmarks = null;
+let mpBenchmarkScope = '';
+let mpBenchmarkFetch = null;
+const COUNTRY_NAME = { NZ: 'New Zealand', AU: 'Australia' };
+function loadBenchmarks() {
+  if (mpBenchmarkFetch) return mpBenchmarkFetch;
+  if (!sessionUser?.id) return Promise.resolve(null);
+  mpBenchmarkFetch = fetch(`/api/rate-benchmark?userId=${encodeURIComponent(sessionUser.id)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (!d) return null;
+      mpBenchmarks = d.benchmarks || {};
+      mpBenchmarkScope = d.scope === 'area'
+        ? 'covering your suburbs'
+        : `across ${COUNTRY_NAME[d.country] || 'the country'}`;
+      return d;
+    })
+    // A benchmark is a nicety. If it fails, the form works exactly as before.
+    .catch(() => null);
+  return mpBenchmarkFetch;
+}
+
 const CLEAN_TYPES = [
   { slug: 'regular', name: 'Regular clean' },
   { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash', endOfLeaseOption: true },
@@ -283,6 +310,7 @@ function cleanFeesHTML() {
           <span class="fee-price"><span class="fee-dollar">$</span><input type="number" class="fee-input" min="${MIN_HOURLY_RATE}" step="1" value="${val != null && val !== '' ? val : ''}" placeholder="-" ${offered ? '' : 'disabled'} /><span class="fee-per">/hr</span></span>
         </div>
         ${t.includes ? `<p class="fee-includes">Includes: ${escapeHtml(t.includes)}</p>` : ''}
+        <p class="fee-benchmark" hidden></p>
         ${t.endOfLeaseOption ? `
           <label class="check-inline fee-eol"><input type="checkbox" class="eol-toggle" ${mpEndOfLease ? 'checked' : ''} /> Also available for end-of-lease cleans <span class="muted">- based on your deep-clean rate, but may be subject to custom pricing</span></label>
           <label class="check-inline fee-bond" ${mpEndOfLease ? '' : 'hidden'}><input type="checkbox" class="bond-toggle" ${mpBondGuaranteed ? 'checked' : ''} /> Bond-back guaranteed <span class="muted">- you'll put it right if the manager isn't satisfied</span></label>` : ''}
@@ -325,11 +353,35 @@ function wireCleanFees(root) {
     const bondLabel = row.querySelector('.fee-bond');
     const bond = row.querySelector('.bond-toggle');
 
+    const note = row.querySelector('.fee-benchmark');
+    const typeName = (CLEAN_TYPES.find((t) => t.slug === slug)?.name || 'clean').toLowerCase();
+
+    // Says nothing at or below the market - see loadBenchmarks for why only the
+    // top half is worth a word.
+    const paintBenchmark = () => {
+      if (!note) return;
+      const b = mpBenchmarks?.[slug];
+      const mine = mpCleanRates[slug];
+      if (!b || !mine || mine <= b.average) { note.hidden = true; note.textContent = ''; return; }
+      note.textContent = `Above average - cleaners ${mpBenchmarkScope} charge about $${b.average}/hr`
+        + ` for a ${typeName}. Worth it when your reviews and badges back it up.`;
+      note.hidden = false;
+    };
+    // Debounced: typing "60" passes through "6", and a note that appears and
+    // vanishes mid-number reads as a glitch rather than as advice.
+    let benchTimer = null;
+    const queueBenchmark = () => {
+      clearTimeout(benchTimer);
+      benchTimer = setTimeout(() => loadBenchmarks().then(paintBenchmark), 400);
+    };
+    loadBenchmarks().then(paintBenchmark);
+
     const syncFee = () => {
       const raw = input.value.trim();
       const v = Math.max(0, Math.round(Number(raw) || 0));
       if (raw !== '' && v > 0) mpCleanRates[slug] = v;
       else delete mpCleanRates[slug];
+      queueBenchmark();
     };
     input.addEventListener('input', syncFee);
 
@@ -347,6 +399,7 @@ function wireCleanFees(root) {
           input.disabled = true;
           input.value = '';
           delete mpCleanRates[slug];
+          paintBenchmark();
           row.classList.remove('on');
           if (eol) { eol.checked = false; mpEndOfLease = false; }
           if (bond) { bond.checked = false; }
@@ -458,6 +511,11 @@ if (sessionUser?.id) {
         photo: data.photo ?? '',
         fullName: data.fullName ?? '',
         residentialAddress: data.residentialAddress ?? '',
+        // Their rate is below the legal floor, so the listing is not being
+        // shown. Carried through to the dashboard, which would otherwise say
+        // "active" and be believed.
+        underFloor: !!data.underFloor,
+        rateFloor: data.rateFloor ?? null,
       };
       // areas arrive as {id, name, region}. Stash them; the city can only be
       // inferred once the suburb list has loaded, so reconcile both together.
@@ -829,11 +887,28 @@ async function openHouseReview(conversationId) {
 
 // The Google ask, shared with the customer portal. Only fires after a rating of
 // 4+, once per person, and never at all without a Business Profile set.
+//
+// A five-star rating that Google stayed silent on gets the share ask instead -
+// but a cleaner is never asked to share a bare link. They have a code that earns
+// them $20 for a cleaner and $10 for a customer, and asking them to grow the
+// network without it would be taking the favour and keeping the reward.
 function maybeAskForGoogle(score) {
-  window.GoogleAsk?.maybeAsk(score, {
-    title: 'Glad that one went well.',
-    body: 'If Match Maid has been worth using, a line on Google is how the next '
-        + 'cleaner finds us - and how households know we are real.',
+  Promise.resolve(
+    window.GoogleAsk?.maybeAsk(score, {
+      title: 'Glad that one went well.',
+      body: 'If Match Maid has been worth using, a line on Google is how the next '
+          + 'cleaner finds us - and how households know we are real.',
+    })
+  ).then((shown) => {
+    if (shown || !referrals) return;
+    const invite = `${location.origin}/login?role=maid&mode=signup&ref=${encodeURIComponent(referrals.code)}`;
+    window.ShareAsk?.maybeAsk(score, {
+      shareUrl: invite,
+      shareText: 'I list on Match Maid - no commission, no lead fees, and customers message you direct.',
+      title: 'Loved your experience?',
+      body: 'Share Match Maid with a friend so we can keep growing. This is your own invite '
+          + `link, so a cleaner who joins through it earns you $${referrals.perReferralDollars} once they are on a paid plan.`,
+    });
   });
 }
 
@@ -945,18 +1020,25 @@ const PANELS = {
         <p class="muted">Full access, no fees, no commission on any job. Everything you earn is yours.</p>
       </div>
 
+      ${mp.underFloor ? `
+      <div class="portal-note warn">
+        <strong>Your listing is not showing.</strong> Its hourly rate is below $${mp.rateFloor}, which is
+        the lowest we can list &mdash; that is the adult minimum wage, and a rate under it reads as a typo
+        rather than an offer. Set your real hourly fee below and your listing goes straight back up.
+        Nothing else has changed: your profile, your areas and your messages are all still here.
+      </div>` : `
       <div class="portal-note">
         <strong>Households are searching now.</strong> Customers can browse cleaners and message
         whoever they pick, so anything missing from your profile costs you enquiries: a rate puts
         you in search, your hours decide which jobs you match, and an ID badge is what customers
         filter for.
-      </div>
+      </div>`}
 
       <div class="dash-grid">
         <div class="stat-card"><span class="stat-num">${Number(mp.avgRating || 0).toFixed(1)}★</span><span class="stat-label">Rating (${mp.reviews || 0})</span></div>
         <div class="stat-card"><span class="stat-num">${newCount}</span><span class="stat-label">New enquiries</span></div>
         <div class="stat-card"><span class="stat-num">${avail.length}</span><span class="stat-label">Weekly slots open</span></div>
-        <div class="stat-card"><span class="stat-num cap">${mp.listingStatus}</span><span class="stat-label">Listing status</span></div>
+        <div class="stat-card ${mp.underFloor ? 'warn' : ''}"><span class="stat-num cap">${mp.underFloor ? 'Not showing' : mp.listingStatus}</span><span class="stat-label">Listing status</span></div>
       </div>
 
       <div class="dash-badges">
@@ -1083,6 +1165,7 @@ const PANELS = {
         </div>
       </div>
       <p class="save-msg" id="planMsg"></p>
+      ${quickBookHTML()}
       ${referralsHTML()}`;
   },
 };
@@ -1506,29 +1589,42 @@ function enquiryRow(e) {
   </div>`;
 }
 
-// Prominent, hard-to-miss referral pitch for the overview. Grows the network
-// (our whole mission) and rewards the maid for it - so it earns top billing on
-// the dashboard, not just a card buried in the subscription tab.
+// Prominent, hard-to-miss referral pitch for the overview. Growing the network
+// is the whole mission, and the cleaners are the ones who can actually do it -
+// so it earns top billing on the dashboard, not a card buried in a tab.
+//
+// Framed as building the community rather than as a bounty. A cleaner who
+// brings their own customers across is not farming a referral scheme, they are
+// making the directory worth searching for the next person - and the reward
+// reads better, and is more honest, said that way round.
 function referralBannerHTML() {
   if (!loggedIn) return '';
   const per = referrals ? referrals.perReferralDollars : null;
-  const link = referrals
+  const perCust = referrals ? referrals.perCustomerDollars : null;
+  const invite = referrals
     ? `${location.origin}/login?role=maid&mode=signup&ref=${encodeURIComponent(referrals.code)}`
     : '';
+  const book = referrals ? `${location.origin}/b/${encodeURIComponent(referrals.code)}` : '';
   return `
     <div class="referral-banner">
       <div class="rb-body">
-        <span class="rb-kicker">Grow the network, get paid for it</span>
-        <h2 class="rb-head">Refer a cleaner${per ? `, earn $${per} credit` : ''}</h2>
-        <p class="rb-copy">Know a great cleaner? Share your invite link. Once they've been on a
-          paid plan for a month${per ? `, you earn <strong>$${per}</strong> off your own` : ', you earn credit off your own'} -
-          and there's no cap on how many you can bring in.</p>
+        <span class="rb-kicker">Help the community grow</span>
+        <h2 class="rb-head">Bring a cleaner or a customer</h2>
+        <p class="rb-copy">Match Maid is only as good as the people on it. Bring a cleaner you rate and
+          you earn${per ? ` <strong>$${per}</strong>` : ' credit'} once they've been on a paid plan for a month.
+          Bring a customer &mdash; including the ones you already clean for &mdash; and you
+          earn${perCust ? ` <strong>$${perCust}</strong>` : ' credit'} as soon as they book a clean.
+          There's no cap on either.</p>
+        <p class="rb-copy"><strong>You'll move up the search rankings too.</strong> Every customer you
+          bring who goes on to book lifts your listing, because growing the community is worth
+          more to everyone here than any promotion we could sell.</p>
         <p class="rb-copy muted rb-note">Everyone is free while we build the network, so nothing
           is payable yet - referrals you make now are banked and credit once paid plans begin.</p>
         ${referrals
           ? `<div class="rb-actions">
               <code class="ref-code">${escapeHtml(referrals.code)}</code>
-              <button class="btn solid sm js-ref-copy" type="button" data-link="${escapeHtml(link)}">Copy invite link</button>
+              <button class="btn solid sm js-ref-copy" type="button" data-link="${escapeHtml(book)}" data-label="Copy booking link">Copy booking link</button>
+              <button class="btn outline sm js-ref-copy" type="button" data-link="${escapeHtml(invite)}" data-label="Copy cleaner invite">Copy cleaner invite</button>
               <button class="btn outline sm" type="button" data-start="subscription">See your referrals</button>
             </div>`
           : referralsError
@@ -1555,50 +1651,99 @@ function wireRefCopy(root) {
   root.querySelectorAll('.js-ref-copy').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const link = btn.dataset.link;
+      // Each button says what it copies, so the confirmation has to put back
+      // that button's own label rather than one shared default.
+      const label = btn.dataset.label || 'Copy invite link';
       try {
         await navigator.clipboard.writeText(link);
         btn.textContent = 'Copied!';
       } catch {
-        window.prompt('Copy your invite link:', link);
+        window.prompt('Copy your link:', link);
       }
-      setTimeout(() => { btn.textContent = 'Copy invite link'; }, 1800);
+      setTimeout(() => { btn.textContent = label; }, 1800);
     })
   );
 }
 
-// Referral card: your code, your credit, and who you've brought in. The credit
-// only lands once a referred cleaner has held a paid plan for a month, so
-// everyone else is shown as pending rather than silently missing - and while
-// the whole platform is free, that means everyone.
+// The quick-book card: one short link a cleaner can paste anywhere they already
+// advertise - a Facebook bio, a Gumtree ad, the back of a card - that lands on
+// their own listing with the message button in reach.
+//
+// It is the same code as the referral scheme on purpose. Anyone who books off
+// it and makes an account is a customer this cleaner brought, so the $10 and
+// the ranking lift follow without them having to do anything else. One code per
+// cleaner is one code to remember.
+function quickBookHTML() {
+  if (!loggedIn || !referrals) return '';
+  const book = `${location.origin}/b/${encodeURIComponent(referrals.code)}`;
+  const tagline = `Book us for free through our Match Maid directory listing: ${book}`;
+  return `
+    <div class="panel-card quickbook-card">
+      <h2>Your quick-book link</h2>
+      <p class="muted">Post this anywhere you already advertise. It opens your listing straight away,
+        so people can read your rates and message you without hunting for you first &mdash; and anyone who
+        signs up through it counts as a customer you brought.</p>
+
+      <div class="ref-code-row">
+        <code class="ref-code qb-link">${escapeHtml(book)}</code>
+        <button class="btn solid sm js-ref-copy" type="button" data-link="${escapeHtml(book)}" data-label="Copy link">Copy link</button>
+      </div>
+
+      <p class="qb-tagline-label muted">Ready to paste:</p>
+      <blockquote class="qb-tagline">${escapeHtml(tagline)}</blockquote>
+      <button class="btn outline sm js-ref-copy" type="button" data-link="${escapeHtml(tagline)}" data-label="Copy the whole post">Copy the whole post</button>
+    </div>`;
+}
+
+// Referral card: your code, your credit, and who you've brought in. A cleaner
+// credits once they've held a paid plan for a month; a customer credits as soon
+// as they book a clean. Everyone else shows as pending rather than silently
+// missing - and while the whole platform is free, a cleaner referral means
+// everyone.
 function referralsHTML() {
   if (!loggedIn) return '';
   if (!referrals) {
     return referralsError
-      ? `<div class="panel-card"><h2>Refer a cleaner</h2>
+      ? `<div class="panel-card"><h2>Grow the community</h2>
            <p class="muted">Couldn't load your referral code (${escapeHtml(referralsError)}).
              <button class="btn outline sm js-ref-retry" type="button">Try again</button></p></div>`
-      : '<div class="panel-card"><h2>Refer a cleaner</h2><p class="muted">Loading your referral code…</p></div>';
+      : '<div class="panel-card"><h2>Grow the community</h2><p class="muted">Loading your referral code…</p></div>';
   }
 
   const per = referrals.perReferralDollars;
-  const link = `${location.origin}/login?role=maid&mode=signup&ref=${encodeURIComponent(referrals.code)}`;
+  const perCust = referrals.perCustomerDollars;
+  const invite = `${location.origin}/login?role=maid&mode=signup&ref=${encodeURIComponent(referrals.code)}`;
   const rows = referrals.referrals
-    .map(
-      (r) => `<div class="ref-row">
-        <span>${escapeHtml(r.name)}</span>
-        ${r.credited
-          ? `<span class="status status-accepted">+$${r.creditDollars} credited</span>`
-          : '<span class="status status-new">Credits after a paid month</span>'}
-      </div>`
-    )
+    .map((r) => {
+      // Three states, not two: a customer who has booked but whose credit has
+      // not been stamped yet would otherwise read as though nothing happened.
+      const state = r.credited
+        ? `<span class="status status-accepted">+$${r.creditDollars} credited</span>`
+        : r.kind === 'customer'
+          ? (r.booked
+              ? '<span class="status status-new">Booked · crediting</span>'
+              : '<span class="status status-new">Credits when they book</span>')
+          : '<span class="status status-new">Credits after a paid month</span>';
+      return `<div class="ref-row">
+        <span>${escapeHtml(r.name)} <span class="ref-kind">${r.kind === 'customer' ? 'customer' : 'cleaner'}</span></span>
+        ${state}
+      </div>`;
+    })
     .join('');
+
+  const boost = referrals.customersBooked
+    ? `<p class="muted ref-boost">${referrals.customersBooked} customer${referrals.customersBooked === 1 ? '' : 's'} you
+         brought ${referrals.customersBooked === 1 ? 'has' : 'have'} booked, so your listing is ranking higher
+         ${referrals.customersBooked >= referrals.boostAt ? '&mdash; you have the full boost.' : `&mdash; ${referrals.boostAt} gets you the full boost.`}</p>`
+    : '';
 
   return `
     <div class="panel-card referral-card">
-      <h2>Refer a cleaner</h2>
-      <p class="muted">Share your code. Once a cleaner you refer has been on a paid plan for at
-        least one month, you earn <strong>$${per}</strong> of credit toward your own payments.
-        Match Maid is free for everyone right now, so referrals bank until paid plans start.</p>
+      <h2>Grow the community</h2>
+      <p class="muted">Share your code. A cleaner you bring earns you <strong>$${per}</strong> once they've
+        been on a paid plan for a month; a customer you bring earns you <strong>$${perCust}</strong> as soon
+        as they book a clean, and moves you up the search rankings.
+        Match Maid is free for everyone right now, so credit banks until paid plans start.</p>
 
       <div class="ref-credit">
         <span class="ref-amount">$${referrals.creditDollars}</span>
@@ -1607,11 +1752,12 @@ function referralsHTML() {
 
       <div class="ref-code-row">
         <code class="ref-code">${escapeHtml(referrals.code)}</code>
-        <button class="btn outline sm js-ref-copy" type="button" data-link="${escapeHtml(link)}">Copy invite link</button>
+        <button class="btn outline sm js-ref-copy" type="button" data-link="${escapeHtml(invite)}" data-label="Copy cleaner invite">Copy cleaner invite</button>
       </div>
       <p class="muted ref-counts">
-        ${referrals.earned} credited · ${referrals.pending} pending a paid month
+        ${referrals.earned} credited · ${referrals.pending} pending
       </p>
+      ${boost}
 
       ${rows ? `<div class="ref-list">${rows}</div>` : '<p class="muted">No referrals yet. Share your code to get started.</p>'}
     </div>`;
