@@ -106,7 +106,7 @@ function mountCountrySwitch() {
     wrap.querySelectorAll('.cc-btn').forEach((x) => x.classList.toggle('active', x === b));
     // Every cached payload belongs to the country it was fetched for, so all of
     // it is thrown away rather than shown under the wrong flag.
-    peopleData = null; coverageData = null; pairingsData = null; messagesData = null;
+    peopleData = null; coverageData = null; pairingsData = null; messagesData = null; refData = null;
     openThread = null;
     // Tear the Leaflet map down rather than dropping the reference: an
     // orphaned map keeps its handlers and its tiles for the old country.
@@ -120,6 +120,7 @@ function mountCountrySwitch() {
     if (panel === 'coverage') showCoverage();
     if (panel === 'pairings') showPairings();
     if (panel === 'messages') showMessages();
+    if (panel === 'referrals') showReferrals();
     if (panel === 'verifications') load();
     if (panel === 'reviews') loadReviews();
   });
@@ -140,6 +141,7 @@ adminTabs?.addEventListener('click', (e) => {
   if (btn.dataset.tab === 'people') showPeople();
   if (btn.dataset.tab === 'pairings') showPairings();
   if (btn.dataset.tab === 'messages') showMessages();
+  if (btn.dataset.tab === 'referrals') showReferrals();
 });
 // A count on a tab, so a full review queue is visible without opening it.
 function setTabCount(tab, n) {
@@ -441,6 +443,128 @@ function renderMessages() {
       renderMessages();
       if (openThread) messagesBody.querySelector(`[data-thread="${openThread}"]`)?.scrollIntoView({ block: 'nearest' });
     }));
+}
+
+// ---------- Referrals: who is bringing people, and who looks like they aren't ----------
+// The scheme is deliberately permissive - a cleaner bringing a customer they
+// already clean for is the point of it, and that is the same shape as a made-up
+// referral. So nothing here is blocked and nothing is accused. It ranks by how
+// many odd things stack up on one person and shows the reasons, so a human can
+// look at four in a row and decide.
+const refBody = document.getElementById('referralsBody');
+let refData = null, refOnlyFlagged = false;
+
+async function showReferrals() {
+  if (!refBody) return;
+  if (refData) { renderReferrals(); return; }
+  refBody.innerHTML = '<div class="panel-card"><p class="muted">Loading…</p></div>';
+  try {
+    const res = await fetch(withAdminCountry(`/api/admin/referrals?userId=${encodeURIComponent(sessionUser.id)}`));
+    if (res.status === 403) {
+      refBody.innerHTML = '<div class="panel-card"><p class="muted">Admin only.</p></div>';
+      return;
+    }
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    refData = await res.json();
+    renderReferrals();
+  } catch (err) {
+    console.error('referrals:', err);
+    refBody.innerHTML =
+      `<div class="panel-card"><p class="muted">Could not load referrals (${esc(err.message || 'network error')}).
+       <button class="btn ghost sm" type="button" data-ref-retry>Retry</button></p></div>`;
+    refBody.querySelector('[data-ref-retry]')?.addEventListener('click', () => { refData = null; showReferrals(); });
+  }
+}
+
+// Three bands, named for what to do rather than for a number: most referrals are
+// fine, a few are worth a glance, and a couple are worth actually checking.
+function riskBand(risk) {
+  if (risk >= 7) return { cls: 'bad', label: 'Worth checking' };
+  if (risk >= 4) return { cls: 'warn', label: 'Worth a glance' };
+  return { cls: 'ok', label: 'Looks ordinary' };
+}
+
+function refRow(r) {
+  const band = riskBand(r.risk);
+  const flags = r.flags.length
+    ? `<ul class="rf-flags">${r.flags.map((f) => `<li>${esc(f.why)}</li>`).join('')}</ul>`
+    : '';
+  return `<article class="rf-card ${band.cls}">
+    <div class="rf-head">
+      <span class="rf-who">
+        <strong>${esc(r.referee)}</strong>
+        <span class="ref-kind">${r.kind}</span>
+        <span class="pr-amp">via</span> <strong>${esc(r.referrer)}</strong>
+      </span>
+      <span class="mt-state ${band.cls}">${esc(band.label)}</span>
+    </div>
+    <p class="mt-facts">
+      <span class="pr-fact">${esc(r.refereeEmail || '')}</span>
+      ${r.credited ? `<span class="pr-fact">$${r.creditDollars} credited</span>` : '<span class="pr-fact">not credited yet</span>'}
+    </p>
+    ${flags}
+  </article>`;
+}
+
+function renderReferrals() {
+  const d = refData;
+  if (!d || !refBody) return;
+
+  if (!d.referrals.length) {
+    refBody.innerHTML = '<div class="panel-card"><p class="muted">No referrals yet. The first cleaner to bring someone lands here.</p></div>';
+    return;
+  }
+
+  const credited = d.referrals.filter((r) => r.credited);
+  const owed = credited.reduce((a, r) => a + r.creditDollars, 0);
+
+  const hero = `<div class="panel-card pr-hero">
+    <div class="pr-hero-num">
+      <strong>${d.referrals.length.toLocaleString()}</strong>
+      <span>referral${d.referrals.length === 1 ? '' : 's'}</span>
+    </div>
+    <dl class="pr-hero-side">
+      <div><dt>Credited</dt><dd>${credited.length.toLocaleString()}</dd></div>
+      <div><dt>Credit owed</dt><dd>$${owed.toLocaleString()}</dd></div>
+      <div><dt>Worth a look</dt><dd>${(d.flagged || 0).toLocaleString()}</dd></div>
+    </dl>
+  </div>`;
+
+  // The per-cleaner rollup first: one odd referral is noise, four from one
+  // person is the thing actually worth opening.
+  const cleaners = d.cleaners.filter((c) => c.flagged || c.burst);
+  const rollup = cleaners.length
+    ? `<div class="panel-card">
+        <h3 class="adv-head">Cleaners worth a look</h3>
+        <p class="fn-note muted">Ranked by how much stacks up, not by how many referrals they have made.</p>
+        <div class="ref-list">${cleaners.map((c) => `<div class="ref-row">
+          <span>${esc(c.referrer)} <span class="ref-kind">${c.customers} customer${c.customers === 1 ? '' : 's'}</span></span>
+          <span class="mt-state ${c.risk >= 7 ? 'bad' : 'warn'}">${c.flagged} flagged${c.burst ? ' · signed up in a burst' : ''}</span>
+        </div>`).join('')}</div>
+      </div>`
+    : '';
+
+  const list = (refOnlyFlagged ? d.referrals.filter((r) => r.risk >= 4) : d.referrals);
+  const controls = `<div class="panel-card mt-controls">
+    <div class="mt-chips">
+      <button type="button" class="mt-chip ${refOnlyFlagged ? '' : 'active'}" data-ref-filter="all">All${d.referrals.length ? ` <span class="mt-chip-n">${d.referrals.length}</span>` : ''}</button>
+      <button type="button" class="mt-chip ${refOnlyFlagged ? 'active' : ''}" data-ref-filter="flagged">Worth a look${d.flagged ? ` <span class="mt-chip-n">${d.flagged}</span>` : ''}</button>
+    </div>
+  </div>`;
+
+  // Said plainly, because a page of red boxes invites the wrong conclusion.
+  const caveat = `<div class="panel-card"><p class="fn-note muted">Every flag here has an innocent
+    explanation on its own &mdash; a cleaner’s regular customer really might book the day they join,
+    and really might only ever book with them. Nothing is blocked. What is worth opening is several
+    flags stacking on the same cleaner.</p></div>`;
+
+  refBody.innerHTML = hero + rollup + controls +
+    (list.length ? `<div class="mt-list">${list.map(refRow).join('')}</div>`
+                 : '<div class="panel-card"><p class="muted">Nothing flagged. Everything looks ordinary.</p></div>') +
+    caveat;
+
+  refBody.querySelectorAll('[data-ref-filter]').forEach((b) =>
+    b.addEventListener('click', () => { refOnlyFlagged = b.dataset.refFilter === 'flagged'; renderReferrals(); }));
 }
 
 // ---------- People: the register ----------

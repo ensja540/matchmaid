@@ -53,7 +53,7 @@ from site_config import NZ_ORIGIN, nz_url
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORIGIN = NZ_ORIGIN
-CSS = '/styles.css?v=125'
+CSS = '/styles.css?v=126'
 NL = '\n'
 
 # Below this, the search behind the page is too thin to be worth ranking for.

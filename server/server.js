@@ -13,13 +13,14 @@ import {
   emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail,
   sendVerificationDecisionEmail, sendVerificationPendingEmail,
   sendNudgeEmail, sendPreLaunchUpdateEmail, sendNewMessageEmail,
-  sendReviewRequestEmail, sendCleanerReviewEmail,
+  sendReviewRequestEmail, sendCleanerReviewEmail, sendUnansweredEnquiryEmail,
 } from './email.js';
 // The price floors live in their own module so the maintenance scripts can read
 // the same numbers this file enforces - importing server.js would start a
 // second HTTP server, which is why they used to be restated by hand.
 import { COUNTRY_FLOORS, COUNTRY_FLOOR_WHY } from './floors.mjs';
 import { notifyUnderpriced } from './underpriced.mjs';
+import { sameMailbox, emailAffinity } from './email-identity.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, '..'); // project root holds index.html etc.
@@ -560,7 +561,9 @@ async function linkClientReferral(newClientId, newUserEmail, code) {
   );
   const referrer = rows[0];
   if (!referrer) return;
-  if (referrer.email === String(newUserEmail || '').toLowerCase().trim()) return; // their own customer account
+  // Normalised, not literal. A raw comparison is beaten by "vincent+1@", which
+  // is the first thing anyone tries and lands in the same inbox.
+  if (sameMailbox(referrer.email, newUserEmail)) return; // their own customer account
   try {
     await query(
       'insert into referrals (referrer_cleaner_id, referred_client_id) values ($1, $2)',
@@ -2612,6 +2615,178 @@ app.get('/api/admin/pairings', async (req, res) => {
   }
 });
 
+// --- Admin: referrals, and the ones that do not look real -----------------
+// The customer scheme pays $10 for a booking, and a booking is two rows this
+// cleaner can create on their own. That is allowed on purpose - bringing a
+// customer you already clean for is the behaviour being paid for - so this does
+// not block anything. It describes.
+//
+// Every flag here is a PATTERN, not a verdict. Each one has an innocent
+// explanation on its own: a cleaner's regular customer really might book the
+// same day they sign up, really might only ever book with them, and really
+// might live on the same domain if they work together. What is worth a look is
+// several of them stacking on the same cleaner.
+app.get('/api/admin/referrals', async (req, res) => {
+  try {
+    if (!(await isAdmin(req.query.userId))) return res.status(403).json({ error: 'Not authorized.' });
+    const country = reqCountry(req);
+
+    const { rows } = await query(
+      `select r.id, r.created_at, r.credited_at, r.credit_cents,
+              case when r.referred_cleaner_id is not null then 'cleaner' else 'customer' end as kind,
+              ru.id as referrer_user_id, ru.email as referrer_email,
+              coalesce(nullif(rp.business_name, ''), ru.full_name) as referrer,
+              -- The referred party, whichever side they are.
+              coalesce(lu.full_name, cu.full_name) as referee,
+              coalesce(lu.email, cu.email) as referee_email,
+              coalesce(lu.created_at, cu.created_at) as referee_joined,
+              lp.id as client_id
+         from referrals r
+         join cleaner_profiles rp on rp.id = r.referrer_cleaner_id
+         join users ru on ru.id = rp.user_id
+         left join client_profiles lp on lp.id = r.referred_client_id
+         left join users lu on lu.id = lp.user_id
+         left join cleaner_profiles cp on cp.id = r.referred_cleaner_id
+         left join users cu on cu.id = cp.user_id
+        where ru.country = ${countryLit(country)}
+        order by r.created_at desc
+        limit 500`
+    );
+    if (!rows.length) return res.json({ referrals: [], cleaners: [], flagged: 0 });
+
+    // Everything the customer-side flags are computed from, in one query rather
+    // than one per referral.
+    const clientIds = rows.map((r) => r.client_id).filter(Boolean);
+    const statsBy = new Map();
+    if (clientIds.length) {
+      const { rows: stats } = await query(
+        `select e.client_id,
+                count(*)::int as enquiries,
+                count(*) filter (where e.scheduled_on is not null)::int as booked,
+                count(distinct e.cleaner_id)::int as cleaners_contacted,
+                count(*) filter (where e.status = 'completed')::int as completed,
+                count(*) filter (where e.scheduled_on is not null
+                                   and e.scheduled_on < current_date
+                                   and e.status <> 'completed')::int as passed_not_completed,
+                -- How long after the account existed the first booking landed,
+                -- and how much was said in the thread before it did.
+                min(extract(epoch from (e.responded_at - lu.created_at)))
+                  filter (where e.scheduled_on is not null) as secs_to_book,
+                min((select count(*) from messages m
+                      join conversations c on c.id = m.conversation_id
+                     where c.enquiry_id = e.id and coalesce(m.kind,'text') = 'text'))
+                  filter (where e.scheduled_on is not null)::int as words_at_booking
+           from enquiries e
+           join client_profiles lp on lp.id = e.client_id
+           join users lu on lu.id = lp.user_id
+          where e.client_id = any($1::uuid[])
+          group by e.client_id`,
+        [clientIds]
+      );
+      for (const s of stats) statsBy.set(s.client_id, s);
+    }
+
+    // Which cleaner each referred customer actually booked with - a customer who
+    // only ever books the person who referred them is the shape a made-up
+    // referral has, and also the shape a real regular customer has.
+    const onlyReferrer = new Set();
+    if (clientIds.length) {
+      const { rows: sole } = await query(
+        `select r.referred_client_id as client_id
+           from referrals r
+          where r.referred_client_id = any($1::uuid[])
+            and not exists (
+              select 1 from enquiries e
+               where e.client_id = r.referred_client_id
+                 and e.cleaner_id <> r.referrer_cleaner_id)`,
+        [clientIds]
+      );
+      for (const s of sole) onlyReferrer.add(s.client_id);
+    }
+
+    const HOUR = 3600;
+    const out = rows.map((r) => {
+      const flags = [];
+      if (r.kind === 'customer') {
+        const st = statsBy.get(r.client_id) || {};
+        const affinity = emailAffinity(r.referrer_email, r.referee_email);
+        if (affinity === 'same') flags.push({ code: 'same-mailbox', weight: 4, why: 'Signed up on the same mailbox as the cleaner' });
+        else if (affinity === 'close') flags.push({ code: 'lookalike-email', weight: 3, why: 'Address looks like a variant of the cleaner’s own' });
+        else if (affinity === 'domain') flags.push({ code: 'same-domain', weight: 1, why: 'Same email domain as the cleaner' });
+
+        const secs = st.secs_to_book == null ? null : Number(st.secs_to_book);
+        if (secs != null && secs >= 0 && secs < HOUR) {
+          flags.push({ code: 'instant-booking', weight: 3, why: 'Booked within an hour of the account being created' });
+        } else if (secs != null && secs >= 0 && secs < 24 * HOUR) {
+          flags.push({ code: 'same-day-booking', weight: 1, why: 'Booked the same day the account was created' });
+        }
+
+        if (st.booked && Number(st.words_at_booking) <= 1) {
+          flags.push({ code: 'silent-booking', weight: 2, why: 'Booked with almost nothing said in the thread' });
+        }
+        if (Number(st.passed_not_completed) > 0) {
+          flags.push({ code: 'never-happened', weight: 2, why: 'The booked date passed and the clean was never marked done' });
+        }
+        if (onlyReferrer.has(r.client_id) && Number(st.cleaners_contacted) <= 1) {
+          flags.push({ code: 'only-referrer', weight: 1, why: 'Has never contacted any cleaner but the one who referred them' });
+        }
+      }
+      const risk = flags.reduce((a, f) => a + f.weight, 0);
+      return {
+        id: r.id,
+        kind: r.kind,
+        referrer: r.referrer,
+        referrerEmail: r.referrer_email,
+        referee: r.referee,
+        refereeEmail: r.referee_email,
+        joined: r.referee_joined,
+        credited: !!r.credited_at,
+        creditDollars: (r.credit_cents || 0) / 100,
+        flags,
+        risk,
+      };
+    });
+
+    // Rolled up per cleaner, because one odd-looking referral is noise and four
+    // in a row from the same person is the thing actually worth opening.
+    const byCleaner = new Map();
+    for (const r of out) {
+      if (!byCleaner.has(r.referrer)) {
+        byCleaner.set(r.referrer, {
+          referrer: r.referrer, email: r.referrerEmail,
+          customers: 0, cleaners: 0, credited: 0, creditDollars: 0, risk: 0, flagged: 0,
+        });
+      }
+      const c = byCleaner.get(r.referrer);
+      if (r.kind === 'customer') c.customers += 1; else c.cleaners += 1;
+      if (r.credited) { c.credited += 1; c.creditDollars += r.creditDollars; }
+      c.risk += r.risk;
+      if (r.risk >= 4) c.flagged += 1;
+    }
+    // A burst is its own signal: several referrals from one cleaner all landing
+    // in a day is not how word of mouth behaves.
+    for (const [name, c] of byCleaner) {
+      const mine = out.filter((r) => r.referrer === name && r.kind === 'customer');
+      const days = new Map();
+      for (const r of mine) {
+        const d = String(r.joined).slice(0, 10);
+        days.set(d, (days.get(d) || 0) + 1);
+      }
+      c.burst = Math.max(0, ...days.values()) >= 3;
+      if (c.burst) c.risk += 3;
+    }
+
+    res.json({
+      referrals: out.sort((a, b) => b.risk - a.risk || new Date(b.joined) - new Date(a.joined)),
+      cleaners: [...byCleaner.values()].sort((a, b) => b.risk - a.risk),
+      flagged: out.filter((r) => r.risk >= 4).length,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load referrals.' });
+  }
+});
+
 // --- Admin: the threads themselves, and where each one has stalled ---------
 // Pairings counts what worked. This is the raw material underneath it: the
 // real conversations, ordered by whichever moved last, so an enquiry sitting
@@ -3679,6 +3854,128 @@ app.post('/api/tasks/referral-credits', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not sweep referral credits.' });
+  }
+});
+
+// Chases cleaners who have an enquiry sitting unanswered.
+//
+// The gap this fills: the new-message notifier only ever fires when somebody
+// SENDS something. A customer who writes once and then waits - which is what
+// every first enquiry is - produces exactly one email, and if that one is
+// missed the thread goes quiet forever with a real person on the other end of
+// it. Nothing in the product ever looked at "nobody has replied" as a state.
+//
+// Escalating, then done. Days 1, 3 and 7 after the customer's last word, three
+// sends, then silence: a reminder that never stops is one people filter, and
+// filtering is worse than never having been reminded.
+//
+// What counts as answered is the cleaner's OWN words - a system note posted on
+// their behalf is not a reply, and neither is opening the thread. Reading it
+// and saying nothing is precisely the case worth chasing.
+const CHASER_AFTER_DAYS = [1, 3, 7];
+
+async function sweepEnquiryChasers({ send = false } = {}) {
+  const { rows } = await query(
+    `select c.id as conversation_id, c.chaser_count,
+            mu.email as cleaner_email, mu.country,
+            coalesce(nullif(cp.business_name, ''), mu.full_name) as cleaner_name,
+            clu.full_name as client_name,
+            st.name as service, s.name as suburb,
+            last_in.body as message,
+            extract(epoch from (now() - last_in.sent_at)) / 86400 as waiting_days
+       from conversations c
+       join cleaner_profiles cp on cp.id = c.cleaner_id
+       join users mu on mu.id = cp.user_id
+       join client_profiles lp on lp.id = c.client_id
+       join users clu on clu.id = lp.user_id
+       left join enquiries e on e.id = c.enquiry_id
+       left join service_types st on st.id = e.service_type_id
+       left join suburbs s on s.id = coalesce(e.suburb_id, lp.default_suburb_id)
+       -- The customer's most recent message. No row means the customer has said
+       -- nothing, so there is nothing to be waiting on.
+       join lateral (
+         select m.body, m.sent_at from messages m
+          where m.conversation_id = c.id and m.sender_user_id = clu.id
+            and coalesce(m.kind, 'text') = 'text'
+          order by m.sent_at desc limit 1
+       ) last_in on true
+      where mu.status = 'active'
+        and cp.listing_status = 'active'
+        -- Still open. A declined or closed enquiry has been answered, by being
+        -- declined, and a booked one plainly has.
+        and coalesce(e.status, 'new') not in ('declined', 'closed', 'completed', 'accepted')
+        -- The cleaner has never said anything of their own in this thread.
+        and not exists (
+          select 1 from messages m
+           where m.conversation_id = c.id and m.sender_user_id = mu.id
+             and coalesce(m.kind, 'text') = 'text')
+        and c.chaser_count < $1`,
+    [CHASER_AFTER_DAYS.length]
+  );
+
+  const due = rows.filter((r) => {
+    const waited = Number(r.waiting_days) || 0;
+    return waited >= CHASER_AFTER_DAYS[r.chaser_count];
+  });
+
+  const report = {
+    unanswered: rows.length,
+    due: due.length,
+    sent: 0,
+    failed: [],
+    threads: due.map((r) => ({
+      cleaner: r.cleaner_name,
+      customer: r.client_name,
+      waitingDays: Math.floor(Number(r.waiting_days) || 0),
+      reminder: r.chaser_count + 1,
+    })),
+  };
+  if (!send || !due.length) return { ...report, dryRun: !send };
+  if (!emailEnabled()) {
+    return { ...report, dryRun: false, error: 'RESEND_API_KEY is not set, so nothing would be delivered.' };
+  }
+
+  for (const r of due) {
+    const res = await sendUnansweredEnquiryEmail({
+      to: r.cleaner_email,
+      cleanerName: r.cleaner_name,
+      clientName: r.client_name,
+      service: r.service || '',
+      suburb: r.suburb || '',
+      message: r.message || '',
+      waitingDays: Math.floor(Number(r.waiting_days) || 0),
+      step: r.chaser_count,
+      country: r.country,
+    });
+    // Counted only once it has actually gone, so a failed send is retried
+    // tomorrow rather than burning one of the three.
+    if (res && res.ok) {
+      await query(
+        'update conversations set chaser_count = chaser_count + 1, chaser_last_at = now() where id = $1',
+        [r.conversation_id]
+      );
+      report.sent += 1;
+    } else {
+      report.failed.push({ cleaner: r.cleaner_name, res });
+    }
+  }
+  return { ...report, dryRun: false };
+}
+
+// Dry-run unless send=1, like every other task here: the safe call is the one
+// that tells you what would happen.
+app.post('/api/tasks/enquiry-chasers', async (req, res) => {
+  if (!process.env.CRON_SECRET)
+    return res.status(503).json({ error: 'CRON_SECRET is not set on this server.' });
+  if (!cronAuthorised(req)) return res.status(403).json({ error: 'Forbidden.' });
+  try {
+    const send = String(req.query.send ?? req.body?.send ?? '') === '1';
+    const report = await sweepEnquiryChasers({ send });
+    console.log(`enquiry chasers: ${report.unanswered} unanswered, ${report.due} due, ${report.sent} sent${report.dryRun ? ' (dry run)' : ''}`);
+    res.json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not sweep the unanswered enquiries.' });
   }
 });
 

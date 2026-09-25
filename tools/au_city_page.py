@@ -37,7 +37,7 @@ ORIGIN = NZ_ORIGIN
 # than threaded through fifty string concatenations.
 AU_P = AU_BASE
 AU_HOME = au_path('/')
-CSS = '/styles.css?v=125'
+CSS = '/styles.css?v=126'
 NL = '\n'
 
 # Australia has no active cleaners yet. 2,422 suburbs are searchable and nobody

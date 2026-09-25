@@ -1006,6 +1006,20 @@ a { color: inherit; text-decoration: none; }
 }
 .ref-boost { margin: 0.5rem 0 0; font-size: 0.84rem; color: var(--copper-dark); }
 
+/* ---- Admin: referral flags ---- */
+/* Same card and same left-edge colour language as the message threads, because
+   they are read the same way: scan the edges, open the one that stands out. */
+.rf-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem 1rem; background: var(--paper); }
+.rf-card.bad { border-left: 3px solid #c2410c; }
+.rf-card.warn { border-left: 3px solid #f59e0b; }
+.rf-card.ok { border-left: 3px solid var(--line); }
+.rf-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.rf-who { font-size: 0.95rem; }
+/* The reasons, spelled out. This is the whole point of the card - a risk number
+   on its own tells an admin nothing they can act on or argue with. */
+.rf-flags { margin: 0.6rem 0 0; padding-left: 1.1rem; }
+.rf-flags li { font-size: 0.82rem; line-height: 1.5; color: var(--ink-soft); }
+
 
 /* Prominent referral pitch on the overview. Accent-tinted so it stands out from
    the plain dashboard cards without shouting. */

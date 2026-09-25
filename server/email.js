@@ -106,10 +106,64 @@ export async function sendEnquiryEmail({ to, cleanerName, clientName, service, s
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">Good news - <strong>${escapeHtml(clientName || 'a customer')}</strong> has sent you a new enquiry${bits ? ' for ' + bits : ''} on Match Maid. It's exclusively yours.</p>
     ${message ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#f4f1ea;border-left:3px solid #14b8a6;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333">"${escapeHtml(message)}"</blockquote>` : ''}
     <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Reply in your portal</a></p>
-    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">Replying quickly keeps you at the top of search results.</p>`, null, country);
+    <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">Customers here message one cleaner at a time rather than a pool, so this one is waiting on you.</p>`, null, country);
   const text = `${cleanerName ? cleanerName + ',\n\n' : ''}${clientName || 'A customer'} has sent you a new enquiry${bits ? ' for ' + service + (suburb ? ' in ' + suburb : '') : ''} on Match Maid.${message ? '\n\n"' + message + '"' : ''}\n\nReply in your portal: ${APP_URL}/maid`;
   return sendEmail({ to, subject: `New Match Maid enquiry from ${clientName || 'a customer'}`, html, text });
 }
+
+// --- Email: someone is still waiting to hear from you ----------------------
+// Sent to a cleaner who has an enquiry they have not replied to. Escalates over
+// three sends and then stops for good.
+//
+// Transactional, and no unsubscribe: this is a customer waiting in their inbox,
+// not a campaign. It is also the one piece of mail that has to keep a civil
+// tone while saying something unwelcome, so it never accuses - the overwhelming
+// majority of unanswered enquiries are a missed email, not indifference, and
+// the third one offers the honest way out rather than shouting louder.
+const CHASER = [
+  {
+    subject: (who) => `${who} is waiting to hear from you`,
+    lead: (who, what) => `<strong>${who}</strong> sent you an enquiry${what} and hasn’t heard back yet.`,
+    tail: 'A one-line reply is enough to start the conversation - even "sorry, I’m full right now" is worth sending, because it lets them keep looking.',
+  },
+  {
+    subject: (who) => `Still waiting: ${who}`,
+    lead: (who, what) => `<strong>${who}</strong> is still waiting on a reply to their enquiry${what}.`,
+    tail: 'Customers on Match Maid message one cleaner at a time rather than blasting a pool, so until you answer, they are waiting on you and nobody else.',
+  },
+  {
+    subject: (who) => `Last reminder about ${who}`,
+    lead: (who, what) => `This is the last time we’ll email you about <strong>${who}</strong>’s enquiry${what}.`,
+    tail: 'If you are full or not taking work at the moment, pausing your listing in the portal is kinder than leaving people waiting - and it takes one click to switch back on.',
+  },
+];
+
+export async function sendUnansweredEnquiryEmail({ to, cleanerName, clientName, service, suburb, message, waitingDays, step, country }) {
+  const stage = CHASER[Math.min(Math.max(Number(step) || 0, 0), CHASER.length - 1)];
+  const hi = cleanerName ? `Hi ${escapeHtml(String(cleanerName).split(' ')[0])},` : 'Hi,';
+  const who = escapeHtml(clientName || 'A customer');
+  const what = [service && ` for a ${escapeHtml(service)}`, suburb && ` in ${escapeHtml(suburb)}`].filter(Boolean).join('');
+  const waited = waitingDays >= 1
+    ? `<p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:0 0 16px">Waiting ${waitingDays} day${waitingDays === 1 ? '' : 's'} so far.</p>`
+    : '';
+  const quote = message
+    ? `<blockquote style="margin:0 0 20px;padding:12px 16px;background:#f4f1ea;border-left:3px solid #14b8a6;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333">${escapeHtml(String(message).slice(0, 400))}</blockquote>`
+    : '';
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${stage.lead(who, what)}</p>
+    ${waited}
+    ${quote}
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${stage.tail}</p>
+    <p style="margin:0 0 8px"><a href="${APP_URL}/maid" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Reply to ${who}</a></p>`, null, country);
+  const text = `${cleanerName ? String(cleanerName).split(' ')[0] + ',\n\n' : ''}`
+    + `${clientName || 'A customer'} sent you an enquiry${what.replace(/<[^>]*>/g, '')} and hasn't heard back yet.`
+    + (waitingDays >= 1 ? ` Waiting ${waitingDays} day${waitingDays === 1 ? '' : 's'} so far.` : '')
+    + (message ? `\n\n"${String(message).slice(0, 400)}"` : '')
+    + `\n\n${stage.tail.replace(/<[^>]*>/g, '')}\n\nReply: ${APP_URL}/maid`;
+  return sendEmail({ to, subject: stage.subject(clientName || 'a customer'), html, text });
+}
+export const CHASER_STEPS = CHASER.length;
 
 // --- Email: your document was approved / declined (to the cleaner) ---------
 const VERIF_LABEL = { id: 'ID', police: 'criminal check', insurance: 'insurance' };

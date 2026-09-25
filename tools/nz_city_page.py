@@ -43,7 +43,7 @@ from site_config import NZ_ORIGIN, nz_url
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORIGIN = NZ_ORIGIN
-CSS = '/styles.css?v=125'
+CSS = '/styles.css?v=126'
 NL = '\n'
 
 NOTICE = ('\U0001F9FD Now open across New Zealand - browse local cleaners, see their rates up '
