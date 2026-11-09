@@ -4,7 +4,6 @@
 // deploy: v44 site feedback widget -> /admin (2026-07-08).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readFile } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
@@ -1183,26 +1182,6 @@ function townRegion(country, town) {
 app.get('/api/services', async (_req, res) => {
   const { rows } = await query('select id, name, slug from service_types order by name');
   res.json(rows);
-});
-
-// Core search, driven by queries/search_cleaners.sql (named params swapped for $1/$2).
-app.get('/api/cleaners', async (req, res) => {
-  try {
-    const { suburb, service } = req.query;
-    if (!suburb || !service)
-      return res.status(400).json({ error: 'Pick a suburb and a service.' });
-
-    let sql = await readFile(join(here, 'queries', 'search_cleaners.sql'), 'utf8');
-    // :country before :capacity - ":capacity" and ":country" share no prefix, but
-    // replacing the longest names first keeps this safe if either ever changes.
-    sql = sql.replace(/:suburb/g, '$1').replace(/:service/g, '$2')
-             .replace(/:capacity/g, '$3').replace(/:country/g, '$4');
-    const { rows } = await query(sql, [suburb, service, CAPACITY_LIMIT, reqCountry(req)]);
-    res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Search failed.' });
-  }
 });
 
 // The hourly rates of every active cleaner covering a suburb + service, so the
