@@ -6,7 +6,7 @@
     <script>window.MM_COUNTRY = "AU";</script>
     <script src="/analytics.js?v=87"></script>
     <script src="/attribution.js?v=2"></script>
-    <meta name="description" content="Match Maid is the local marketplace connecting independent cleaners with the households that need them." />
+    <meta name="description" content="Find a trusted local house cleaner in Australia. Browse independent cleaners with their rates up front, read reviews, and message the one you choose. Free for households." />
     <title>Match Maid - Australia's local house cleaning marketplace</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -85,6 +85,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700;800&display=swap" />
     <link rel="stylesheet" href="/styles.css?v=126" />
+    <style>
+      /* Page-local, so the shared stylesheet's cache key does not have to move. */
+      .home-about { padding-top: 4rem; border-top: 1px solid var(--line); }
+      .home-about h2 { margin: 3rem 0 1rem; }
+      .home-about h2:first-of-type { margin-top: 0.4rem; }
+      .home-about h3 { margin: 1.6rem 0 0.4rem; font-size: 1.15rem; }
+      .home-about p { max-width: 64ch; }
+    </style>
     <script src="/session.js?v=89"></script>
     <script src="/social.js?v=1"></script>
     <script>
@@ -143,6 +151,49 @@
         no fees for households, and no commission taken from cleaners.
       </p>
     </main>
+
+    <!-- The splash above is a role chooser and says almost nothing a search
+         engine can use. This is the page's actual content: what Match Maid is,
+         how it works on each side, where, and the common questions. Anything
+         that names a place sits inside nz-only markers, which build-au.py
+         strips from the Australian copy. -->
+    <section class="section container home-about">
+      <div class="narrow">
+        <p class="eyebrow reveal">What Match Maid is</p>
+        <h2 class="reveal">A directory of local house cleaners, with the prices on show.</h2>
+        <p class="reveal">
+          Match Maid is a marketplace for independent house cleaners and the households who want
+          one. Every cleaner sets their own hourly rate and the suburbs they travel to, and both
+          are on their profile before you get in touch. There is no bidding, no quote request that
+          goes out to ten strangers, and no booking fee - you find someone you like, message them,
+          and arrange the clean directly.
+        </p>
+
+        <h2 class="reveal">How it works</h2>
+        <h3 class="reveal">For households</h3>
+        <p class="reveal">
+          Search your suburb and you only see cleaners who actually come to it. Compare their
+          rates, reviews and badges - ID verified, police checked, insured - then message the
+          one who fits your home. You pay the cleaner directly for the work, and Match Maid never
+          takes a cut. It is free for households, and it stays that way.
+        </p>
+        <h3 class="reveal">For cleaners</h3>
+        <p class="reveal">
+          Make a profile, set your rate, the cleans you offer and the suburbs you cover, and
+          households in those suburbs can find you. You keep everything you charge: no commission
+          on jobs, ever. Listing is free while we grow. <a href="/for-maids">List your
+          services</a>.
+        </p>
+
+        <h2 class="reveal" style="margin-bottom:1.4rem">Questions</h2>
+        <div class="faq-list">
+          <div class="faq-item reveal"><h3>Is Match Maid free for households?</h3><p>Yes. Searching, comparing and messaging cleaners costs nothing, and there is no booking fee or markup. You pay the cleaner their advertised rate, directly.</p></div>
+          <div class="faq-item reveal"><h3>How much does a house cleaner cost?</h3><p>Each cleaner sets their own hourly rate and shows it on their profile, so you can compare before you contact anyone. A deep or end-of-tenancy clean costs more than a regular one, because it takes longer.</p></div>
+          <div class="faq-item reveal"><h3>Are the cleaners vetted?</h3><p>Cleaners can add ID-verified, police-check and insured badges to their profile, so you can see who has been checked before anyone comes into your home. You always choose who to contact.</p></div>
+          <div class="faq-item reveal"><h3>Does Match Maid employ the cleaners?</h3><p>No. They are independent and run their own businesses - Match Maid is the directory that helps you find them. You agree the clean, the time and the payment with your cleaner.</p></div>
+        </div>
+      </div>
+    </section>
 
     <footer class="splash-footer">
       <div class="sf-inner">

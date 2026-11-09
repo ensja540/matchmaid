@@ -51,7 +51,11 @@ NOTICE = ('\U0001F9FD Now open across New Zealand - browse local cleaners, see t
           'grow.')
 
 # slug, city, region, (low, typical, high) NZD hourly for a regular clean,
-# hero line, local-knowledge line, and the suburb pages that hang off it.
+# hero line, local-knowledge line, the suburb pages that hang off it, and the
+# satellite towns around it: (heading, paragraph, [(slug, name)]) or None.
+# The towns get their own section rather than a place in the suburb list,
+# because "a cleaner in Rolleston" is its own search, and the people typing it
+# do not think of themselves as living in Christchurch.
 CITIES = [
     ('auckland', 'Auckland', 'Auckland', (25, 40, 50),
      'City apartments, villas across the isthmus and big family homes out west and south - '
@@ -60,7 +64,8 @@ CITIES = [
      'the bridge, or your end of the motorway, is the one you will still have in a year.',
      [('ponsonby', 'Ponsonby'), ('mount-eden', 'Mount Eden'), ('remuera', 'Remuera'),
       ('takapuna', 'Takapuna'), ('devonport', 'Devonport'), ('henderson', 'Henderson'),
-      ('howick', 'Howick'), ('manukau', 'Manukau')]),
+      ('howick', 'Howick'), ('manukau', 'Manukau')],
+     None),
     ('christchurch', 'Christchurch', 'Canterbury', (24, 45, 60),
      'Bungalows in the older suburbs, rebuilt homes through the east, and lifestyle blocks on the '
      'edge of town.',
@@ -68,7 +73,16 @@ CITIES = [
      'A nor-wester puts a fine layer through everything, and that is what makes a regular clean '
      'worth more in Christchurch than a one-off ever is.',
      [('riccarton', 'Riccarton'), ('papanui', 'Papanui'), ('fendalton', 'Fendalton'),
-      ('merivale', 'Merivale'), ('halswell', 'Halswell'), ('cashmere', 'Cashmere')]),
+      ('merivale', 'Merivale'), ('halswell', 'Halswell'), ('cashmere', 'Cashmere')],
+     ('Rolleston, Rangiora, Kaiapoi and Lincoln too',
+      'Greater Christchurch does not stop at the city boundary, and neither do the cleaners. A '
+      'good number of them live out in Selwyn and Waimakariri themselves, and list the towns as '
+      'places they travel to: Rolleston and Lincoln to the south-west, Rangiora and Kaiapoi to the '
+      'north. If you are in one of them, you are not booking a city cleaner who has to cross the '
+      'Waimakariri to reach you - the search shows you the people who already work your end of '
+      'the motorway.',
+      [('rolleston', 'Rolleston'), ('rangiora', 'Rangiora'), ('kaiapoi', 'Kaiapoi'),
+       ('lincoln', 'Lincoln')])),
 ]
 
 
@@ -175,7 +189,7 @@ def chrome_bottom(cta_heading):
     )
 
 
-def faqs(city, rates, suburbs):
+def faqs(city, rates, suburbs, towns):
     lo, mid, hi = rates
     return [
         ('How much does a house cleaner cost in %s?' % city,
@@ -194,7 +208,10 @@ def faqs(city, rates, suburbs):
         ('Which %s suburbs are covered?' % city,
          'All of them. Cleaners set the suburbs they travel to, and the search only shows you '
          'people who cover yours - so a result is someone who will actually come to your address. '
-         'We have pages for %s and more.' % (', '.join(n for _s, n in suburbs[:3]))),
+         'We have pages for %s and more.' % (', '.join(n for _s, n in suburbs[:3])) +
+         (' Cleaners also cover the towns around %s, including %s.'
+          % (city, ', '.join(n for _s, n in towns[2][:-1]) + ' and ' + towns[2][-1][1])
+          if towns else '')),
         ('How often should I book a cleaner?',
          'Most households on Match Maid book weekly or fortnightly. A regular slot with the same '
          'cleaner works out cheaper per visit than repeated one-offs, because they learn your home '
@@ -203,13 +220,30 @@ def faqs(city, rates, suburbs):
     ]
 
 
-def city_page(slug, city, region, rates, hero, local, suburbs):
+def towns_section(city, towns):
+    if not towns:
+        return ''
+    heading, para, links = towns
+    return (
+        '      <section class="section container">' + NL +
+        '        <p class="eyebrow reveal">Around ' + esc(city) + '</p>' + NL +
+        '        <h2 class="reveal" style="margin-bottom:1rem">' + esc(heading) + '</h2>' + NL +
+        '        <p class="reveal" style="max-width:62ch">' + esc(para) + '</p>' + NL +
+        '        <div class="area-links reveal">' + NL +
+        NL.join('            <a class="area-link" href="/cleaners/%s">House cleaners in %s</a>'
+                % (s, esc(n)) for s, n in links) + NL +
+        '        </div>' + NL +
+        '      </section>' + NL + NL
+    )
+
+
+def city_page(slug, city, region, rates, hero, local, suburbs, towns):
     url = nz_url('/cleaners/%s' % slug)
     title = 'House cleaners in %s | Match Maid' % city
     desc = ('Find a trusted local house cleaner in %s. Browse independent cleaners with rates up '
             'front, read reviews, and contact the one you choose. Free for households.' % city)
     lo, mid, hi = rates
-    qa = faqs(city, rates, suburbs)
+    qa = faqs(city, rates, suburbs, towns)
 
     ld_service = {
         '@context': 'https://schema.org', '@type': 'Service',
@@ -316,6 +350,7 @@ def city_page(slug, city, region, rates, hero, local, suburbs):
         '            <a class="area-link" href="/cleaners">All areas</a>' + NL +
         '        </div>' + NL +
         '      </section>' + NL + NL +
+        towns_section(city, towns) +
         # The service pages. A city page catches "cleaners in Christchurch";
         # a fair share of the people it catches actually want one specific job
         # doing, and this is the hand-off to the page about that job.
@@ -338,8 +373,8 @@ def build():
     out_dir = os.path.join(ROOT, 'cleaners')
     os.makedirs(out_dir, exist_ok=True)
     written = []
-    for slug, city, region, rates, hero, local, suburbs in CITIES:
-        html = city_page(slug, city, region, rates, hero, local, suburbs)
+    for slug, city, region, rates, hero, local, suburbs, towns in CITIES:
+        html = city_page(slug, city, region, rates, hero, local, suburbs, towns)
         io.open(os.path.join(out_dir, slug + '.html'), 'w', encoding='utf-8',
                 newline='').write(html)
         written.append('cleaners/%s.html' % slug)

@@ -109,6 +109,8 @@ NZ_ONLY = [
         # asked to be written.
         'addington', 'barrington', 'beckenham', 'opawa', 'somerfield',
         'spreydon', 'st-martins', 'sydenham', 'point-chevalier',
+        # The towns around Christchurch (October 2026).
+        'rolleston', 'rangiora', 'kaiapoi', 'lincoln',
     ]
 ]
 

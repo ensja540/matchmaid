@@ -41,6 +41,7 @@ actual cleaners, actual rates, actual reviews. Until those render server-side
 there is nothing on the page a crawler can see that the template did not
 supply, and volume becomes the risk rather than the reward.
 """
+import datetime
 import io
 import json
 import os
@@ -57,7 +58,16 @@ CSS = '/styles.css?v=126'
 NL = '\n'
 
 # Below this, the search behind the page is too thin to be worth ranking for.
-MIN_CLEANERS = 4
+# Was 4 until October 2026; lowered to 3 so the satellite towns around
+# Christchurch could have pages. Three is still three real people who travel
+# there - the floor exists to stop empty searches, not short ones.
+MIN_CLEANERS = 3
+
+# Towns rather than suburbs: Rolleston is in Selwyn and Rangiora in Waimakariri,
+# not in Christchurch, and "House cleaners in Rolleston, Christchurch" reads
+# wrong to anyone who lives there. They still hang off the Christchurch page in
+# the breadcrumb, because that is the market they are part of.
+TOWNS = {'Rolleston', 'Rangiora', 'Kaiapoi', 'Lincoln'}
 
 NOTICE = ('\U0001F9FD Now open across New Zealand - browse local cleaners, see their rates up '
           'front, and message the one you pick. Free for households and for cleaners while we '
@@ -111,6 +121,23 @@ BLURBS = {
                         'Bungalows and villas on a peninsula with water at both ends, plus a '
                         'steady run of renovations. Salt air marks windows faster here than it '
                         'does inland, and the older houses have the floors to match.'),
+    'Rolleston': ('rolleston', 'christchurch', 'Christchurch', 'Canterbury',
+                  'One of the fastest-growing towns in the country, and most of it built in the '
+                  'last fifteen years: subdivision after subdivision of new family homes, open '
+                  'plan, big windows and a double garage. Newer houses clean faster, but there is '
+                  'a lot of floor in them.'),
+    'Rangiora': ('rangiora', 'christchurch', 'Christchurch', 'Canterbury',
+                 'The main town of Waimakariri - older villas and bungalows close to the High '
+                 'Street, newer subdivisions on the edges, and lifestyle blocks beyond them. '
+                 'Rural driveways and gravel mean more grit through the door than in town.'),
+    'Kaiapoi': ('kaiapoi', 'christchurch', 'Christchurch', 'Canterbury',
+                'A river town that rebuilt after the earthquakes, so older homes west of the '
+                'river sit alongside whole new neighbourhoods to the north and east. A good '
+                'share of households here commute into the city and want the weekend back.'),
+    'Lincoln': ('lincoln', 'christchurch', 'Christchurch', 'Canterbury',
+                'A university and research town that has turned into a commuter town, with new '
+                'subdivisions wrapped around the older village centre. Student flats and young '
+                'families in roughly equal measure, and both are short on time.'),
 }
 
 
@@ -258,16 +285,22 @@ def suburb_page(name, meta, cov, siblings):
     url = nz_url('/cleaners/%s' % slug)
     n = cov['cleaners']
     lo, hi = int(float(cov['lo'])), int(float(cov['hi']))
-    title = 'House cleaners in %s, %s | Match Maid' % (name, city)
-    desc = ('Find a house cleaner in %s. %d independent local cleaners cover the suburb, charging '
+    town = name in TOWNS
+    # A town is named with its region; a suburb with its city.
+    place = region if town else city
+    eyebrow = ('Greater %s' % city) if town else city
+    nearby = ('Other areas around %s' % city) if town else ('Other %s areas' % city)
+    as_at = datetime.date.today().strftime('%B %Y')
+    title = 'House cleaners in %s, %s | Match Maid' % (name, place)
+    desc = ('Find a house cleaner in %s. %d independent local cleaners cover the %s, charging '
             '$%d to $%d an hour, with rates shown before you make contact. Free for households.'
-            % (name, n, lo, hi))
+            % (name, n, 'town' if town else 'suburb', lo, hi))
 
     ld = [
         {'@context': 'https://schema.org', '@type': 'Service',
          'serviceType': 'House cleaning',
          'provider': {'@type': 'Organization', 'name': 'Match Maid', 'url': nz_url('/')},
-         'areaServed': {'@type': 'Place', 'name': '%s, %s, New Zealand' % (name, city)},
+         'areaServed': {'@type': 'Place', 'name': '%s, %s, New Zealand' % (name, place)},
          'offers': {'@type': 'AggregateOffer', 'priceCurrency': 'NZD', 'lowPrice': lo,
                     'highPrice': hi, 'unitText': 'HUR', 'offerCount': n},
          'description': 'Match Maid connects households in %s with independent local house '
@@ -289,7 +322,7 @@ def suburb_page(name, meta, cov, siblings):
     body = (
         '      <section class="pitch-hero container hero-grid">' + NL +
         '        <div class="hero-copy">' + NL +
-        '          <p class="eyebrow">' + esc(city) + ' &middot; ' + esc(name) + '</p>' + NL +
+        '          <p class="eyebrow">' + esc(eyebrow) + ' &middot; ' + esc(name) + '</p>' + NL +
         '          <h1>House cleaners<br />in ' + esc(name) + '.</h1>' + NL +
         '          <p class="lede">' + NL +
         '            ' + esc(blurb) + ' Browse the cleaners who cover ' + esc(name) + ', see what '
@@ -313,7 +346,7 @@ def suburb_page(name, meta, cov, siblings):
         '      <section class="section container">' + NL +
         '        <div class="benefit-grid reveal">' + NL +
         '          <div class="benefit"><span class="b-mark">COVERAGE</span><h3>' + str(n) +
-        ' cleaners</h3><p>Independent cleaners who list ' + esc(name) + ' as a suburb they travel '
+        ' cleaners</h3><p>Independent cleaners who list ' + esc(name) + ' as ' + ('a town' if town else 'a suburb') + ' they travel '
         'to, so a result here is someone who will actually come to your address.</p></div>' + NL +
         '          <div class="benefit"><span class="b-mark">RATES</span><h3>$' + str(lo) +
         ' - $' + str(hi) + ' / hr</h3><p>What those cleaners advertise for a regular clean. Every '
@@ -324,14 +357,13 @@ def suburb_page(name, meta, cov, siblings):
         'directly. <a href="/cleaning-cost-calculator">Estimate your clean</a>.</p></div>' + NL +
         '        </div>' + NL +
         '        <p class="reveal" style="max-width:64ch; margin-top:1.6rem; color:var(--muted); '
-        'font-size:0.9rem">Coverage and rates as at September 2026. Cleaners set their own travel '
+        'font-size:0.9rem">Coverage and rates as at ' + as_at + '. Cleaners set their own travel '
         'radius and their own prices, so both move as people join and update their '
         'listings.</p>' + NL +
         '      </section>' + NL + NL +
         '      <section class="section container secbg secbg-mist secbg-pad">' + NL +
         '        <p class="eyebrow reveal">Nearby</p>' + NL +
-        '        <h2 class="reveal" style="margin-bottom:1rem">Other ' + esc(city) +
-        ' areas</h2>' + NL +
+        '        <h2 class="reveal" style="margin-bottom:1rem">' + esc(nearby) + '</h2>' + NL +
         '        <p class="reveal" style="max-width:60ch">Not in ' + esc(name) + '? '
         '<a href="/browse">Search your own suburb</a>, or start from '
         '<a href="/cleaners/' + city_slug + '">all ' + esc(city) + ' cleaners</a>.</p>' + NL +
@@ -377,7 +409,10 @@ def build(report_only=False):
     written = []
     for name, meta in sorted(ready.items()):
         slug, city_slug, city, region, _ = meta
-        siblings = [(n, m[0]) for n, m in sorted(ready.items())
+        # Towns link to towns first, suburbs to suburbs: someone in Rolleston
+        # is more likely to be in Lincoln than in Addington.
+        siblings = [(n, m[0]) for n, m in sorted(
+                        ready.items(), key=lambda kv: ((kv[0] in TOWNS) != (name in TOWNS), kv[0]))
                     if m[1] == city_slug and n != name][:5]
         html = suburb_page(name, meta, eligible[name], siblings)
         io.open(os.path.join(ROOT, 'cleaners', slug + '.html'), 'w', encoding='utf-8',

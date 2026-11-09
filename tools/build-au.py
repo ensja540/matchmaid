@@ -71,6 +71,17 @@ CITIES = [
 # Content substitutions, longest first so "New Zealand" is never half-matched by
 # a later "Zealand" rule. Order within this list is significant.
 CONTENT = [
+    # The home page title and description name the two New Zealand cities on
+    # purpose - that is the search they are there to win. The city rules below
+    # would turn them into a six-metro list too long for a title, so Australia
+    # gets its own, whole.
+    ('House Cleaners in Christchurch &amp; Auckland | Match Maid',
+     "Match Maid - Australia's local house cleaning marketplace"),
+    ('Find a trusted local cleaner in Christchurch or Auckland. Browse independent house cleaners'
+     ' with their rates up front, read reviews, and message the one you choose. Free for'
+     ' households.',
+     'Find a trusted local house cleaner in Australia. Browse independent cleaners with their'
+     ' rates up front, read reviews, and message the one you choose. Free for households.'),
     # The blanket "New Zealand" -> "Australia" rule leaves this reading
     # "Australia marketplace"; it wants the adjective.
     ('New Zealand marketplace connecting', 'Australian marketplace connecting'),
@@ -202,6 +213,10 @@ def swap_content(html):
         key = 'PROTECT%d' % i  # private-use chars: cannot occur in page text
         holds[key] = token
         html = html.replace(token, key)
+    # Blocks that only make sense in New Zealand - lists of NZ suburbs, links
+    # to NZ-only pages, writing about New Zealand - go, rather than being
+    # half-translated into "Riccarton, Sydney".
+    html = re.sub(r'\n[ \t]*<!-- nz-only -->.*?<!-- /nz-only -->', '', html, flags=re.S)
     for a, b in CONTENT:
         html = html.replace(a, b)
     for key, token in holds.items():
