@@ -209,11 +209,11 @@ def head(title, desc, url, ld_blocks):
         '    <meta property="og:description" content="' + esc(desc) + '" />' + NL +
         '    <meta property="og:url" content="' + url + '" />' + NL +
         '    <meta property="og:locale" content="en_NZ" />' + NL +
-        '    <meta property="og:image" content="' + ORIGIN + '/og-image.png" />' + NL +
-        '    <meta property="og:image:width" content="1200" />' + NL +
-        '    <meta property="og:image:height" content="630" />' + NL +
-        '    <meta name="twitter:card" content="summary_large_image" />' + NL +
-        '    <meta name="twitter:image" content="' + ORIGIN + '/og-image.png" />' + NL +
+        '    <meta property="og:image" content="' + ORIGIN + '/og-logo.png" />' + NL +
+        '    <meta property="og:image:width" content="400" />' + NL +
+        '    <meta property="og:image:height" content="400" />' + NL +
+        '    <meta name="twitter:card" content="summary" />' + NL +
+        '    <meta name="twitter:image" content="' + ORIGIN + '/og-logo.png" />' + NL +
         '    <link rel="preconnect" href="https://fonts.googleapis.com" />' + NL +
         '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />' + NL +
         '    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+'

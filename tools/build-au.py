@@ -236,7 +236,7 @@ def canonicalise(html, nz_path, au_full):
     # server - but a share card that fetches its image from the other country's
     # domain is one more origin for a scraper to trip over, and it reads wrong
     # to anyone who inspects it.
-    html = html.replace(f'{ORIGIN}/og-image.png', f'{AU_ORIGIN}/og-image.png')
+    html = html.replace(f'{ORIGIN}/og-logo.png', f'{AU_ORIGIN}/og-logo.png')
     html = html.replace(f'{ORIGIN}/assets/', f'{AU_ORIGIN}/assets/')
     # Structured-data identity. The two sites are different WebSites, so they
     # cannot share an @id while declaring different urls - that is one entity
