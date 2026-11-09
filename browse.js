@@ -59,9 +59,13 @@ function locationOptions(sel) {
     )
     .join('');
 }
+// `town` goes to the server with every search. Suburb names repeat across the
+// country (Christchurch's Richmond, Bishopdale and Burnside are also Nelson's
+// and Dunedin's), so the name alone pulled in cleaners from other cities.
 function parseLoc(val) {
-  if (val && val.startsWith('town:')) { const t = val.slice(5); return { label: `${t} (all)`, suburbs: DEMO.towns[t] || [] }; }
-  return { label: val, suburbs: val ? [val] : [] };
+  if (val && val.startsWith('town:')) { const t = val.slice(5); return { label: `${t} (all)`, town: t, suburbs: DEMO.towns[t] || [] }; }
+  const town = Object.keys(DEMO.towns).find((t) => DEMO.towns[t].includes(val)) || '';
+  return { label: val, town, suburbs: val ? [val] : [] };
 }
 suburbSel.innerHTML = locationOptions('town:Christchurch');
 
@@ -150,7 +154,7 @@ function loadSupply() {
   rateHist.hidden = true;
   histCaption.textContent = '';
   if (!parsed.suburbs.length || !service) return;
-  fetch(withCountry(`/api/cleaner-rates?suburbs=${encodeURIComponent(parsed.suburbs.join(','))}&service=${encodeURIComponent(service)}`))
+  fetch(withCountry(`/api/cleaner-rates?suburbs=${encodeURIComponent(parsed.suburbs.join(','))}&town=${encodeURIComponent(parsed.town)}&service=${encodeURIComponent(service)}`))
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => { supplyLoaded = true; supplyRates = d && Array.isArray(d.rates) ? d.rates : []; renderHist(); })
     .catch(() => {});
@@ -185,6 +189,7 @@ function currentPrefs() {
   const parsed = parseLoc(suburbSel.value);
   return {
     locLabel: parsed.label,
+    town: parsed.town,
     suburbs: parsed.suburbs,
     baseService: serviceSel.value,
     services: [...new Set([serviceSel.value, ...extras])],
@@ -218,6 +223,7 @@ async function runSearch() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         country: MM_COUNTRY,
+        town: p.town,
         suburbs: p.suburbs,
         services: p.services,
         budgetMin: p.budgetMin,
@@ -550,6 +556,7 @@ document.getElementById('composeForm')?.addEventListener('submit', async (e) => 
         // The search may be a whole town, so send one real suburb rather than
         // a label like "Christchurch (all)" that resolves to nothing.
         suburb: p.suburbs && p.suburbs.length === 1 ? p.suburbs[0] : '',
+        town: p.town,
       }),
     });
     const data = await res.json();

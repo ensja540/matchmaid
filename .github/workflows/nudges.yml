@@ -34,7 +34,7 @@ on:
         default: false
         type: boolean
       kind:
-        description: "nudges only: limit to one segment (cleaner_no_rate, cleaner_no_id, customer_no_suburb)"
+        description: "nudges only: limit to one segment (cleaner_no_rate, cleaner_no_areas, cleaner_no_availability, cleaner_no_id, customer_no_suburb, customer_no_contact)"
         required: false
         type: string
 

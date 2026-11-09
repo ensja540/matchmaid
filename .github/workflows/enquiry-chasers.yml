@@ -1,4 +1,4 @@
-name: Chase unanswered enquiries
+name: Chase unanswered enquiries (and point the customer elsewhere)
 
 # Every morning, remind cleaners who have an enquiry they have not replied to.
 #
@@ -12,6 +12,11 @@ name: Chase unanswered enquiries
 # last message and then never again (a counter on the conversation enforces it),
 # and a thread the cleaner has answered, declined or booked drops out entirely.
 # So a daily run only ever reaches someone whose reminder fell due that day.
+#
+# The same call also tells the CUSTOMER, once per thread, that they don't have
+# to keep waiting: two days after their last message with no reply, one email
+# pointing them at other cleaners near them (skipped if they've already
+# messaged someone else, and never for threads more than a fortnight old).
 #
 # 19:00 UTC = 7am NZST / 8am NZDT. A cleaner reads this at the start of the day,
 # when replying is a thing they can actually do, rather than last thing at night.

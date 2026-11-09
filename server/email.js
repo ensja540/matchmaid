@@ -165,6 +165,29 @@ export async function sendUnansweredEnquiryEmail({ to, cleanerName, clientName, 
 }
 export const CHASER_STEPS = CHASER.length;
 
+// --- Email: still waiting? try another cleaner (to the customer) ------------
+// The other side of the chaser above. Customers here message one cleaner at a
+// time, so a cleaner who never replies leaves them stuck on a dead end with no
+// sign that waiting is optional. Sent once per thread, a couple of days in.
+//
+// Fair to the cleaner - busy or full, not ignoring them - because they may yet
+// reply, and the customer may yet want them.
+export async function sendTryAnotherCleanerEmail({ to, name, cleanerName, waitingDays, browseUrl, unsubUrl, country }) {
+  const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
+  const who = escapeHtml(cleanerName || 'the cleaner you messaged');
+  const when = waitingDays >= 1 ? `${waitingDays} day${waitingDays === 1 ? '' : 's'} ago` : 'recently';
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">You messaged <strong>${who}</strong> on Match Maid ${when} and haven't heard back yet.</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">Cleaners get busy, and some are full for a while. You don't have to wait - message another cleaner near you in the meantime. If ${who} does reply, you'll still get it.</p>
+    <p style="margin:0 0 8px"><a href="${browseUrl}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">See other cleaners near you</a></p>`, unsubUrl, country);
+  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}`
+    + `You messaged ${cleanerName || 'the cleaner you messaged'} on Match Maid ${when} and haven't heard back yet.\n\n`
+    + `Cleaners get busy, and some are full for a while. You don't have to wait - message another cleaner near you in the meantime. If ${cleanerName || 'they'} does reply, you'll still get it.\n\n`
+    + `See other cleaners near you: ${browseUrl}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`;
+  return sendEmail({ to, subject: `Haven't heard from ${cleanerName || 'your cleaner'}? Try another cleaner`, html, text });
+}
+
 // --- Email: your document was approved / declined (to the cleaner) ---------
 const VERIF_LABEL = { id: 'ID', police: 'criminal check', insurance: 'insurance' };
 const VERIF_BADGE = { id: 'ID verified', police: 'Criminal checked', insurance: 'Insured' };
@@ -322,6 +345,17 @@ const NUDGE = {
     cta: 'Add my suburb',
     href: '/customer',
   },
+  // A week in, never contacted anyone. A welcome rather than a reminder - they
+  // haven't failed to do anything - and one link straight to the cleaners near
+  // them. The link is built per person (their suburb, their country), so href
+  // here is only the fallback.
+  customer_no_contact: {
+    subject: 'Welcome to Match Maid - find a cleaner near you',
+    lead: 'Thanks for joining Match Maid. We noticed you haven\'t got in touch with a cleaner yet, so here\'s a head start.',
+    body: 'Every cleaner shows their real hourly rate, reviews from people they\'ve cleaned for, and which days they\'re free - so you can compare properly before you message anyone. It\'s free for customers, with nothing added on top of what the cleaner charges.',
+    cta: 'See cleaners in my area',
+    href: '/browse',
+  },
 };
 
 // --- Email: how did your clean go? (customer, evening of the clean) --------
@@ -330,21 +364,31 @@ const NUDGE = {
 // gets written is a cleaner with no proof they are any good.
 //
 // One ask, one link, straight into the form. No "we value your feedback".
-export async function sendReviewRequestEmail({ to, name, cleanerName, when, country }) {
+export async function sendReviewRequestEmail({ to, name, cleanerName, when, country, newCleaner = false }) {
   const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
   const who = escapeHtml(cleanerName || 'your cleaner');
+  // A cleaner with no reviews yet is the one a review helps most: with nothing
+  // on their profile, the next household tends to pick someone else.
+  const why = newCleaner
+    ? `${who} does not have any reviews yet, so yours is extra important. It takes about a minute,
+      and it is the first thing the next household will have to go on when they are deciding who
+      to let into their home.`
+    : `It takes about a minute, and it is the main thing other households have to go on when they
+      are deciding who to let into their home. It also shows ${who} what they did well.`;
+  const whyText = newCleaner
+    ? `${cleanerName || 'Your cleaner'} does not have any reviews yet, so yours is extra important - it is the first thing the next household will have to go on.`
+    : 'It takes about a minute, and it is the main thing other households have to go on.';
   const html = shell(`
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">
       ${who} cleaned for you${when ? ` on ${escapeHtml(when)}` : ''}. How did it go?</p>
     <p style="font-size:15px;line-height:1.6;margin:0 0 20px">
-      It takes about a minute, and it is the main thing other households have to go on when they
-      are deciding who to let into their home. It also shows ${who} what they did well.</p>
+      ${why}</p>
     <p style="margin:0 0 8px"><a href="${APP_URL}/customer?tab=messages" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">Rate this clean</a></p>
     <p style="font-size:13px;line-height:1.6;color:#8a8a8a;margin:16px 0 0">
       If something went wrong, say so - we would rather know. Reply to this email and it comes
       straight to us.</p>`, null, country);
-  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${cleanerName || 'Your cleaner'} cleaned for you${when ? ` on ${when}` : ''}. How did it go?\n\nIt takes about a minute, and it is the main thing other households have to go on.\n\nRate this clean: ${APP_URL}/customer?tab=messages\n\nIf something went wrong, reply to this email and it comes straight to us.`;
+  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${cleanerName || 'Your cleaner'} cleaned for you${when ? ` on ${when}` : ''}. How did it go?\n\n${whyText}\n\nRate this clean: ${APP_URL}/customer?tab=messages\n\nIf something went wrong, reply to this email and it comes straight to us.`;
   return sendEmail({ to, subject: `How did your clean with ${cleanerName || 'your cleaner'} go?`, html, text });
 }
 
@@ -425,16 +469,19 @@ export async function sendCleanerReviewEmail({
   return sendEmail({ to, subject: `${who} rated your clean ${one(overall)}/5`, html, text });
 }
 
-export async function sendNudgeEmail({ to, name, kind, unsubUrl, country }) {
+// `url`, when given, is a full link that replaces the kind's fixed href - for
+// nudges whose destination depends on the person (their suburb, their country).
+export async function sendNudgeEmail({ to, name, kind, unsubUrl, country, url }) {
   const n = NUDGE[kind];
   if (!n) return { ok: false, error: `unknown nudge kind ${kind}` };
+  const link = url || `${APP_URL}${n.href}`;
   const hi = name ? `Hi ${escapeHtml(String(name).split(' ')[0])},` : 'Hi,';
   const html = shell(`
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${hi}</p>
     <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${n.lead}</p>
     <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${n.body}</p>
-    <p style="margin:0 0 8px"><a href="${APP_URL}${n.href}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">${escapeHtml(n.cta)}</a></p>`, unsubUrl, country);
-  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${n.lead}\n\n${n.body}\n\n${n.cta}: ${APP_URL}${n.href}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`;
+    <p style="margin:0 0 8px"><a href="${link}" style="display:inline-block;background:#14b8a6;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:10px">${escapeHtml(n.cta)}</a></p>`, unsubUrl, country);
+  const text = `${name ? String(name).split(' ')[0] + ',\n\n' : ''}${n.lead}\n\n${n.body}\n\n${n.cta}: ${link}${unsubUrl ? `\n\nUnsubscribe: ${unsubUrl}` : ''}`;
   return sendEmail({ to, subject: n.subject, html, text });
 }
 

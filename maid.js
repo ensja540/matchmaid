@@ -209,7 +209,7 @@ function homeAddress() {
   return `${mpHomeSuburb}, ${mpHomeCity}`;
 }
 // Per-clean-type fee: { slug: dollars }. A type with a fee is one the maid
-// offers; no entry means they don't offer it. Both regular and deep are hourly.
+// offers; no entry means they don't offer it. Regular, deep and Airbnb are all hourly.
 // End-of-lease and its bond-back guarantee are capabilities of the deep clean,
 // stored as booleans in the same clean_rates JSON (not fees).
 const PRODUCT_OPTIONS = [
@@ -295,6 +295,9 @@ function loadBenchmarks() {
 const CLEAN_TYPES = [
   { slug: 'regular', name: 'Regular clean' },
   { slug: 'deep', name: 'Deep clean', includes: 'oven, interior windows, inside fridge, carpet, inside cupboards, wall wash', endOfLeaseOption: true },
+  // A turnover between guests: its own rate, because the job is different -
+  // linen and restocking on a deadline, not a deeper version of a home clean.
+  { slug: 'airbnb', name: 'Airbnb clean', includes: 'turnover between guests: linen change and bed making, kitchen and bathroom reset, restock guest essentials, rubbish out' },
 ];
 
 // Per-clean-type fee rows. Each has an "I offer this" tick that reveals its

@@ -13,7 +13,7 @@ import {
   emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail,
   sendVerificationDecisionEmail, sendVerificationPendingEmail,
   sendNudgeEmail, sendPreLaunchUpdateEmail, sendNewMessageEmail,
-  sendReviewRequestEmail, sendCleanerReviewEmail, sendUnansweredEnquiryEmail,
+  sendReviewRequestEmail, sendCleanerReviewEmail, sendUnansweredEnquiryEmail, sendTryAnotherCleanerEmail,
 } from './email.js';
 // The price floors live in their own module so the maintenance scripts can read
 // the same numbers this file enforces - importing server.js would start a
@@ -425,7 +425,7 @@ const SIDE_NAME = { cleaner: 'maid', client: 'hirer' };
 
 // The clean types a customer picks exactly one of. Everything else in the
 // catalogue is a flat-priced "extra". Must match DEMO.baseServiceSlugs.
-const BASE_SERVICE_SLUGS = ['regular', 'deep', 'end-of-tenancy'];
+const BASE_SERVICE_SLUGS = ['regular', 'deep', 'end-of-tenancy', 'airbnb'];
 
 // The lowest hourly rate a cleaner may advertise. A floor protects the cleaners
 // as much as the customers: a listing at a few dollars an hour drags the whole
@@ -1148,7 +1148,7 @@ async function suburbsWithin(lat, lng, km, excluded = [], country = DEFAULT_COUN
 // nationwide list a bare name is ambiguous (four Richmonds), and the old
 // `where name = $1 limit 1` would silently attach someone to another region's
 // suburb of the same name. Name lookup stays as a fallback for older callers.
-async function resolveSuburbId(suburbId, name, country = DEFAULT_COUNTRY) {
+async function resolveSuburbId(suburbId, name, country = DEFAULT_COUNTRY, region = null) {
   const id = Number(suburbId);
   if (Number.isInteger(id) && id > 0) {
     // An explicit id already carries its country; take it as given, but do not
@@ -1158,10 +1158,26 @@ async function resolveSuburbId(suburbId, name, country = DEFAULT_COUNTRY) {
   }
   if (!name) return null;
   const byName = await query(
-    'select id from suburbs where name = $1 and country = $2 order by id limit 1',
-    [name, country]
+    `select id from suburbs where name = $1 and country = $2
+       and ($3::text is null or region = $3) order by id limit 1`,
+    [name, country, region]
   );
   return byName.rows[0]?.id ?? null;
+}
+
+// The region a browse-picker city sits in ("Christchurch" -> Canterbury).
+//
+// Browse searches by suburb NAME, and names repeat across regions: Christchurch
+// (all) includes Richmond, Bishopdale, Burnside, Merivale and Redwood, every one
+// of which is also a suburb of Nelson, Dunedin, Tauranga or Wellington. Matching
+// on name alone put a Nelson cleaner covering Richmond into Christchurch
+// results, and customers messaged people who could never reach them. (name,
+// region) is unique, so the region pins each name to the one real place.
+// Null for an unknown town - callers then fall back to the country alone.
+function townRegion(country, town) {
+  if (!town) return null;
+  const c = (COVERAGE_CITIES[country] || []).find((x) => x.region && x.name === town);
+  return c ? c.region : null;
 }
 
 app.get('/api/services', async (_req, res) => {
@@ -1194,12 +1210,13 @@ app.get('/api/cleaners', async (req, res) => {
 // scale. Just the numbers — the client buckets them into a histogram.
 app.get('/api/cleaner-rates', async (req, res) => {
   try {
-    const { suburb, suburbs, service } = req.query;
+    const { suburb, suburbs, service, town } = req.query;
     // Accept a single suburb or a comma-separated list (a whole-city search).
     const subList = suburbs
       ? String(suburbs).split(',').map((s) => s.trim()).filter(Boolean)
       : suburb ? [suburb] : [];
     if (!subList.length || !service) return res.status(400).json({ error: 'Pick a suburb and a service.' });
+    const country = reqCountry(req);
     const { rows } = await query(
       // distinct on the cleaner: covering several of the listed suburbs must not
       // count their rate more than once in the histogram.
@@ -1211,8 +1228,10 @@ app.get('/api/cleaner-rates', async (req, res) => {
          join service_types st on st.id = cs.service_type_id
         where cp.listing_status = 'active' and s.country = $3
           and s.name = any($1) and st.slug = $2 and cp.hourly_rate is not null
+          -- Same-named suburbs in other regions are other places; see townRegion().
+          and ($4::text is null or s.region = $4)
           and ${atOrAboveFloor('cp.hourly_rate', 's')}`,
-      [subList, service, reqCountry(req)]
+      [subList, service, country, townRegion(country, town)]
     );
     res.json({ rates: rows.map((r) => Number(r.rate)).filter((n) => Number.isFinite(n)) });
   } catch (err) {
@@ -1263,7 +1282,7 @@ app.get('/api/rate-benchmark', async (req, res) => {
     const rates = {};
     for (const r of rows) {
       const cr = r.clean_rates && typeof r.clean_rates === 'object' ? r.clean_rates : {};
-      for (const slug of ['regular', 'deep']) {
+      for (const slug of ['regular', 'deep', 'airbnb']) {
         const v = Number(cr[slug]);
         if (Number.isFinite(v) && v > 0) (rates[slug] ||= []).push(v);
       }
@@ -2191,21 +2210,22 @@ app.get('/api/admin/stats', async (req, res) => {
 // "where are we not?", which is a different question from "how deep are we in
 // the two cities we launched in" - and the answer is mostly "everywhere", so it
 // is worth being able to see at a glance.
+// `region` is also what pins a browse search to its city: see townRegion().
 const COVERAGE_CITIES = {
   NZ: [
-    { key: 'chch', name: 'Christchurch', lat: -43.5321, lng: 172.6362, radiusKm: 35 },
-    { key: 'akl', name: 'Auckland', lat: -36.8485, lng: 174.7633, radiusKm: 45 },
+    { key: 'chch', name: 'Christchurch', region: 'Canterbury', lat: -43.5321, lng: 172.6362, radiusKm: 35 },
+    { key: 'akl', name: 'Auckland', region: 'Auckland', lat: -36.8485, lng: 174.7633, radiusKm: 45 },
     { key: 'nz', name: 'All of NZ', lat: -41.0, lng: 173.5, radiusKm: null, zoom: 5 },
   ],
   // The six metros Australia is open in, plus a national view. Radii match the
   // built-up area, which is what the suburb import used.
   AU: [
-    { key: 'syd', name: 'Sydney', lat: -33.8688, lng: 151.2093, radiusKm: 55 },
-    { key: 'mel', name: 'Melbourne', lat: -37.8136, lng: 144.9631, radiusKm: 50 },
-    { key: 'bne', name: 'Brisbane', lat: -27.4698, lng: 153.0251, radiusKm: 40 },
-    { key: 'per', name: 'Perth', lat: -31.9505, lng: 115.8605, radiusKm: 40 },
-    { key: 'hba', name: 'Hobart', lat: -42.8821, lng: 147.3272, radiusKm: 25 },
-    { key: 'drw', name: 'Darwin', lat: -12.4634, lng: 130.8456, radiusKm: 25 },
+    { key: 'syd', name: 'Sydney', region: 'New South Wales', lat: -33.8688, lng: 151.2093, radiusKm: 55 },
+    { key: 'mel', name: 'Melbourne', region: 'Victoria', lat: -37.8136, lng: 144.9631, radiusKm: 50 },
+    { key: 'bne', name: 'Brisbane', region: 'Queensland', lat: -27.4698, lng: 153.0251, radiusKm: 40 },
+    { key: 'per', name: 'Perth', region: 'Western Australia', lat: -31.9505, lng: 115.8605, radiusKm: 40 },
+    { key: 'hba', name: 'Hobart', region: 'Tasmania', lat: -42.8821, lng: 147.3272, radiusKm: 25 },
+    { key: 'drw', name: 'Darwin', region: 'Northern Territory', lat: -12.4634, lng: 130.8456, radiusKm: 25 },
     { key: 'au', name: 'All of Australia', lat: -25.5, lng: 134.0, radiusKm: null, zoom: 4 },
   ],
 };
@@ -3020,7 +3040,7 @@ app.get('/api/cleaner-profile', async (req, res) => {
       // endOfLease rides in the same JSON as a capability, not a fee.
       cleanFees: (() => {
         const cr = cp.clean_rates && typeof cp.clean_rates === 'object' ? cp.clean_rates : {};
-        return ['regular', 'deep', 'end-of-tenancy']
+        return ['regular', 'deep', 'end-of-tenancy', 'airbnb']
           .map((slug) => ({ slug, price: Number(cr[slug]) }))
           .filter((f) => Number.isFinite(f.price) && f.price > 0);
       })(),
@@ -3232,7 +3252,7 @@ async function notifyNewMessage({ conversationId, senderUserId, kind }) {
 // + conversation, then (optionally) post the first message.
 app.post('/api/contact', async (req, res) => {
   try {
-    const { clientUserId, cleanerId, message, serviceSlug, suburb } = req.body ?? {};
+    const { clientUserId, cleanerId, message, serviceSlug, suburb, town } = req.body ?? {};
     if (!clientUserId || !cleanerId) return res.status(400).json({ error: 'clientUserId and cleanerId are required.' });
     const clientId = await ensureClientProfile(clientUserId);
 
@@ -3244,7 +3264,8 @@ app.post('/api/contact', async (req, res) => {
     const isNewConversation = !conversationId;
     if (!conversationId) {
       const svc = serviceSlug ? await query('select id from service_types where slug = $1', [serviceSlug]) : { rows: [] };
-      const subId = await resolveSuburbId(req.body?.suburbId, suburb, await userCountry(clientUserId));
+      const clientCountry = await userCountry(clientUserId);
+      const subId = await resolveSuburbId(req.body?.suburbId, suburb, clientCountry, townRegion(clientCountry, town));
       const sub = { rows: subId ? [{ id: subId }] : [] };
       const enq = await query(
         `insert into enquiries (client_id, cleaner_id, service_type_id, suburb_id, message)
@@ -3747,19 +3768,24 @@ const DIM_COL = {
 // clean complete twice must not spam the thread.
 async function postReviewRequest(enquiryId) {
   const { rows } = await query(
-    `select c.id, cpf.user_id as cleaner_user_id
+    `select c.id, cpf.user_id as cleaner_user_id, coalesce(cpf.review_count, 0)::int as review_count
        from conversations c join cleaner_profiles cpf on cpf.id = c.cleaner_id
       where c.enquiry_id = $1`,
     [enquiryId]
   );
   if (!rows.length) return;
-  const { id: convId, cleaner_user_id } = rows[0];
+  const { id: convId, cleaner_user_id, review_count } = rows[0];
   const dupe = await query("select 1 from messages where conversation_id = $1 and kind = 'review_request'", [convId]);
   if (dupe.rows.length) return;
   await query(
     `insert into messages (conversation_id, sender_user_id, body, kind)
      values ($1, $2, $3, 'review_request')`,
-    [convId, cleaner_user_id, 'Your clean is complete. How did it go? Tap here to leave a review.']
+    [convId, cleaner_user_id, review_count > 0
+      ? 'Your clean is complete. How did it go? Tap here to leave a review.'
+      // A cleaner's first review is worth more than any later one: with none,
+      // the next household has nothing to go on and tends to pick someone else.
+      : 'Your clean is complete. How did it go? There are no reviews on this profile yet, so yours is '
+        + 'extra important - it is what the next household will go on. Tap here to leave a review.']
   );
   await query('update conversations set last_message_at = now() where id = $1', [convId]);
 
@@ -3774,6 +3800,7 @@ async function emailReviewRequest(enquiryId) {
   const { rows } = await query(
     `select clu.email, clu.full_name as client_name,
             coalesce(cpf.business_name, cu.full_name) as cleaner_name,
+            coalesce(cpf.review_count, 0)::int as review_count,
             to_char(e.scheduled_on, 'Dy DD Mon') as when
        from enquiries e
        join cleaner_profiles cpf on cpf.id = e.cleaner_id
@@ -3787,7 +3814,7 @@ async function emailReviewRequest(enquiryId) {
   if (!r?.email) return;
   await sendReviewRequestEmail({
     to: r.email, name: r.client_name, cleanerName: r.cleaner_name, when: r.when,
-    country: r.country,
+    country: r.country, newCleaner: r.review_count === 0,
   });
 }
 
@@ -3962,6 +3989,96 @@ async function sweepEnquiryChasers({ send = false } = {}) {
   return { ...report, dryRun: false };
 }
 
+// The customer's side of the same silence. Customers message one cleaner at a
+// time, so one who never replies leaves them waiting on a dead end. Two days
+// after their last word, with nothing back, they get one email pointing them at
+// other cleaners near them - once per thread, never repeated.
+//
+// Not gated on the cleaner's listing being active, unlike the chaser: a cleaner
+// who has paused since is even less likely to answer, which is more reason to
+// tell the customer, not less.
+//
+// Skipped if they have already messaged someone else since - they've moved on
+// without us. And capped at a fortnight, so the first run doesn't dig up threads
+// that went quiet long ago and tell people something they settled weeks back.
+const REDIRECT_AFTER_DAYS = 2;
+const REDIRECT_MAX_DAYS = 14;
+
+async function sweepCustomerRedirects({ send = false } = {}) {
+  const { rows } = await query(
+    `select c.id as conversation_id, clu.id as user_id, clu.email, clu.full_name, clu.country,
+            coalesce(nullif(cp.business_name, ''), mu.full_name) as cleaner_name,
+            st.slug as service, s.name as suburb,
+            extract(epoch from (now() - last_in.sent_at)) / 86400 as waiting_days
+       from conversations c
+       join cleaner_profiles cp on cp.id = c.cleaner_id
+       join users mu on mu.id = cp.user_id
+       join client_profiles lp on lp.id = c.client_id
+       join users clu on clu.id = lp.user_id
+       left join enquiries e on e.id = c.enquiry_id
+       left join service_types st on st.id = e.service_type_id
+       left join suburbs s on s.id = coalesce(e.suburb_id, lp.default_suburb_id)
+       join lateral (
+         select m.sent_at from messages m
+          where m.conversation_id = c.id and m.sender_user_id = clu.id
+            and coalesce(m.kind, 'text') = 'text'
+          order by m.sent_at desc limit 1
+       ) last_in on true
+      where clu.status = 'active' and clu.removed_at is null and not clu.nudge_opt_out
+        and c.customer_redirected_at is null
+        and coalesce(e.status, 'new') not in ('declined', 'closed', 'completed', 'accepted')
+        and last_in.sent_at < now() - make_interval(days => $1)
+        and last_in.sent_at > now() - make_interval(days => $2)
+        -- Same test as the chaser: the cleaner has said nothing of their own.
+        and not exists (
+          select 1 from messages m
+           where m.conversation_id = c.id and m.sender_user_id = mu.id
+             and coalesce(m.kind, 'text') = 'text')
+        -- Already talking to another cleaner since? Then they don't need telling.
+        and not exists (
+          select 1 from messages m
+            join conversations c2 on c2.id = m.conversation_id
+           where c2.client_id = c.client_id and c2.id <> c.id
+             and m.sender_user_id = clu.id and m.sent_at > last_in.sent_at)`,
+    [REDIRECT_AFTER_DAYS, REDIRECT_MAX_DAYS]
+  );
+
+  const report = {
+    due: rows.length,
+    sent: 0,
+    failed: [],
+    threads: rows.map((r) => ({
+      customer: r.full_name,
+      cleaner: r.cleaner_name,
+      waitingDays: Math.floor(Number(r.waiting_days) || 0),
+    })),
+  };
+  if (!send || !rows.length) return { ...report, dryRun: !send };
+  if (!emailEnabled()) {
+    return { ...report, dryRun: false, error: 'RESEND_API_KEY is not set, so nothing would be delivered.' };
+  }
+
+  for (const r of rows) {
+    const res = await sendTryAnotherCleanerEmail({
+      to: r.email,
+      name: r.full_name,
+      cleanerName: r.cleaner_name,
+      waitingDays: Math.floor(Number(r.waiting_days) || 0),
+      browseUrl: browseUrlFor(r),
+      unsubUrl: unsubUrlFor(r.user_id),
+      country: r.country,
+    });
+    // Marked only once it has gone, so a failed send is retried tomorrow.
+    if (res && res.ok) {
+      await query('update conversations set customer_redirected_at = now() where id = $1', [r.conversation_id]);
+      report.sent += 1;
+    } else {
+      report.failed.push({ customer: r.full_name, res });
+    }
+  }
+  return { ...report, dryRun: false };
+}
+
 // Dry-run unless send=1, like every other task here: the safe call is the one
 // that tells you what would happen.
 app.post('/api/tasks/enquiry-chasers', async (req, res) => {
@@ -3972,7 +4089,9 @@ app.post('/api/tasks/enquiry-chasers', async (req, res) => {
     const send = String(req.query.send ?? req.body?.send ?? '') === '1';
     const report = await sweepEnquiryChasers({ send });
     console.log(`enquiry chasers: ${report.unanswered} unanswered, ${report.due} due, ${report.sent} sent${report.dryRun ? ' (dry run)' : ''}`);
-    res.json(report);
+    const customers = await sweepCustomerRedirects({ send });
+    console.log(`customer redirects: ${customers.due} due, ${customers.sent} sent${customers.dryRun ? ' (dry run)' : ''}`);
+    res.json({ ...report, customers });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not sweep the unanswered enquiries.' });
@@ -4101,7 +4220,37 @@ const NUDGE_SEGMENTS = {
     select u.id, u.email, u.full_name, u.role, u.country from users u
       join client_profiles lp on lp.user_id = u.id
      where u.role = 'client' and u.email_verified and lp.default_suburb_id is null`,
+  // Signed up a week ago and never said a word to anyone - no enquiry, no
+  // message. A welcome with one link to cleaners near them, which is the step
+  // they stopped short of. Ordered after the suburb nudge so someone missing
+  // both hears "where are you" first and this a fortnight later.
+  //
+  // Capped at four weeks old: a "welcome" landing months after signup reads as
+  // a mistake, and a weekly run only needs a three-week window to catch everyone
+  // the suburb nudge's cooldown has held back.
+  customer_no_contact: `
+    select u.id, u.email, u.full_name, u.role, u.country, s.name as suburb from users u
+      join client_profiles lp on lp.user_id = u.id
+      left join suburbs s on s.id = lp.default_suburb_id
+     where u.role = 'client' and u.email_verified
+       and u.created_at < now() - interval '7 days'
+       and u.created_at > now() - interval '28 days'
+       and not exists (select 1 from enquiries e where e.client_id = lp.id)
+       and not exists (select 1 from messages m where m.sender_user_id = u.id)`,
 };
+
+// Where a "find a cleaner" link in an email points: their own country's browse
+// page, preset to their suburb (and clean type) when we know them - with both,
+// the search runs on arrival. browse.js validates each against its own lists,
+// so a value it doesn't carry falls back to the default rather than breaking.
+function browseUrlFor(p) {
+  const page = p.country === 'AU' ? (AU_ORIGIN ? `${AU_ORIGIN}/browse` : `${NZ_ORIGIN}${AU_BASE}/browse`)
+                                  : `${NZ_ORIGIN}/browse`;
+  const qs = new URLSearchParams();
+  if (p.service) qs.set('service', p.service);
+  if (p.suburb) qs.set('suburb', p.suburb);
+  return qs.size ? `${page}?${qs}` : page;
+}
 
 // Returns { ready, cooling } - cooling are people who match the segment but were
 // mailed too recently, kept visible so the report never reads as "nobody left"
@@ -4160,7 +4309,7 @@ app.post('/api/tasks/nudges', async (req, res) => {
         } catch { continue; } // already sent by a concurrent run
         const r = await sendNudgeEmail({
           to: p.email, name: p.full_name, kind, unsubUrl: unsubUrlFor(p.id),
-          country: p.country,
+          country: p.country, url: kind === 'customer_no_contact' ? browseUrlFor(p) : undefined,
         });
         // Belt and braces behind the emailEnabled() guard above: if a send is
         // skipped rather than attempted, give the claim back so this person can
@@ -4244,7 +4393,8 @@ app.get('/api/pending-reviews', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId is required.' });
     const { rows } = await query(
       `select c.id as conversation_id,
-              coalesce(cpf.business_name, cu.full_name) as cleaner_name
+              coalesce(cpf.business_name, cu.full_name) as cleaner_name,
+              coalesce(cpf.review_count, 0)::int as review_count
          from conversations c
          join client_profiles clp on clp.id = c.client_id
          join cleaner_profiles cpf on cpf.id = c.cleaner_id
@@ -4257,7 +4407,11 @@ app.get('/api/pending-reviews', async (req, res) => {
         order by c.last_message_at desc`,
       [userId]
     );
-    res.json(rows.map((r) => ({ conversationId: r.conversation_id, cleaner: r.cleaner_name })));
+    res.json(rows.map((r) => ({
+      conversationId: r.conversation_id,
+      cleaner: r.cleaner_name,
+      newCleaner: r.review_count === 0,
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load pending reviews.' });
@@ -4665,7 +4819,7 @@ async function reviewBreakdown(cleanerId) {
 // requested verification badges). Best-first, relevance falls away gradually.
 app.post('/api/match', async (req, res) => {
   try {
-    const { suburb, suburbs, services, budgetMin, budgetMax, verif, durationHours, slots, products, baseService } = req.body ?? {};
+    const { suburb, suburbs, town, services, budgetMin, budgetMax, verif, durationHours, slots, products, baseService } = req.body ?? {};
     // Accept a single suburb or a list (a whole-city search sends all its suburbs).
     const subList = Array.isArray(suburbs) && suburbs.length ? suburbs : suburb ? [suburb] : [];
     if (!subList.length) return res.status(400).json({ error: 'A suburb is required.' });
@@ -4722,6 +4876,9 @@ app.post('/api/match', async (req, res) => {
       join cleaner_service_areas csa on csa.cleaner_id = cp.id
       join suburbs s                 on s.id = csa.suburb_id and s.name = any($1)
                                     and s.country = $4
+                                    -- Pinned to the searched city's region: a
+                                    -- Nelson "Richmond" is not Christchurch's.
+                                    and ($5::text is null or s.region = $5)
       left join cleaner_services cs  on cs.cleaner_id = cp.id
       left join service_types st     on st.id = cs.service_type_id
       left join availability_rules ar
@@ -4733,7 +4890,8 @@ app.post('/api/match', async (req, res) => {
         and ${atOrAboveFloor('cp.hourly_rate_min', 'u')}
       group by cp.id, u.id`;
 
-    const { rows } = await query(sql, [subList, days, starts, reqCountry(req)]);
+    const country = reqCountry(req);
+    const { rows } = await query(sql, [subList, days, starts, country, townRegion(country, town)]);
 
     const results = rows
       .map((r) => {

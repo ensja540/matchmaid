@@ -68,6 +68,7 @@ const DEMO = {
     { slug: 'regular', name: 'Regular house clean' },
     { slug: 'deep', name: 'Deep clean' },
     { slug: 'end-of-tenancy', name: 'End of tenancy clean' },
+    { slug: 'airbnb', name: 'Airbnb clean' },
     { slug: 'oven', name: 'Oven clean' },
     { slug: 'carpet', name: 'Carpet clean' },
     { slug: 'windows', name: 'Window clean' },
@@ -221,7 +222,7 @@ const DEMO = {
 
 // The type of clean a customer books (they pick ONE). Everything else in the
 // service catalogue is a priced "extra" a maid can offer on top of their rate.
-DEMO.baseServiceSlugs = ['regular', 'deep', 'end-of-tenancy'];
+DEMO.baseServiceSlugs = ['regular', 'deep', 'end-of-tenancy', 'airbnb'];
 DEMO.extraServices = [
   { slug: 'oven', name: 'Oven clean' },
   { slug: 'windows', name: 'Interior windows' },

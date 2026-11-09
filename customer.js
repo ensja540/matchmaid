@@ -968,6 +968,14 @@ function cleanerCardHTML(c) {
     <div class="cp-actions"><button class="btn solid full" type="button" data-cpcontact="${attr(c.id)}">Message ${first}</button></div>`;
 }
 
+// A cleaner with no reviews yet gains the most from one, so they get named.
+function newCleanersNote() {
+  const fresh = pendingReviews.filter((p) => p.newCleaner).map((p) => escapeHtml(p.cleaner));
+  if (!fresh.length) return '';
+  const names = fresh.length === 1 ? fresh[0] : `${fresh.slice(0, -1).join(', ')} and ${fresh[fresh.length - 1]}`;
+  return `<p><strong>${names} ${fresh.length === 1 ? "doesn't" : "don't"} have any reviews yet</strong>, so yours is extra important - it's what the next household will go on.</p>`;
+}
+
 // Sits above the fold on the dashboard until every clean has been rated. The
 // button opens the thread, where the existing prompt is waiting to be tapped.
 function pendingReviewsHTML() {
@@ -976,6 +984,7 @@ function pendingReviewsHTML() {
   return `<div class="panel-card review-nudge">
     <h2>How did ${one ? 'your clean' : 'your cleans'} go?</h2>
     <p class="muted">Your rating is what tells the next customer who to trust.</p>
+    ${newCleanersNote()}
     ${pendingReviews
       .map(
         (p) => `<button type="button" class="btn solid sm" data-review-convo="${attr(p.conversationId)}">
