@@ -1205,7 +1205,7 @@ app.get('/api/cleaner-rates', async (req, res) => {
          join suburbs s on s.id = csa.suburb_id
          join cleaner_services cs on cs.cleaner_id = cp.id
          join service_types st on st.id = cs.service_type_id
-        where cp.listing_status = 'active' and s.country = $3
+        where cp.listing_status = 'active' and ${notAdminListing('cp')} and s.country = $3
           and s.name = any($1) and st.slug = $2 and cp.hourly_rate is not null
           -- Same-named suburbs in other regions are other places; see townRegion().
           and ($4::text is null or s.region = $4)
@@ -1250,7 +1250,7 @@ app.get('/api/rate-benchmark', async (req, res) => {
          from cleaner_profiles cp
          join cleaner_service_areas csa on csa.cleaner_id = cp.id
          join suburbs s on s.id = csa.suburb_id
-        where cp.listing_status = 'active' and s.country = $1
+        where cp.listing_status = 'active' and ${notAdminListing('cp')} and s.country = $1
           and cp.id <> $2 and cp.clean_rates is not null
           ${local ? 'and s.id = any($3)' : ''}`,
       local ? [country, cleanerId, areaIds] : [country, cleanerId]
@@ -1888,6 +1888,16 @@ const cpNotAdmin = (alias = 'cp', country = DEFAULT_COUNTRY) =>
   `exists (select 1 from users au where au.id = ${alias}.user_id
              and lower(au.email) <> ${ADMIN_EMAIL_SQL}
              and au.country = ${countryLit(country)})`;
+// Public listings (search, the price histogram, the messages directory, the
+// rate benchmark) leave the admin's own cleaner profile out too. It is a test
+// listing, so a household should never find it and a real cleaner should never
+// be benchmarked against it. No country clause: the queries it joins already
+// carry their own. Defined as a function so the call sites above this line,
+// which only run per request, read it after module load.
+function notAdminListing(alias = 'cp') {
+  return `not exists (select 1 from users au where au.id = ${alias}.user_id
+                       and lower(au.email) = ${ADMIN_EMAIL_SQL})`;
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function isAdmin(userId) {
   // Check the shape first. Postgres rejects anything that is not a uuid, so a
@@ -2951,7 +2961,7 @@ app.get('/api/directory', async (_req, res) => {
          join users u on u.id = cp.user_id
          left join cleaner_service_areas csa on csa.cleaner_id = cp.id
          left join suburbs s on s.id = csa.suburb_id
-        where cp.listing_status = 'active' and u.status = 'active'
+        where cp.listing_status = 'active' and ${notAdminListing('cp')} and u.status = 'active'
           and ${atOrAboveFloor('cp.hourly_rate_min', 'u')}
         group by cp.id, u.id
         order by cp.avg_rating desc`
@@ -4865,7 +4875,7 @@ app.post('/api/match', async (req, res) => {
        and (ar.day_of_week, ar.start_time) in (
            select d, t from unnest($2::int[], $3::time[]) as x(d, t)
        )
-      where cp.listing_status = 'active' and u.status = 'active'
+      where cp.listing_status = 'active' and ${notAdminListing('cp')} and u.status = 'active'
         and ${atOrAboveFloor('cp.hourly_rate_min', 'u')}
       group by cp.id, u.id`;
 
