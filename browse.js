@@ -48,26 +48,41 @@ hoursSel.innerHTML = [
   { h: 1, l: '1 hour' }, { h: 2, l: '2 hours' }, { h: 3, l: '3 hours' }, { h: 4, l: 'Half day (4h)' },
 ].map((o) => `<option value="${o.h}" ${o.h === 2 ? 'selected' : ''}>${o.l}</option>`).join('');
 
-// Location selector: cities with a "(all)" option and their suburbs; default
-// Christchurch (all).
-function locationOptions(sel) {
-  return Object.entries(DEMO.towns)
-    .map(([town, subs]) =>
-      `<optgroup label="${town}"><option value="town:${town}" ${sel === 'town:' + town ? 'selected' : ''}>${town} (all)</option>${subs
-        .map((s) => `<option value="${s}" ${sel === s ? 'selected' : ''}>${s}</option>`)
-        .join('')}</optgroup>`
-    )
-    .join('');
+// Location: two boxes, city then suburb. The suburb list is the chosen city's
+// own, led by "All suburbs" - which searches the whole city, the default.
+//
+// On the Australian page DEMO.towns IS window.AU_TOWNS, and nz-locations.js
+// (loaded after) folds every NZ town into it - so the NZ ones are filtered back
+// out by name here, or Australians get offered Kaikoura and default to
+// Christchurch.
+const citySel = document.getElementById('city');
+const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const IS_AU = MM_COUNTRY === 'AU';
+const nzTownNames = typeof NZ_TOWNS !== 'undefined' ? NZ_TOWNS : {};
+const cityNames = Object.keys(DEMO.towns).filter((t) => !IS_AU || !(t in nzTownNames));
+// The cities Match Maid is open in come first; everywhere else follows A-Z.
+const MAIN_CITIES = IS_AU ? cityNames : ['Christchurch', 'Auckland'].filter((t) => DEMO.towns[t]);
+const otherCities = cityNames.filter((t) => !MAIN_CITIES.includes(t)).sort((a, b) => a.localeCompare(b));
+const cityOpt = (t) => `<option value="${escAttr(t)}">${escAttr(t)}</option>`;
+citySel.innerHTML = MAIN_CITIES.map(cityOpt).join('')
+  + (otherCities.length ? `<optgroup label="Other towns">${otherCities.map(cityOpt).join('')}</optgroup>` : '');
+function fillSuburbs() {
+  suburbSel.innerHTML = '<option value="">All suburbs</option>'
+    + (DEMO.towns[citySel.value] || []).map((s) => `<option value="${escAttr(s)}">${escAttr(s)}</option>`).join('');
 }
+citySel.value = MAIN_CITIES[0] || cityNames[0];
+fillSuburbs();
+
 // `town` goes to the server with every search. Suburb names repeat across the
 // country (Christchurch's Richmond, Bishopdale and Burnside are also Nelson's
-// and Dunedin's), so the name alone pulled in cleaners from other cities.
-function parseLoc(val) {
-  if (val && val.startsWith('town:')) { const t = val.slice(5); return { label: `${t} (all)`, town: t, suburbs: DEMO.towns[t] || [] }; }
-  const town = Object.keys(DEMO.towns).find((t) => DEMO.towns[t].includes(val)) || '';
-  return { label: val, town, suburbs: val ? [val] : [] };
+// and Dunedin's), so the name alone pulled in cleaners from other cities. The
+// city box now says which one outright.
+function currentLoc() {
+  const town = citySel.value;
+  const sub = suburbSel.value;
+  if (!sub) return { label: `${town} (all)`, town, suburbs: DEMO.towns[town] || [] };
+  return { label: `${sub}, ${town}`, town, suburbs: [sub] };
 }
-suburbSel.innerHTML = locationOptions('town:Christchurch');
 
 // Deep links from the service and city pages. Someone who clicks through from a
 // page about end-of-tenancy cleans and lands on "Regular house clean" has to
@@ -82,11 +97,19 @@ suburbSel.innerHTML = locationOptions('town:Christchurch');
 // cleaner's quick-book link, for posting where their customers already are.
 const linkParams = new URLSearchParams(location.search);
 const wantService = linkParams.get('service');
-const wantPlace = linkParams.get('town') ? 'town:' + linkParams.get('town') : linkParams.get('suburb');
+const wantTown = linkParams.get('town');
+const wantSuburb = linkParams.get('suburb');
+// A suburb link names no city, so take the first city that has that suburb.
+const placeTown = wantTown && cityNames.includes(wantTown) ? wantTown
+  : wantSuburb ? cityNames.find((t) => DEMO.towns[t].includes(wantSuburb)) : null;
 const gotService = !!wantService && DEMO.services.some((s) => s.slug === wantService);
-const gotPlace = !!wantPlace && [...suburbSel.options].some((o) => o.value === wantPlace);
+const gotPlace = !!placeTown;
 if (gotService) serviceSel.value = wantService;
-if (gotPlace) suburbSel.value = wantPlace;
+if (gotPlace) {
+  citySel.value = placeTown;
+  fillSuburbs();
+  if (wantSuburb && DEMO.towns[placeTown].includes(wantSuburb)) suburbSel.value = wantSuburb;
+}
 
 if (gotService && gotPlace) runSearch();
 else showSearchPrompt();
@@ -148,7 +171,7 @@ function renderHist() {
 }
 
 function loadSupply() {
-  const parsed = parseLoc(suburbSel.value);
+  const parsed = currentLoc();
   const service = serviceSel.value;
   supplyLoaded = false;
   rateHist.hidden = true;
@@ -172,6 +195,7 @@ function loadSupply() {
 function rerunIfSearched() {
   if (lastPrefs) runSearch();
 }
+citySel.addEventListener('change', () => { fillSuburbs(); loadSupply(); rerunIfSearched(); });
 suburbSel.addEventListener('change', () => { loadSupply(); rerunIfSearched(); });
 serviceSel.addEventListener('change', () => { loadSupply(); rerunIfSearched(); });
 loadSupply();
@@ -186,7 +210,7 @@ document.getElementById('browseForm').addEventListener('submit', (e) => {
 
 function currentPrefs() {
   const extras = [...extrasBox.querySelectorAll('.chip.select.on')].map((c) => c.dataset.svc);
-  const parsed = parseLoc(suburbSel.value);
+  const parsed = currentLoc();
   return {
     locLabel: parsed.label,
     town: parsed.town,
