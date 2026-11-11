@@ -60,6 +60,9 @@ function render() {
   document.querySelectorAll('[data-signup-only]').forEach((el) => {
     el.style.display = signup ? '' : 'none';
   });
+  document.querySelectorAll('[data-login-only]').forEach((el) => {
+    el.style.display = signup ? 'none' : '';
+  });
   // The code field is offered on both sides now: a cleaner's code invites other
   // cleaners and brings them customers, so a customer may well have one.
   document.querySelectorAll('[data-maid-only]').forEach((el) => {
@@ -269,6 +272,123 @@ function showVerifyStep({ userId, email }) {
   });
 }
 
+// ---- Forgot / reset password ------------------------------------------------
+// Step 1 (Forgot password?): ask for the email, the server emails a one-use
+// link. Step 2 (arriving on that link, ?reset=<token>): choose a new password,
+// then they are signed straight in.
+document.getElementById('forgotBtn')?.addEventListener('click', () => showForgotStep(form.email.value));
+
+function showForgotStep(prefill) {
+  card.innerHTML = `
+    <p class="auth-role serif">Reset your password</p>
+    <p class="auth-sub">Enter the email you signed up with and we'll send you a link to choose a new password.</p>
+    <form id="forgotForm" novalidate>
+      <label class="field">
+        <span>Email</span>
+        <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+      </label>
+      <button class="btn solid lg full" type="submit" id="forgotSubmit">Send reset link</button>
+      <p class="auth-msg" id="forgotMsg" role="status"></p>
+    </form>
+    <p class="auth-switch">
+      <a class="linklike" href="/login?role=${role}${SIGNUP_COUNTRY === 'AU' ? '&country=AU' : ''}">Back to log in</a>
+    </p>`;
+  const fForm = document.getElementById('forgotForm');
+  const fMsg = document.getElementById('forgotMsg');
+  const fBtn = document.getElementById('forgotSubmit');
+  fForm.email.value = prefill || '';
+  fForm.email.focus();
+  fForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = fForm.email.value.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      fMsg.className = 'auth-msg error';
+      fMsg.textContent = 'Enter a valid email address.';
+      return;
+    }
+    fBtn.disabled = true;
+    fMsg.className = 'auth-msg';
+    fMsg.textContent = 'Sending…';
+    try {
+      const res = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      // Worded the same whether or not an account exists - see the server.
+      fMsg.className = 'auth-msg ok';
+      fMsg.textContent = `If there's a Match Maid account for ${email}, a reset link is on its way. Check your inbox (and spam). It expires in an hour.`;
+      setTimeout(() => { fBtn.disabled = false; }, 30000);
+    } catch (err) {
+      fBtn.disabled = false;
+      fMsg.className = 'auth-msg error';
+      fMsg.textContent = err.message || 'Could not reach the server.';
+    }
+  });
+}
+
+function showResetStep(token) {
+  card.innerHTML = `
+    <p class="auth-role serif">Choose a new password</p>
+    <p class="auth-sub">At least 8 characters. You'll be signed in once it's saved.</p>
+    <form id="resetForm" novalidate>
+      <label class="field">
+        <span>New password</span>
+        <input name="password" type="password" autocomplete="new-password" placeholder="••••••••" required />
+      </label>
+      <label class="field">
+        <span>Confirm new password</span>
+        <input name="confirm" type="password" autocomplete="new-password" placeholder="••••••••" required />
+      </label>
+      <button class="btn solid lg full" type="submit" id="resetSubmit">Save new password</button>
+      <p class="auth-msg" id="resetMsg" role="status"></p>
+    </form>`;
+  const rForm = document.getElementById('resetForm');
+  const rMsg = document.getElementById('resetMsg');
+  const rBtn = document.getElementById('resetSubmit');
+  rForm.password.focus();
+  const fail = (text, withLink) => {
+    rBtn.disabled = false;
+    rMsg.className = 'auth-msg error';
+    rMsg.textContent = text;
+    if (withLink && !document.getElementById('resetAgain')) {
+      const p = document.createElement('p');
+      p.className = 'auth-switch';
+      p.innerHTML = '<button type="button" class="linklike" id="resetAgain">Send me a new link</button>';
+      rForm.insertAdjacentElement('afterend', p);
+      p.querySelector('button').addEventListener('click', () => showForgotStep(''));
+    }
+  };
+  rForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = rForm.password.value;
+    if (password.length < 8) return fail('Choose a password of at least 8 characters.');
+    if (password !== rForm.confirm.value) return fail("Those two passwords don't match.");
+    rBtn.disabled = true;
+    rMsg.className = 'auth-msg';
+    rMsg.textContent = 'Saving…';
+    try {
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return fail(data.error || 'Could not reset your password.', data.expired);
+      // Drop the spent token from the address bar so a refresh or a shared
+      // screenshot does not carry it.
+      history.replaceState(null, '', location.pathname + `?role=${role}`);
+      if (data.user) return finishAuth(data.user);
+      rMsg.className = 'auth-msg ok';
+      rMsg.innerHTML = `Password updated. <a class="linklike" href="/login?role=${role}">Log in</a>`;
+    } catch {
+      fail('Could not reach the server.');
+    }
+  });
+}
+
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -324,3 +444,6 @@ function initGoogle() {
 window.addEventListener('load', initGoogle);
 
 render();
+// Arrived from a reset email: go straight to choosing the new password.
+const resetToken = params.get('reset');
+if (resetToken) showResetStep(resetToken);

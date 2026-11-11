@@ -15,6 +15,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700;800&display=swap" />
     <link rel="stylesheet" href="styles.css?v=126" />
+    <style>
+      /* Page-local, so the shared stylesheet's cache key does not have to move. */
+      .auth-forgot { margin: -0.4rem 0 1rem; text-align: right; font-size: 0.85rem; }
+      .auth-forgot .linklike { color: var(--copper); font-weight: 600; }
+      .auth-forgot .linklike:hover { text-decoration: underline; }
+    </style>
   </head>
   <body class="auth-body">
     <div class="auth-wrap">
@@ -37,6 +43,9 @@
             <span>Password</span>
             <input name="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
           </label>
+          <p class="auth-forgot" data-login-only>
+            <button type="button" class="linklike" id="forgotBtn">Forgot password?</button>
+          </p>
           <!-- Both sides: a cleaner's code invites other cleaners AND their own
                customers. An unknown code is ignored, never blocks the signup. -->
           <label class="field" data-signup-only>
@@ -76,7 +85,7 @@
     <script src="https://accounts.google.com/gsi/client" defer></script>
 
     <script src="session.js?v=89"></script>
-    <script src="auth.js?v=90"></script>
+    <script src="auth.js?v=91"></script>
     <script src="feedback.js?v=64"></script>
 
   </body>

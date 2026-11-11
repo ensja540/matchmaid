@@ -96,6 +96,19 @@ export async function sendVerificationEmail({ to, name, code }) {
   return sendEmail({ to, subject: `${code} is your Match Maid confirmation code`, html, text });
 }
 
+// --- Email: reset your password ----------------------------------------------
+export async function sendPasswordResetEmail({ to, name, link, minutes = 60, country }) {
+  const hi = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const html = shell(`
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${hi}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 24px">Someone asked to reset the password on your Match Maid account. Choose a new one here:</p>
+    <p style="margin:0 0 24px"><a href="${link}" style="display:inline-block;background:#123b4a;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:8px">Reset my password</a></p>
+    <p style="font-size:14px;line-height:1.6;color:#6a6a6a;margin:0">The link works once and expires in ${minutes} minutes. If you didn't ask for this, ignore this email and your password stays as it is.</p>`,
+    null, country);
+  const text = `${name ? name + ',\n\n' : ''}Reset your Match Maid password here (works once, expires in ${minutes} minutes):\n${link}\n\nIf you didn't ask for this, ignore this email.`;
+  return sendEmail({ to, subject: 'Reset your Match Maid password', html, text });
+}
+
 // --- Email: you have a new enquiry (to the cleaner) ------------------------
 export async function sendEnquiryEmail({ to, cleanerName, clientName, service, suburb, message, country }) {
   const hi = cleanerName ? `Hi ${escapeHtml(cleanerName)},` : 'Hi,';

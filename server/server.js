@@ -4,7 +4,7 @@
 // deploy: v44 site feedback widget -> /admin (2026-07-08).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHmac, createHash } from 'node:crypto';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
@@ -12,7 +12,7 @@ import {
   emailEnabled, makeCode, sendVerificationEmail, sendEnquiryEmail,
   sendVerificationDecisionEmail, sendVerificationPendingEmail,
   sendNudgeEmail, sendPreLaunchUpdateEmail, sendNewMessageEmail,
-  sendReviewRequestEmail, sendCleanerReviewEmail, sendUnansweredEnquiryEmail, sendTryAnotherCleanerEmail,
+  sendReviewRequestEmail, sendCleanerReviewEmail, sendUnansweredEnquiryEmail, sendTryAnotherCleanerEmail, sendPasswordResetEmail,
 } from './email.js';
 // The price floors live in their own module so the maintenance scripts can read
 // the same numbers this file enforces - importing server.js would start a
@@ -901,7 +901,21 @@ app.post('/api/login', async (req, res) => {
       'select id, role, full_name, email, country, password_hash, status, email_verified from users where email = $1 and role = $2',
       [email.toLowerCase().trim(), dbRole]
     );
-    const user = rows[0];
+    let user = rows[0];
+    // Wrong door, right account. The site header's "Log in" opens the CUSTOMER
+    // login on every page, so a cleaner who signed up from the cleaner pages and
+    // comes back through the header was told "Wrong email or password" - with
+    // both correct - because no customer account exists for them. When this
+    // side has no account at all, try the other side, and only on a matching
+    // password sign them into the account they actually own (and its portal).
+    // Someone who holds both accounts always gets the side they asked for.
+    if (!user) {
+      const other = await query(
+        'select id, role, full_name, email, country, password_hash, status, email_verified from users where email = $1 and role <> $2',
+        [email.toLowerCase().trim(), dbRole]
+      );
+      if (other.rows.length === 1) user = other.rows[0];
+    }
     const ok = user && user.password_hash && (await bcrypt.compare(password, user.password_hash));
     // Deliberately the same message whether the address is unknown, the password
     // is wrong, or the account exists only on the other side: naming which would
@@ -931,6 +945,109 @@ app.post('/api/login', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Try again.' });
+  }
+});
+
+// --- Auth: forgot / reset password -----------------------------------------
+// A link, not a code: the person may open the email on their phone having asked
+// on a laptop, and a long random token in a link cannot be guessed the way six
+// digits can. Only its hash is stored, so a database read does not hand anyone
+// a working reset link. Valid for an hour, and spent on first use.
+//
+// The columns are ensured here, once per process, rather than by a separate
+// migration script: a reset feature that 500s because nobody ran a script is
+// exactly the kind of thing that gets noticed by a locked-out user first.
+let resetColumnsReady = null;
+function ensureResetColumns() {
+  resetColumnsReady ??= (async () => {
+    await query('alter table users add column if not exists reset_token_hash text');
+    await query('alter table users add column if not exists reset_expires timestamptz');
+  })().catch((err) => { resetColumnsReady = null; throw err; });
+  return resetColumnsReady;
+}
+const RESET_TTL_MINUTES = 60;
+const hashToken = (t) => createHash('sha256').update(String(t)).digest('hex');
+
+app.post('/api/forgot-password', async (req, res) => {
+  try {
+    const { email, role } = req.body ?? {};
+    const dbRole = ROLE_MAP[role];
+    const addr = String(email || '').toLowerCase().trim();
+    if (!addr) return res.status(400).json({ error: 'Enter the email you signed up with.' });
+    await ensureResetColumns();
+
+    // Same account choice as login: the side they asked for, or failing that
+    // their only account, so a cleaner who came in through the customer door
+    // still gets a link that works.
+    const { rows } = await query(
+      `select id, role, full_name, email, country, status, reset_expires from users
+        where email = $1 order by (role = $2) desc`,
+      [addr, dbRole || '']
+    );
+    const user = rows[0] && (rows[0].role === dbRole || rows.length === 1) ? rows[0] : null;
+
+    // Not more than one email a minute per account, so the button cannot be
+    // used to flood someone's inbox.
+    const recent = user?.reset_expires
+      && new Date(user.reset_expires).getTime() - Date.now() > (RESET_TTL_MINUTES - 1) * 60000;
+    if (user && !recent) {
+      const token = randomBytes(32).toString('hex');
+      await query(
+        `update users set reset_token_hash = $2,
+                reset_expires = now() + interval '${RESET_TTL_MINUTES} minutes', updated_at = now()
+          where id = $1`,
+        [user.id, hashToken(token)]
+      );
+      const base = user.country === 'AU' && AU_ORIGIN ? AU_ORIGIN : NZ_ORIGIN;
+      const side = user.role === 'cleaner' ? 'maid' : 'customer';
+      const link = `${base}/login?role=${side}&reset=${token}${user.country === 'AU' ? '&country=AU' : ''}`;
+      await sendPasswordResetEmail({
+        to: user.email, name: user.full_name, link, minutes: RESET_TTL_MINUTES, country: user.country,
+      });
+    }
+    // The same answer whether or not the address has an account: saying "no
+    // account here" would tell a stranger who does and does not use the site.
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not send the reset email. Try again.' });
+  }
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body ?? {};
+    if (!token) return res.status(400).json({ error: 'This reset link is incomplete. Request a new one.' });
+    if (!password || String(password).length < 8)
+      return res.status(400).json({ error: 'Choose a password of at least 8 characters.' });
+    await ensureResetColumns();
+
+    const { rows } = await query(
+      `select id, role, full_name, email, country, status from users
+        where reset_token_hash = $1 and reset_expires > now()`,
+      [hashToken(token)]
+    );
+    const user = rows[0];
+    if (!user)
+      return res.status(400).json({ error: 'This reset link has expired or has already been used. Request a new one.', expired: true });
+
+    const hash = await bcrypt.hash(String(password), 10);
+    // Opening the link proves they own the inbox, so it confirms the email too -
+    // otherwise a reset would sign them straight into the code step.
+    await query(
+      `update users set password_hash = $2, reset_token_hash = null, reset_expires = null,
+              email_verified = true, verify_code = null, verify_expires = null, updated_at = now()
+        where id = $1`,
+      [user.id, hash]
+    );
+    // A removed account still has to come back through the reactivate prompt,
+    // so it gets the new password but not a session.
+    if (user.status === REMOVED) return res.json({ ok: true, loginRequired: true });
+    await ensureProfile(user.id, user.role);
+    res.json({ ok: true, user: publicUser(user) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not reset your password. Try again.' });
   }
 });
 
