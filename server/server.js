@@ -20,6 +20,10 @@ import {
 import { COUNTRY_FLOORS, COUNTRY_FLOOR_WHY } from './floors.mjs';
 import { notifyUnderpriced } from './underpriced.mjs';
 import { sameMailbox, emailAffinity } from './email-identity.mjs';
+import {
+  pushEnabled, vapidPublicKey, CHANNELS, notifyChannel, saveSubscription, removeSubscription,
+  deviceCount, sendPush, pushThenDecideEmail, logNotification, ensurePushSchema,
+} from './push.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, '..'); // project root holds index.html etc.
@@ -2011,7 +2015,12 @@ const cpNotAdmin = (alias = 'cp', country = DEFAULT_COUNTRY) =>
 // be benchmarked against it. No country clause: the queries it joins already
 // carry their own. Defined as a function so the call sites above this line,
 // which only run per request, read it after module load.
+//
+// SHOW_ADMIN_LISTING=1 lifts that, so the admin can find their own listing and
+// message it from a customer account to test enquiry email and push end to end.
+// Turn it back off afterwards: while it is on, real households can find it too.
 function notAdminListing(alias = 'cp') {
+  if (process.env.SHOW_ADMIN_LISTING === '1') return 'true';
   return `not exists (select 1 from users au where au.id = ${alias}.user_id
                        and lower(au.email) = ${ADMIN_EMAIL_SQL})`;
 }
@@ -3221,17 +3230,30 @@ app.post('/api/favourites', async (req, res) => {
 // --- Enquiries + messaging (real, cross-device) ----------------------------
 // Email the cleaner that a new enquiry arrived. Looks up the cleaner's address
 // and the customer's name; a friendly service label and suburb dress it up.
-async function notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, suburb, message }) {
+async function notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, suburb, message, conversationId }) {
   const cleaner = await query(
-    `select u.email, coalesce(nullif(cp.business_name, ''), u.full_name) as name
+    `select u.id, u.email, coalesce(nullif(cp.business_name, ''), u.full_name) as name
        from cleaner_profiles cp join users u on u.id = cp.user_id where cp.id = $1`,
     [cleanerId]
   );
+  const cleanerUserId = cleaner.rows[0]?.id;
   const to = cleaner.rows[0]?.email;
-  if (!to) return;
+  if (!cleanerUserId) return;
+
+  // Lock screen first: it is the fast one. No customer name or message text in
+  // the payload - see sendPush() for why.
+  const where = String(suburb || '').trim();
+  const { needEmail } = await pushThenDecideEmail(cleanerUserId, {
+    title: 'Match Maid',
+    body: where ? `New enquiry in ${where}, tap to reply` : 'New enquiry, tap to reply',
+    url: conversationId ? `/maid?c=${encodeURIComponent(conversationId)}` : '/maid',
+    tag: conversationId ? `conv-${conversationId}` : 'enquiry',
+  }, { kind: 'enquiry', conversationId });
+  if (!needEmail || !to) return;
+
   const client = await query('select full_name from users where id = $1', [clientUserId]);
   const svc = serviceSlug ? await query('select name from service_types where slug = $1', [serviceSlug]) : { rows: [] };
-  await sendEnquiryEmail({
+  const sent = await sendEnquiryEmail({
     to,
     country: await userCountry(clientUserId),
     cleanerName: cleaner.rows[0].name,
@@ -3239,6 +3261,11 @@ async function notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, su
     service: svc.rows[0]?.name || '',
     suburb: suburb || '',
     message: message || '',
+  });
+  await logNotification({
+    userId: cleanerUserId, channel: 'email', kind: 'enquiry', conversationId,
+    status: sent?.ok ? 'sent' : sent?.skipped ? 'skipped' : 'failed',
+    detail: sent?.ok ? null : JSON.stringify(sent),
   });
 }
 
@@ -3339,20 +3366,120 @@ async function notifyNewMessage({ conversationId, senderUserId, kind }) {
     [conversationId, senderUserId]
   );
 
-  const sent = await sendNewMessageEmail({
-    to,
-    country: await userCountry(recipientId),
-    toName: toCleaner ? p.cleaner_name : p.client_name,
-    fromName: toCleaner ? p.client_name : p.cleaner_name,
-    body: last[0]?.body || '',
-    portal: toCleaner ? '/maid' : '/customer',
-  });
+  // Only the cleaner portal can open a thread from a link so far; a customer's
+  // push lands on their portal's front page.
+  const { needEmail, push } = await pushThenDecideEmail(recipientId, {
+    title: 'Match Maid',
+    body: 'You have a new message, tap to read it',
+    url: toCleaner ? `/maid?c=${encodeURIComponent(conversationId)}` : '/customer',
+    tag: `conv-${conversationId}`,
+  }, { kind: 'message', conversationId });
+
+  let sent = null;
+  if (needEmail) {
+    sent = await sendNewMessageEmail({
+      to,
+      country: await userCountry(recipientId),
+      toName: toCleaner ? p.cleaner_name : p.client_name,
+      fromName: toCleaner ? p.client_name : p.cleaner_name,
+      body: last[0]?.body || '',
+      portal: toCleaner ? '/maid' : '/customer',
+    });
+    await logNotification({
+      userId: recipientId, channel: 'email', kind: 'message', conversationId,
+      status: sent?.ok ? 'sent' : sent?.skipped ? 'skipped' : 'failed',
+      detail: sent?.ok ? null : JSON.stringify(sent),
+    });
+  }
   // Only stamp it if something actually went out - otherwise a skipped or
   // failed send would start the quiet period as though it had worked.
-  if (sent && sent.ok) {
+  if ((sent && sent.ok) || push.delivered > 0) {
     await query('update conversations set last_notified_at = now() where id = $1', [conversationId]);
   }
 }
+
+// --- Web push: subscriptions and preferences --------------------------------
+// Same trust model as the rest of this API (a userId from the client), which is
+// why push payloads never carry names or message text - see push.mjs.
+
+// The public key, and whether push is switched on at all. The client asks
+// before offering anything, so an unconfigured server never shows a prompt
+// that cannot work.
+app.get('/api/push/key', (_req, res) => {
+  res.json({ enabled: pushEnabled(), publicKey: vapidPublicKey() });
+});
+
+app.post('/api/push/subscribe', async (req, res) => {
+  const { userId, subscription } = req.body ?? {};
+  if (!UUID_RE.test(String(userId || ''))) return res.status(400).json({ error: 'userId is required.' });
+  try {
+    const { rows } = await query('select 1 from users where id = $1 and removed_at is null', [userId]);
+    if (!rows.length) return res.status(404).json({ error: 'No such account.' });
+    await saveSubscription(userId, subscription, req.get('user-agent'));
+    res.json({ ok: true, devices: await deviceCount(userId) });
+  } catch (err) {
+    if (err.message === 'bad subscription') return res.status(400).json({ error: 'That subscription is incomplete.' });
+    console.error(err);
+    res.status(500).json({ error: 'Could not save this device.' });
+  }
+});
+
+app.post('/api/push/unsubscribe', async (req, res) => {
+  const { userId, endpoint } = req.body ?? {};
+  if (!UUID_RE.test(String(userId || '')) || !endpoint) return res.status(400).json({ error: 'userId and endpoint are required.' });
+  try {
+    await removeSubscription(userId, endpoint);
+    res.json({ ok: true, devices: await deviceCount(userId) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not remove this device.' });
+  }
+});
+
+// email / push / both. Push-only still emails whenever no device took the push.
+app.get('/api/notify-prefs', async (req, res) => {
+  const userId = String(req.query.userId || '');
+  if (!UUID_RE.test(userId)) return res.status(400).json({ error: 'userId is required.' });
+  try {
+    res.json({ channel: await notifyChannel(userId), devices: await deviceCount(userId), pushEnabled: pushEnabled() });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not load your notification settings.' });
+  }
+});
+
+app.post('/api/notify-prefs', async (req, res) => {
+  const { userId, channel } = req.body ?? {};
+  if (!UUID_RE.test(String(userId || ''))) return res.status(400).json({ error: 'userId is required.' });
+  if (!CHANNELS.includes(channel)) return res.status(400).json({ error: `channel must be one of ${CHANNELS.join(', ')}.` });
+  try {
+    await ensurePushSchema();
+    await query('update users set notify_channel = $2 where id = $1', [userId, channel]);
+    res.json({ ok: true, channel });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not save your notification settings.' });
+  }
+});
+
+// "Send me a test" from the settings card: proves the device end to end.
+app.post('/api/push/test', async (req, res) => {
+  const { userId } = req.body ?? {};
+  if (!UUID_RE.test(String(userId || ''))) return res.status(400).json({ error: 'userId is required.' });
+  if (!pushEnabled()) return res.status(503).json({ error: 'Push is not configured on this server.' });
+  try {
+    const r = await sendPush(userId, {
+      title: 'Match Maid',
+      body: 'Alerts are on. New enquiries will show up here.',
+      url: '/maid',
+      tag: 'test',
+    }, { kind: 'test' });
+    res.json(r);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not send a test alert.' });
+  }
+});
 
 // Contact a cleaner: reuse the existing thread with them, or create an enquiry
 // + conversation, then (optionally) post the first message.
@@ -3387,7 +3514,9 @@ app.post('/api/contact', async (req, res) => {
 
       // Let the cleaner know a new enquiry landed. Fire-and-forget: an email
       // hiccup must never fail the enquiry itself.
-      notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, suburb, message }).catch(() => {});
+      // Logged now (notification_log) rather than silently swallowed.
+      notifyCleanerOfEnquiry({ cleanerId, clientUserId, serviceSlug, suburb, message, conversationId })
+        .catch((e) => console.error('[notify] new enquiry:', e));
     }
     if (message) {
       await query('insert into messages (conversation_id, sender_user_id, body) values ($1, $2, $3)',

@@ -104,8 +104,13 @@ const firstName = (displayName.split(' ')[0] || '').replace(/^./, (c) => c.toUpp
 document.getElementById('who').textContent = `Hi, ${firstName}`;
 // Admin dashboard is reached directly at /admin (server-gated to the operator's
 // email) - no header button, to keep the portal chrome clean.
-document.getElementById('logout').addEventListener('click', (e) => {
+document.getElementById('logout').addEventListener('click', async (e) => {
   e.preventDefault();
+  // This device stops getting this cleaner's lock-screen alerts. Bounded, so a
+  // slow network can never trap someone on the page they asked to leave.
+  if (window.MMPush && sessionUser?.id) {
+    await Promise.race([MMPush.forget(sessionUser.id), new Promise((r) => setTimeout(r, 1500))]);
+  }
   Session.clear();
   location.href = '/';
 });
@@ -607,6 +612,13 @@ async function openConvo(id) {
   activeConvo = id;
   if (msgCache[id] === undefined) await loadMsgs(id);
   render();
+  askForAlerts();
+}
+// Opening a conversation or going live is the moment alerts make sense to a
+// cleaner, so that is when the explainer may show (once, ever - push.js keeps
+// count). Never on page load.
+function askForAlerts() {
+  if (sessionUser?.id && window.MMPush) MMPush.maybeAsk(sessionUser.id);
 }
 // Jump from an enquiry straight into its chat thread.
 async function openEnquiryConvo(convId) {
@@ -617,6 +629,7 @@ async function openEnquiryConvo(convId) {
     if (msgCache[convId] === undefined) await loadMsgs(convId);
   }
   render();
+  askForAlerts();
 }
 async function initMessages() {
   await refreshConvos();
@@ -1144,6 +1157,7 @@ const PANELS = {
           <span class="save-msg" id="profMsg"></span>
         </div>
       </form>
+      ${loggedIn && window.MMPush ? MMPush.cardHTML() : ''}
       ${loggedIn ? RemoveProfile.html({ billingNote: true, pauseOffer: true, paused: mp.listingStatus === 'paused' }) : ''}`;
   },
 
@@ -1281,6 +1295,7 @@ const WIRE = {
   },
   profile() {
     if (loggedIn) RemoveProfile.bind(sessionUser.id);
+    if (loggedIn && window.MMPush) MMPush.bindCard(sessionUser.id);
     // Photo is held as a data URL and saved with the rest of the profile.
     const avatar = panel.querySelector('#avatar');
     panel.querySelector('#photoInput')?.addEventListener('change', (e) => {
@@ -1374,6 +1389,7 @@ const WIRE = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'save failed');
         setMsg('profMsg', "Saved to your profile. You're now live in search.", 'ok');
+        askForAlerts();
       } catch {
         setMsg('profMsg', 'Could not save. Please try again.', 'err');
       }
@@ -2642,12 +2658,28 @@ async function saveWizard() {
     }
     try { sessionStorage.setItem('mm_wizard_dismissed', '1'); } catch {}
     wizSetMsg("You're all set - you're now live in search!", 'ok');
-    setTimeout(() => { closeWizard(); render(); }, 1100);
+    setTimeout(() => { closeWizard(); render(); askForAlerts(); }, 1100);
   } catch {
     nextBtn.disabled = false;
     wizSetMsg('Could not save. Please check your details and try again.', 'err');
   }
 }
+
+// A link from a push alert (or anywhere) can open one conversation directly:
+// /maid?c=<conversation id>. Set before initMessages' fetch resolves, so it wins
+// over "open the newest thread". The query is stripped so a reload, or a later
+// share of the URL, does not keep forcing that thread.
+const deepConvo = new URLSearchParams(location.search).get('c');
+if (loggedIn && deepConvo && /^[0-9a-f-]{36}$/i.test(deepConvo)) {
+  activeConvo = deepConvo;
+  current = 'messages';
+  tabs.querySelectorAll('.portal-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'messages'));
+  try { history.replaceState(null, '', location.pathname); } catch {}
+  startPolling();
+}
+
+// Already said yes on this device? Keep the server's copy of it fresh.
+if (loggedIn && window.MMPush) MMPush.sync(sessionUser.id);
 
 // Everything above is defined - safe to do the first render now.
 render();

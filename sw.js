@@ -6,7 +6,7 @@
 // back, and worse, because a service worker survives a reload. So the network
 // always wins when it is reachable; the cache exists only to have something to
 // show when it is not.
-const VERSION = 'mm-v1';
+const VERSION = 'mm-v2';
 const CACHE = `matchmaid-${VERSION}`;
 
 // The bare minimum to render something useful offline.
@@ -64,3 +64,48 @@ self.addEventListener('fetch', (e) => {
       })
   );
 });
+
+// ---- Web push --------------------------------------------------------------
+// The server sends { title, body, url, tag }: no names, no message text (see
+// server/push.mjs). Every push MUST show a notification - browsers revoke the
+// permission of a site that receives pushes silently.
+self.addEventListener('push', (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { body: e.data && e.data.text() }; }
+  const title = data.title || 'Match Maid';
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || 'You have something new on Match Maid.',
+      icon: '/icon-192.png',
+      // Same tag = replace, not stack: three messages in one thread are one
+      // alert on the lock screen, not three.
+      tag: data.tag || undefined,
+      renotify: !!data.tag,
+      data: { url: data.url || '/' },
+    })
+  );
+});
+
+// Tap: reuse an open Match Maid window if there is one, otherwise open the
+// installed app (or a tab) straight on the conversation.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL((e.notification.data && e.notification.data.url) || '/', self.location.origin).href;
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).origin !== self.location.origin) continue;
+      try {
+        await w.focus();
+        if ('navigate' in w) return w.navigate(target);
+        return;
+      } catch { /* fall through to a new window */ }
+    }
+    return self.clients.openWindow(target);
+  })());
+});
+
+// The browser rotated or dropped the subscription on its own. Nothing to
+// re-send it with here (no user id in the worker), so the page re-syncs it on
+// its next load - push.js does that whenever permission is already granted.
+self.addEventListener('pushsubscriptionchange', () => {});
