@@ -573,7 +573,14 @@ a { color: inherit; text-decoration: none; }
   .pitch-stats { grid-template-columns: 1fr; }
   .pitch-stats .stat { border-right: none; border-bottom: 1px solid var(--line); }
   .pitch-stats .stat:last-child { border-bottom: none; }
-  .pitch-top { padding: 1.1rem 1.2rem; }
+  /* Logo + four nav items have to share a phone's width: shrink and tighten
+     everything, and if a very narrow screen still can't fit them, wrap the
+     items under each other on the right rather than overflow the page. */
+  .pitch-top { padding: 0.7rem 1rem; gap: 0.6rem; }
+  .pitch-top .brand-mark { height: 34px; width: 34px; }
+  .pitch-top-right { gap: 0.4rem 0.7rem; font-size: 0.64rem; letter-spacing: 0.05em; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+  .pitch-top-right > * { white-space: nowrap; }
+  .pitch-top-right .btn.sm { padding: 0.45rem 0.6rem; font-size: 0.62rem; letter-spacing: 0.05em; }
 }
 
 /* ======================================================================
@@ -1090,6 +1097,10 @@ a { color: inherit; text-decoration: none; }
 .portal-tab.active { color: var(--ink); border-bottom-color: var(--copper); }
 /* On small screens, wrap the tabs so they all fit — no sideways scrolling. */
 @media (max-width: 640px) {
+  /* Five nav items do not fit beside the logo on a phone; without this the
+     row ran off the right edge and took "Log out" with it. */
+  .app-bar { padding: 0.8rem 1rem; gap: 0.8rem; }
+  .app-bar-right { flex-wrap: wrap; justify-content: flex-end; gap: 0.7rem 1rem; min-width: 0; }
   .portal-tabs { flex-wrap: wrap; overflow-x: visible; gap: 0.3rem 1.1rem; padding: 0.3rem 1rem; justify-content: center; }
   .portal-tab { padding: 0.7rem 0; font-size: 0.7rem; letter-spacing: 0.07em; }
 }
